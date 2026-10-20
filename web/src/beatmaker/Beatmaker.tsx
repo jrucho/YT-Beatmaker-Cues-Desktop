@@ -7,6 +7,7 @@ import { selectCurrent, usePlayer, useStatusText, videoEl } from "../player/play
 import { useLibrary } from "../stores/library";
 import { openSettings } from "../stores/system";
 import { toast } from "../stores/ui";
+import { LogoMark } from "../components/Brand";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { Toasts } from "../components/Toasts";
 import { loadBeatmaker, setEngineBank, type Engine } from "./runtime";
@@ -148,7 +149,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
     <div className={`bm-app ${desktop?.platform === "darwin" ? "bm-mac" : ""}`}>
       {desktop && <div className="bm-titlebar app-drag"><span>YT BEATMAKER CUES DESKTOP</span><span>v{__APP_VERSION__} · POWERED BY MUSIKE</span></div>}
       <header className="bm-header">
-        <div className="bm-brand"><span className="bm-brand-icon"><GridFour weight="bold" size={20} /></span><strong>BEATMAKER CUES</strong></div>
+        <div className="bm-brand"><span className="bm-brand-icon"><LogoMark className="bm-brand-mark" /></span><strong>BEATMAKER CUES</strong></div>
         <div className="bm-device"><span className="bm-dot" /> MUSIKE <span className="bm-dim">/</span> STUDIO</div>
         <input aria-label="Session name" className="bm-session" value={name} onChange={e => setName(e.target.value)} maxLength={100} />
         <label className="bm-volume"><SpeakerHigh size={18} /><input aria-label="Master volume" type="range" min="0" max="1" step="0.01" value={p.muted ? 0 : p.volume} onChange={e => p.setVolume(Number(e.target.value))} /><span>{Math.round((p.muted ? 0 : p.volume) * 100)}%</span></label>
@@ -227,7 +228,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
         </main>
       </div>
       <footer className="bm-footer"><span><i className={`bm-dot ${engineStatus === "Engine connected" ? "" : "is-loading"}`} /> {engineStatus === "Engine connected" ? "YT BEATMAKER 2.4.5 · AUDIO ENGINE ACTIVE" : engineStatus}</span><span className="bm-footer-center">LOCAL SESSION <span className="bm-meter"><i style={{ width: `${Math.min(1, Object.keys(cues).length / 12) * 100}%` }} /></span><b>{!mediaReady ? "LOCAL AUTOSAVE" : cuesSaved ? "CUES SAVED" : "UNSAVED CUES"}</b></span><span>Bank {bank}: <b>{Object.keys(cues).length}/12</b></span></footer>
-      {guide && <div className="bm-modal-backdrop" onClick={() => setGuide(false)}><section className="bm-guide" role="dialog" aria-modal="true" aria-label="Beatmaker guide" onClick={e => e.stopPropagation()}><button className="bm-guide-close" aria-label="Close guide" autoFocus onClick={() => setGuide(false)}><X size={20} /></button><span className="bm-eyebrow">THE WORKFLOW</span><h2>Your music. Your instrument.</h2><p>Search for a track, then use its cue pads to jump straight into a moment. The original YT Beatmaker Cues engine handles audio, effects, loops and MIDI inside this app.</p><dl><dt>1–9 / 0</dt><dd>Trigger the first ten cues</dd><dt>Click an empty pad</dt><dd>Mark the current playback position</dd><dt>Shift + click</dt><dd>Replace a cue with the current position</dd><dt>I / O</dt><dd>Set region loop IN / OUT</dd><dt>Space</dt><dd>Play / pause</dd><dt>A–J bank buttons</dt><dd>Switch cue banks for this track</dd><dt>Advanced</dt><dd>Original MIDI, stems, routing, loopers and effects controls</dd><dt>Save / Load</dt><dd>Export or restore a session with its cue banks</dd></dl><button className="bm-primary" onClick={() => setGuide(false)}>LET’S MAKE SOMETHING</button></section></div>}
+      {guide && <div className="bm-modal-backdrop" onClick={() => setGuide(false)}><section className="bm-guide" role="dialog" aria-modal="true" aria-label="Beatmaker guide" onClick={e => e.stopPropagation()}><button className="bm-guide-close" aria-label="Close guide" autoFocus onClick={() => setGuide(false)}><X size={20} /></button><span className="bm-eyebrow">THE WORKFLOW</span><h2>Your music. Your instrument.</h2><p>Search for a track, then use its cue pads to jump straight into a moment. The original YT Beatmaker Cues engine handles audio, effects, loops and MIDI inside this app.</p><dl><dt>1–9 / 0</dt><dd>Trigger the first ten cues</dd><dt>Click an empty pad</dt><dd>Mark the current playback position</dd><dt>Shift + click</dt><dd>Replace a cue with the current position</dd><dt>I / O</dt><dd>Set region loop IN / OUT</dd><dt>Space</dt><dd>Play / pause</dd><dt>A–J bank buttons</dt><dd>Switch cue banks for this track</dd><dt>CUES / LOOP</dt><dd>Open or hide the compact performance bar</dd><dt>MAP</dt><dd>Open MIDI mappings</dd><dt>Advanced</dt><dd>Original MIDI, stems, routing, loopers and effects controls</dd><dt>Settings</dt><dd>Catalog language, yt-dlp and library backup</dd><dt>Save / Load</dt><dd>Export or restore a session with its cue banks</dd></dl><button className="bm-primary" onClick={() => setGuide(false)}>LET’S MAKE SOMETHING</button></section></div>}
       <SettingsDialog studio /><Toasts />
     </div>
   );

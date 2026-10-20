@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowRight, DownloadSimple, GearSix, GridFour, Heart, MagnifyingGlass, MusicNotes, Pause, Play, Plus, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, SpeakerHigh, SpeakerX, Waveform, X } from "@phosphor-icons/react";
+import { ArrowRight, DownloadSimple, GearSix, Heart, MagnifyingGlass, MusicNotes, Pause, Play, Plus, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, SpeakerHigh, SpeakerX, Waveform, X } from "@phosphor-icons/react";
 import { api } from "../lib/api";
 import { desktop } from "../lib/desktop";
 import { formatTime } from "../lib/format";
@@ -8,6 +8,7 @@ import { selectCurrent, usePlayer, useStatusText } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { openSettings } from "../stores/system";
 import { toast } from "../stores/ui";
+import { LogoMark } from "../components/Brand";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { Slider } from "../components/Slider";
 import { Toasts } from "../components/Toasts";
@@ -157,7 +158,7 @@ export function DiscoverSamples({ onStudio, onBrowse }: { onStudio(track?: Track
   return <div className="bm-app ds-app">
     {desktop && <div className="bm-titlebar app-drag"><span>YT BEATMAKER CUES DESKTOP</span><span>v{__APP_VERSION__} · POWERED BY MUSIKE</span></div>}
     <header className="bm-header ds-header">
-      <div className="bm-brand"><span className="bm-brand-icon"><GridFour weight="bold" size={20} /></span><strong>BEATMAKER CUES</strong></div>
+      <div className="bm-brand"><span className="bm-brand-icon"><LogoMark className="bm-brand-mark" /></span><strong>BEATMAKER CUES</strong></div>
       <span className="ds-header-caption">YOUR NEXT IDEA IS IN HERE.</span>
       <div className="ds-navigation"><span className="ds-current-page">DISCOVER</span><button onClick={() => openStudio()}>STUDIO <ArrowRight size={16} /></button><button onClick={onBrowse}>MUSIC LIBRARY</button><button className="bm-icon-button" aria-label="Settings" onClick={openSettings}><GearSix size={19} /></button></div>
     </header>

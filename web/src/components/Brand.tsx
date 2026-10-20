@@ -1,13 +1,15 @@
 import { cn } from "../lib/format";
 
-/** The Musike mark: three equalizer bars forming an M. */
+/** The Musike mark: four cue pads, the first holding a play glyph. */
 export function LogoMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 48 48" className={className} aria-hidden="true">
-      <g fill="currentColor">
-        <rect x="10" y="10" width="8" height="28" rx="4" />
-        <rect x="20" y="10" width="8" height="16" rx="4" />
-        <rect x="30" y="10" width="8" height="28" rx="4" />
+      <rect x="7" y="7" width="15" height="15" rx="4.5" fill="currentColor" />
+      <path d="M12.6 10.9 L19.4 14.5 L12.6 18.1 Z" fill="#0b0b0b" />
+      <g fill="none" stroke="currentColor" strokeWidth="3.2">
+        <rect x="26" y="7" width="15" height="15" rx="4.5" />
+        <rect x="7" y="26" width="15" height="15" rx="4.5" />
+        <rect x="26" y="26" width="15" height="15" rx="4.5" />
       </g>
     </svg>
   );
@@ -16,7 +18,7 @@ export function LogoMark({ className }: { className?: string }) {
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-1.5", className)}>
-      <LogoMark className="size-7 text-accent-text" />
+      <LogoMark className="size-7 text-[#c3ec52]" />
       <span className="text-[17px] font-semibold tracking-tight">musike</span>
     </span>
   );

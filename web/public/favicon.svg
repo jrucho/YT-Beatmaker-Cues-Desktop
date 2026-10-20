@@ -1,8 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <rect width="48" height="48" rx="12" fill="#121318"/>
-  <g fill="#C3EC52">
-    <rect x="10" y="10" width="8" height="28" rx="4"/>
-    <rect x="20" y="10" width="8" height="16" rx="4"/>
-    <rect x="30" y="10" width="8" height="28" rx="4"/>
+  <rect width="48" height="48" rx="10" fill="#0b0b0b"/>
+  <g transform="translate(6 6) scale(0.75)"><g color="#c3ec52">
+  <rect x="7" y="7" width="15" height="15" rx="4.5" fill="currentColor"/>
+  <path d="M12.6 10.9 L19.4 14.5 L12.6 18.1 Z" fill="#0b0b0b"/>
+  <g fill="none" stroke="currentColor" stroke-width="3.2">
+    <rect x="26" y="7" width="15" height="15" rx="4.5"/>
+    <rect x="7" y="26" width="15" height="15" rx="4.5"/>
+    <rect x="26" y="26" width="15" height="15" rx="4.5"/>
   </g>
+</g></g>
 </svg>

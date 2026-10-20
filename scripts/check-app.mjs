@@ -148,9 +148,19 @@ try {
   await page.getByRole("button", { name: "Set cue 1", exact: true }).click();
   const firstCue = await page.evaluate(() => window.musikeBeatmakerEngine.snapshot().cues["1"]);
   assert(firstCue >= 10, "Marking cues opens the studio without restarting discovery playback");
-  const cuePin = page.locator("#bm-timeline .cue-marker").first();
-  await cuePin.waitFor();
-  assert.equal(await cuePin.evaluate(el => getComputedStyle(el).backgroundColor), "rgb(245, 245, 245)", "Cue pins are white on the studio timeline");
+  await page.locator("#bm-timeline .cue-marker").first().waitFor();
+  await page.waitForFunction(() => {
+    const pin = document.querySelector("#bm-timeline .cue-marker");
+    return !!pin && getComputedStyle(pin).backgroundColor === "rgb(245, 245, 245)";
+  });
+  assert.equal(
+    await page.evaluate(() => {
+      const pin = document.querySelector("#bm-timeline .cue-marker");
+      return pin ? getComputedStyle(pin).backgroundColor : "";
+    }),
+    "rgb(245, 245, 245)",
+    "Cue pins are white on the studio timeline",
+  );
   await page.getByRole("button", { name: "Set cue 11", exact: true }).click();
   await page.getByRole("button", { name: "B", exact: true }).click();
   assert.deepEqual(await page.evaluate(() => window.musikeBeatmakerEngine.snapshot().cues), {}, "Banks are independent");
@@ -259,6 +269,25 @@ try {
   await page.getByRole("button", { name: "STUDIO", exact: false }).first().click();
   await page.getByText("AUDIO ENGINE ACTIVE", { exact: false }).waitFor();
   assert.equal(await page.evaluate(() => window.musikeBeatmakerEngine.snapshot().cues["1"]), 7, "Navigation preserves cue banks");
+  await page.getByRole("button", { name: "Discover", exact: true }).click();
+  await page.getByRole("heading", { name: "Find a sound. Make it yours." }).waitFor();
+  await page.getByRole("button", { name: "MUSIC LIBRARY", exact: true }).click();
+  await page.locator(".music-app").waitFor();
+  assert.equal(await page.locator(".music-app").evaluate(el => getComputedStyle(el).backgroundColor), "rgb(0, 0, 0)", "The music library uses the studio's pitch-black shell");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settings.waitFor();
+  assert.equal(await settings.evaluate(el => getComputedStyle(el).backgroundColor), "rgb(5, 5, 5)", "Settings uses the pitch-black shell");
+  const languages = settings.getByRole("radiogroup", { name: "Language", exact: true });
+  assert.equal(await languages.getByRole("radio").count(), 3, "Settings offers English, French and Spanish");
+  await languages.getByRole("radio", { name: "Français", exact: true }).click();
+  await page.getByRole("dialog", { name: "Réglages", exact: true }).waitFor();
+  await page.getByRole("dialog", { name: "Réglages", exact: true }).getByRole("radio", { name: "English", exact: true }).click();
+  await page.getByRole("dialog", { name: "Settings", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /Beatmaker workspace/ }).click();
+  await page.getByText("AUDIO ENGINE ACTIVE", { exact: false }).waitFor();
+  assert.equal(await page.evaluate(() => window.musikeBeatmakerEngine.snapshot().cues["1"]), 7, "Beatmaker workspace returns to the studio from the library");
   await page.reload();
   await page.getByRole("heading", { name: "Find a sound. Make it yours." }).waitFor();
   await page.getByRole("button", { name: "STUDIO", exact: false }).first().click();

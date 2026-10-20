@@ -14,22 +14,22 @@
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0b0c0f;
-  --surface-1: #121318;
-  --surface-2: #181a20;
-  --surface-3: #20232b;
-  --surface-4: #2a2e38;
-  --line: rgb(255 255 255 / 0.07);
-  --line-strong: rgb(255 255 255 / 0.12);
-  --fg: #eceef2;
-  --fg-2: #9ba1ad;
-  --fg-3: #6b717d;
+  --bg: #000000;
+  --surface-1: #050505;
+  --surface-2: #090909;
+  --surface-3: #111111;
+  --surface-4: #1b1b1b;
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.14);
+  --fg: #f4f4f4;
+  --fg-2: #a3a3a3;
+  --fg-3: #737373;
   --accent: #c3ec52;
   --accent-ink: #0b0c0f;
   --accent-text: #c3ec52;
   --accent-soft: rgb(195 236 82 / 0.12);
   --highlight: rgb(255 255 255 / 0.06);
-  --scrim: rgb(5 6 8 / 0.72);
+  --scrim: rgb(0 0 0 / 0.72);
   --danger: #ff7a6b;
 }
 

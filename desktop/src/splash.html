@@ -48,18 +48,8 @@
       .brand svg {
         width: 34px;
         height: 34px;
+        color: #c3ec52;
       }
-      @keyframes eq {
-        0%, 100% { transform: scaleY(0.35); }
-        50% { transform: scaleY(1); }
-      }
-      .brand rect {
-        transform-box: fill-box;
-        transform-origin: top;
-        animation: eq 1s cubic-bezier(0.16, 1, 0.3, 1) infinite;
-      }
-      .brand rect:nth-child(2) { animation-delay: -0.35s; }
-      .brand rect:nth-child(3) { animation-delay: -0.6s; }
       #status {
         color: var(--fg-2);
         min-height: 20px;
@@ -106,19 +96,18 @@
         font-weight: 600;
         cursor: pointer;
       }
-      @media (prefers-reduced-motion: reduce) {
-        .brand rect { animation: none; }
-      }
     </style>
   </head>
   <body>
     <main>
       <div class="brand">
-        <svg viewBox="10 10 28 28" aria-hidden="true">
-          <g fill="#F4F4F4">
-            <rect x="10" y="10" width="8" height="28" rx="4" />
-            <rect x="20" y="10" width="8" height="16" rx="4" />
-            <rect x="30" y="10" width="8" height="28" rx="4" />
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <rect x="7" y="7" width="15" height="15" rx="4.5" fill="currentColor" />
+          <path d="M12.6 10.9 L19.4 14.5 L12.6 18.1 Z" fill="#030303" />
+          <g fill="none" stroke="currentColor" stroke-width="3.2">
+            <rect x="26" y="7" width="15" height="15" rx="4.5" />
+            <rect x="7" y="26" width="15" height="15" rx="4.5" />
+            <rect x="26" y="26" width="15" height="15" rx="4.5" />
           </g>
         </svg>
         YT Beatmaker Cues Desktop
@@ -139,15 +128,25 @@
           retry: "Try again",
           names: { "yt-dlp": "yt-dlp (YouTube search)", deno: "Deno (YouTube challenges)", ffmpeg: "FFmpeg (HD video)" },
         },
-        "pt-BR": {
+        fr: {
+          starting: "Démarrage",
+          downloading: "Téléchargement des composants au premier lancement",
+          ready: "prêt",
+          extracting: "extraction",
+          of: (got, total) => `${got} sur ${total} Mo`,
+          failed: "Impossible de démarrer : ",
+          retry: "Réessayer",
+          names: { "yt-dlp": "yt-dlp (recherche YouTube)", deno: "Deno (défis YouTube)", ffmpeg: "FFmpeg (vidéo HD)" },
+        },
+        es: {
           starting: "Iniciando",
-          downloading: "Baixando componentes na primeira execução",
-          ready: "pronto",
-          extracting: "extraindo",
+          downloading: "Descargando componentes en el primer inicio",
+          ready: "listo",
+          extracting: "extrayendo",
           of: (got, total) => `${got} de ${total} MB`,
-          failed: "Não foi possível iniciar: ",
-          retry: "Tentar de novo",
-          names: { "yt-dlp": "yt-dlp (busca no YouTube)", deno: "Deno (desafios do YouTube)", ffmpeg: "FFmpeg (vídeo HD)" },
+          failed: "No se pudo iniciar: ",
+          retry: "Reintentar",
+          names: { "yt-dlp": "yt-dlp (búsqueda de YouTube)", deno: "Deno (desafíos de YouTube)", ffmpeg: "FFmpeg (vídeo HD)" },
         },
       };
       const lang = new URLSearchParams(location.search).get("lang");

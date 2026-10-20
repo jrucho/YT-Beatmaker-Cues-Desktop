@@ -13,6 +13,9 @@ First release of **YT Beatmaker Cues Desktop** as a standalone project.
 - Direct integration of the original YT Beatmaker Cues 2.4.5 engine with Musike's media element.
 - Twelve cue pads and ten independent banks per track, including keyboard triggers and local autosave.
 - White cue pins on the studio timeline so cue positions stay visible against the dark theme.
+- A pitch-black interface across the library, Settings, dialogs and the studio shell.
+- A new green four-pad logo across the app, splash screen, favicon and installers.
+- English, French and Spanish interface languages, including catalog search and the desktop splash screen.
 - Performance controls for the original sequencer, FX Pad, sidechain, region loops, VJ and Advanced tools.
 - Pitch control and audio/video switching.
 - Session export/import for track references and cue banks.

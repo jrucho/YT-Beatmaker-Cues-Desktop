@@ -3,7 +3,7 @@
  * They are kept as keys and translated when sent, so each device gets its own language.
  */
 
-export type Lang = "en" | "pt-BR";
+export type Lang = "en" | "fr" | "es";
 type Params = Record<string, string | number>;
 
 const en = {
@@ -56,55 +56,103 @@ const en = {
 
 export type MsgKey = keyof typeof en;
 
-const pt: Record<MsgKey, string> = {
-  invalidVideoId: "ID de vídeo inválido.",
-  emptyQuery: "Digite algo para buscar.",
-  missingTitle: "Informe o título da música.",
-  notBackup: "Este arquivo não é um backup do Musike.",
-  newerBackup: "Backup de uma versão mais nova do Musike. Atualize o app para importar.",
-  idMismatch: "ID não confere.",
-  tracksRequired: "Envie uma lista de faixas.",
-  invalidGenre: "Gênero inválido.",
-  invalidOffset: "Posição inválida.",
-  invalidArtist: "Artista inválido.",
-  routeNotFound: "Rota não encontrada.",
-  noFreePort: "Nenhuma porta livre entre {from} e {to}.",
-  invalidTrack: "Faixa inválida.",
-  playlistNotFound: "Playlist não encontrada.",
-  playlistNameRequired: "Dê um nome à playlist.",
-  genresUnavailable: "Não foi possível carregar os gêneros agora. Tente de novo.",
-  genreUnavailable: "Não foi possível abrir este gênero agora. Tente de novo.",
-  genreEmpty: "Nada encontrado para este gênero.",
-  artistUnavailable: "Não foi possível abrir este artista agora. Tente de novo.",
-  artistNotFound: "Artista não encontrado.",
-  albumUnavailable: "Não foi possível abrir este álbum agora. Tente de novo.",
-  albumNotFound: "Álbum não encontrado.",
-  invalidAlbum: "Álbum inválido.",
-  ytdlpMissing: "O yt-dlp não foi encontrado neste computador. Abra Ajustes no Musike para instalar.",
-  ytdlpTimeout: "O yt-dlp demorou demais para responder.",
-  ytdlpCantRun: "Não foi possível executar o yt-dlp ({error}). Abra Ajustes no Musike.",
-  botCheck: "O YouTube está pedindo para esta conexão provar que não é um robô. Se estiver usando VPN, desligue e tente de novo.",
-  videoUnavailable: "Vídeo indisponível no YouTube.",
-  ageRestricted: "Vídeo com restrição de idade. Requer cookies de uma conta logada.",
-  ytdlpFailed: "Falha no yt-dlp.",
-  ytdlpOutdated: "{detail} O YouTube pode ter mudado: atualize o yt-dlp em Ajustes.",
-  noAudio: "Nenhum formato de áudio disponível para este vídeo.",
-  noSdVideo: "Este vídeo não tem versão SD combinada. Use HD.",
-  streamRefused: "O YouTube recusou o stream (HTTP {status}). Tente atualizar o yt-dlp em Ajustes.",
-  noWinget: "yt-dlp não encontrado e o winget não está disponível. Instale manualmente: https://github.com/yt-dlp/yt-dlp",
-  installingYtdlp: "Instalando yt-dlp",
-  updatingYtdlp: "Atualizando yt-dlp",
-  directUpdateFailed: "Atualização direta falhou, tentando pelo winget",
-  downloadingTools: "Baixando yt-dlp e Deno do GitHub",
-  alreadyLatest: "Já está na versão mais recente ({version})",
-  ytdlpReady: "yt-dlp {version} pronto para uso",
-  updateFailed: "Não foi possível atualizar o yt-dlp.",
-  toolMissing: "{tool} não encontrado neste computador.",
-  downloadFailed: "Download de {tool} falhou (HTTP {status}).",
-  ffmpegPackage: "Pacote do FFmpeg inesperado.",
+const fr: Record<MsgKey, string> = {
+  invalidVideoId: "ID de vidéo invalide.",
+  emptyQuery: "Saisissez quelque chose à rechercher.",
+  missingTitle: "Indiquez le titre de la chanson.",
+  notBackup: "Ce fichier n'est pas une sauvegarde Musike.",
+  newerBackup: "Cette sauvegarde vient d'une version plus récente de Musike. Mettez l'app à jour pour l'importer.",
+  idMismatch: "L'ID ne correspond pas.",
+  tracksRequired: "Envoyez une liste de pistes.",
+  invalidGenre: "Genre invalide.",
+  invalidOffset: "Position invalide.",
+  invalidArtist: "Artiste invalide.",
+  routeNotFound: "Route introuvable.",
+  noFreePort: "Aucun port libre entre {from} et {to}.",
+  invalidTrack: "Piste invalide.",
+  playlistNotFound: "Playlist introuvable.",
+  playlistNameRequired: "Donnez un nom à la playlist.",
+  genresUnavailable: "Impossible de charger les genres pour le moment. Réessayez.",
+  genreUnavailable: "Impossible d'ouvrir ce genre pour le moment. Réessayez.",
+  genreEmpty: "Rien trouvé pour ce genre.",
+  artistUnavailable: "Impossible d'ouvrir cet artiste pour le moment. Réessayez.",
+  artistNotFound: "Artiste introuvable.",
+  albumUnavailable: "Impossible d'ouvrir cet album pour le moment. Réessayez.",
+  albumNotFound: "Album introuvable.",
+  invalidAlbum: "Album invalide.",
+  ytdlpMissing: "yt-dlp est introuvable sur cet ordinateur. Ouvrez les Réglages de Musike pour l'installer.",
+  ytdlpTimeout: "yt-dlp a mis trop de temps à répondre.",
+  ytdlpCantRun: "Impossible d'exécuter yt-dlp ({error}). Ouvrez les Réglages de Musike.",
+  botCheck: "YouTube demande à cette connexion de prouver qu'elle n'est pas un robot. Si vous utilisez un VPN, désactivez-le et réessayez.",
+  videoUnavailable: "Cette vidéo n'est pas disponible sur YouTube.",
+  ageRestricted: "Vidéo réservée aux adultes. Elle nécessite les cookies d'un compte connecté.",
+  ytdlpFailed: "Échec de yt-dlp.",
+  ytdlpOutdated: "{detail} YouTube a peut-être changé : mettez yt-dlp à jour dans les Réglages.",
+  noAudio: "Aucun format audio disponible pour cette vidéo.",
+  noSdVideo: "Cette vidéo n'a pas de version SD combinée. Utilisez la HD.",
+  streamRefused: "YouTube a refusé le flux (HTTP {status}). Essayez de mettre yt-dlp à jour dans les Réglages.",
+  noWinget: "yt-dlp est introuvable et winget n'est pas disponible. Installez-le manuellement : https://github.com/yt-dlp/yt-dlp",
+  installingYtdlp: "Installation de yt-dlp",
+  updatingYtdlp: "Mise à jour de yt-dlp",
+  directUpdateFailed: "La mise à jour directe a échoué, tentative via winget",
+  downloadingTools: "Téléchargement de yt-dlp et Deno depuis GitHub",
+  alreadyLatest: "Déjà à la dernière version ({version})",
+  ytdlpReady: "yt-dlp {version} est prêt à l'emploi",
+  updateFailed: "Impossible de mettre à jour yt-dlp.",
+  toolMissing: "{tool} est introuvable sur cet ordinateur.",
+  downloadFailed: "Le téléchargement de {tool} a échoué (HTTP {status}).",
+  ffmpegPackage: "Paquet FFmpeg inattendu.",
 };
 
-const CATALOG: Record<Lang, Record<MsgKey, string>> = { en, "pt-BR": pt };
+const es: Record<MsgKey, string> = {
+  invalidVideoId: "ID de vídeo no válido.",
+  emptyQuery: "Escribe algo para buscar.",
+  missingTitle: "Indica el título de la canción.",
+  notBackup: "Este archivo no es una copia de Musike.",
+  newerBackup: "Esta copia se creó con una versión más reciente de Musike. Actualiza la app para importarla.",
+  idMismatch: "El ID no coincide.",
+  tracksRequired: "Envía una lista de pistas.",
+  invalidGenre: "Género no válido.",
+  invalidOffset: "Posición no válida.",
+  invalidArtist: "Artista no válido.",
+  routeNotFound: "Ruta no encontrada.",
+  noFreePort: "No hay ningún puerto libre entre {from} y {to}.",
+  invalidTrack: "Pista no válida.",
+  playlistNotFound: "Lista no encontrada.",
+  playlistNameRequired: "Ponle un nombre a la lista.",
+  genresUnavailable: "No se pudieron cargar los géneros ahora. Inténtalo de nuevo.",
+  genreUnavailable: "No se pudo abrir este género ahora. Inténtalo de nuevo.",
+  genreEmpty: "No se encontró nada para este género.",
+  artistUnavailable: "No se pudo abrir este artista ahora. Inténtalo de nuevo.",
+  artistNotFound: "Artista no encontrado.",
+  albumUnavailable: "No se pudo abrir este álbum ahora. Inténtalo de nuevo.",
+  albumNotFound: "Álbum no encontrado.",
+  invalidAlbum: "Álbum no válido.",
+  ytdlpMissing: "No se encontró yt-dlp en este ordenador. Abre Ajustes en Musike para instalarlo.",
+  ytdlpTimeout: "yt-dlp tardó demasiado en responder.",
+  ytdlpCantRun: "No se pudo ejecutar yt-dlp ({error}). Abre Ajustes en Musike.",
+  botCheck: "YouTube pide a esta conexión que demuestre que no es un robot. Si usas una VPN, desactívala e inténtalo de nuevo.",
+  videoUnavailable: "Este vídeo no está disponible en YouTube.",
+  ageRestricted: "Vídeo con restricción de edad. Necesita cookies de una cuenta con sesión iniciada.",
+  ytdlpFailed: "yt-dlp falló.",
+  ytdlpOutdated: "{detail} Puede que YouTube haya cambiado: actualiza yt-dlp en Ajustes.",
+  noAudio: "No hay ningún formato de audio disponible para este vídeo.",
+  noSdVideo: "Este vídeo no tiene versión SD combinada. Usa HD.",
+  streamRefused: "YouTube rechazó el stream (HTTP {status}). Prueba a actualizar yt-dlp en Ajustes.",
+  noWinget: "No se encontró yt-dlp y winget no está disponible. Instálalo manualmente: https://github.com/yt-dlp/yt-dlp",
+  installingYtdlp: "Instalando yt-dlp",
+  updatingYtdlp: "Actualizando yt-dlp",
+  directUpdateFailed: "La actualización directa falló; probando con winget",
+  downloadingTools: "Descargando yt-dlp y Deno desde GitHub",
+  alreadyLatest: "Ya está en la última versión ({version})",
+  ytdlpReady: "yt-dlp {version} está listo para usar",
+  updateFailed: "No se pudo actualizar yt-dlp.",
+  toolMissing: "No se encontró {tool} en este ordenador.",
+  downloadFailed: "La descarga de {tool} falló (HTTP {status}).",
+  ffmpegPackage: "Paquete de FFmpeg inesperado.",
+};
+
+const CATALOG: Record<Lang, Record<MsgKey, string>> = { en, fr, es };
 
 /** A message translated when it is sent: a key plus the values for its {placeholders}. */
 export interface Msg {
@@ -122,7 +170,7 @@ export function tr(lang: Lang, text: Text): string {
   return CATALOG[lang][text.key].replace(/\{(\w+)\}/g, (all, name: string) => String(text.params?.[name] ?? all));
 }
 
-export const isLang = (v: unknown): v is Lang => v === "en" || v === "pt-BR";
+export const isLang = (v: unknown): v is Lang => v === "en" || v === "fr" || v === "es";
 
 /** The language a request asked for. The app always says; anything else (media elements, curl) gets English. */
 export function langOf(req: { headers: Record<string, string | string[] | undefined> }): Lang {
@@ -131,4 +179,4 @@ export function langOf(req: { headers: Record<string, string | string[] | undefi
 }
 
 /** The code YouTube Music uses for its own words (genre names, artist bios). */
-export const youtubeLang = (lang: Lang) => (lang === "pt-BR" ? "pt" : "en");
+export const youtubeLang = (lang: Lang) => lang;

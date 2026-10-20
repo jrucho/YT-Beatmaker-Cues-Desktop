@@ -6,7 +6,17 @@ A standalone macOS music and beatmaking app combining [Musike](https://github.co
 
 **[Download v1.0.0](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.0)** · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
 
-![Discover Samples opening page](docs/screenshots/discover-samples.png)
+<p align="center">
+  <a href="docs/screenshots/discover-samples.png"><img src="docs/screenshots/discover-samples.png" alt="Discover Samples opening page with live search and the global player bar" width="100%"></a>
+</p>
+
+| Studio and cue timeline | Music library |
+| :---: | :---: |
+| <a href="docs/screenshots/studio.png"><img src="docs/screenshots/studio.png" alt="Beatmaker studio with waveform cues and twelve cue pads"></a> | <a href="docs/screenshots/library.png"><img src="docs/screenshots/library.png" alt="Pitch-black music library with playlists, favorites and now playing panel"></a> |
+
+<p align="center">
+  <a href="docs/screenshots/settings.png"><img src="docs/screenshots/settings.png" alt="Settings with appearance, English, French and Spanish language options" width="420"></a>
+</p>
 
 ## Install on macOS
 
@@ -44,7 +54,7 @@ Personal data lives in `~/Library/Application Support/YT Beatmaker Cues Desktop`
 1. Start on **Discover Samples**. Choose a music category or search, preview a track and click **Load in Studio**. The included kick, snare and hi-hat collections also have playable, downloadable WAV hits.
 2. In the studio, click an empty pad to mark the current time. Click an assigned pad to trigger it; **Shift-click** to replace it.
 3. Use **1–9 / 0** for the first ten cues and the **A–J** bank buttons for more cue sets.
-4. Open **Cues / Loop**, **Sequencer**, **FX Pad**, **Sidechain**, **VJ** or **Advanced** for the original Beatmaker tools.
+4. **Cues / Loop** toggles the compact performance bar; click it again to hide it, or to rebuild it after **Advanced** removes it. Open **Sequencer**, **FX Pad**, **Sidechain**, **VJ** or **Advanced** for the original Beatmaker tools. See [studio toolbars and panels](docs/beatmaker-desktop.md#studio-toolbars-and-panels) for what each one does.
 5. Use **Save / Load** to move a cue session between installations.
 
 See the [detailed guide](docs/beatmaker-desktop.md) for architecture, shortcuts and session-format details.

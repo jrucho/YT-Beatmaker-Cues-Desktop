@@ -11,6 +11,15 @@ The desktop app opens **Discover Samples**, then leads into a Beatmaker workspac
 5. **Sequencer**, **FX Pad**, **Sidechain**, **VJ** and **Advanced** open the original extension tools. Advanced includes MIDI mappings, sample packs, audio routing and loopers. The Audio / Video button switches Musike's playback mode; VJ needs a video source.
 6. Cues and bank selection save locally. **Save** exports a `.beatmaker.json` containing known library tracks and cue banks; **Load** restores those cues and creates a playlist for valid imported tracks. This session format does not include recorded audio, the AI model, or every extension preference.
 
+### Studio toolbars and panels
+
+- **CUES / LOOP** opens the original compact performance bar (the "minimal bar"). Click it again to hide the bar. If the bar disappears after using **Advanced**, **CUES / LOOP** rebuilds it.
+- **ADVANCED** opens the original settings drawer: MIDI mappings, stems, sample packs, audio routing, loopers, effects and engine options. **Close** returns to the pads.
+- **MAP** jumps straight to MIDI mappings. **SEQUENCER**, **FX PAD**, **SIDECHAIN** and **VJ** open their own panels; opening another tool replaces the panel in view. VJ needs a loaded video source.
+- **Guide** reopens the in-app workflow, and **Save / Load** handle `.beatmaker.json` sessions.
+- The studio **Settings** gear controls catalog language, yt-dlp and library backup. Appearance (theme, accent and layout) is changed from the Music Library so the studio's black shell stays consistent.
+- Keyboard: **Space** play/pause · **1–9 / 0** trigger cues · **I / O** set loop points · **A–J** switch cue banks.
+
 The full Musike discovery interface is available through **Open full music library**. **Beatmaker workspace** returns to the studio.
 
 ## Integration
