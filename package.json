@@ -13,7 +13,9 @@
     "start": "pnpm --filter ./server start",
     "desktop": "pnpm --filter musike-desktop start",
     "installer": "pnpm --filter musike-desktop dist",
+    "installer:win": "pnpm --filter musike-desktop dist",
     "installer:mac": "pnpm --filter musike-desktop dist:mac",
+    "installer:linux": "pnpm --filter musike-desktop dist:linux",
     "typecheck": "pnpm -r typecheck",
     "test:app": "node scripts/check-app.mjs",
     "screenshots": "node scripts/screenshots.mjs"
