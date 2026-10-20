@@ -44,7 +44,7 @@ export default function App() {
     }
     setDiscover(false);
   }} onBrowse={() => setStudio(false)} />;
-  return studio ? <Beatmaker onDiscover={() => setDiscover(true)} onBrowse={() => setStudio(false)} /> : <>{!capabilities.retryOnError && <button className="studio-return" onClick={() => { setDiscover(false); setStudio(true); }}>↗ Beatmaker workspace</button>}<MusicApp /></>;
+  return studio ? <Beatmaker onDiscover={() => setDiscover(true)} onBrowse={() => setStudio(false)} /> : <>{!capabilities.retryOnError && <button type="button" className="studio-return app-no-drag" onClick={() => { setDiscover(false); setStudio(true); }}>↗ Beatmaker workspace</button>}<MusicApp /></>;
 }
 
 function MusicApp() {

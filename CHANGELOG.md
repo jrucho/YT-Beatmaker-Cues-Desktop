@@ -40,6 +40,7 @@ First release of **YT Beatmaker Cues Desktop** as a standalone project.
 - Studio settings no longer expose appearance controls that do not affect the studio.
 - The workspace rate fader stays in percent when the original engine is in semitone mode, and identifies its current pitch/speed target.
 - Cue save status reflects persisted cue data, and failed session imports do not report full success.
+- The library's **Beatmaker workspace** button works from the desktop app's draggable title-bar area.
 
 ### Known limitations
 
