@@ -1,4 +1,6 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Beatmaker } from "./beatmaker/Beatmaker";
+import { DiscoverSamples } from "./beatmaker/DiscoverSamples";
 import { Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } from "react-router";
 import { AddToPlaylistDialog, ShortcutsDialog } from "./components/Dialogs";
 import { MiniPlayer, TabBar } from "./components/MobileChrome";
@@ -17,7 +19,7 @@ import { getT } from "./i18n";
 import { capabilities } from "./lib/api";
 import { cn } from "./lib/format";
 import { legacyRedirect, NOW_PLAYING_HASH, paths } from "./lib/routes";
-import { usePlayer } from "./player/player";
+import { selectCurrent, usePlayer } from "./player/player";
 import { useLibrary } from "./stores/library";
 import { openSettings, useSystem } from "./stores/system";
 import { toast, useUi } from "./stores/ui";
@@ -33,6 +35,19 @@ import Search from "./views/Search";
 const SHEET_HASH = `#${NOW_PLAYING_HASH}`;
 
 export default function App() {
+  const [studio, setStudio] = useState(!!desktop || (!capabilities.retryOnError && new URLSearchParams(window.location.search).get("workspace") === "beatmaker"));
+  const [discover, setDiscover] = useState(true);
+  if (studio && discover) return <DiscoverSamples onStudio={track => {
+    if (track && selectCurrent(usePlayer.getState())?.id !== track.id) {
+      usePlayer.getState().setAutoRadio(false);
+      usePlayer.getState().playList([track]);
+    }
+    setDiscover(false);
+  }} onBrowse={() => setStudio(false)} />;
+  return studio ? <Beatmaker onDiscover={() => setDiscover(true)} onBrowse={() => setStudio(false)} /> : <>{!capabilities.retryOnError && <button className="studio-return" onClick={() => setStudio(true)}>↗ Beatmaker workspace</button>}<MusicApp /></>;
+}
+
+function MusicApp() {
   const location = useLocation();
   const legacy = legacyRedirect(location.pathname, location.search, location.hash);
   const navigate = useNavigate();

@@ -1,7 +1,11 @@
 {
-  "name": "musike",
+  "name": "yt-beatmaker-cues-desktop",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.0.0",
+  "description": "A desktop music and beatmaking studio powered by Musike and YT Beatmaker Cues.",
+  "license": "MIT",
+  "repository": "github:jrucho/YT-Beatmaker-Cues-Desktop",
+  "homepage": "https://github.com/jrucho/YT-Beatmaker-Cues-Desktop",
   "type": "module",
   "scripts": {
     "dev": "pnpm --parallel --filter ./server --filter ./web dev",
@@ -9,7 +13,12 @@
     "start": "pnpm --filter ./server start",
     "desktop": "pnpm --filter musike-desktop start",
     "installer": "pnpm --filter musike-desktop dist",
-    "typecheck": "pnpm -r typecheck"
+    "installer:mac": "pnpm --filter musike-desktop dist:mac",
+    "typecheck": "pnpm -r typecheck",
+    "test:app": "node scripts/check-app.mjs"
   },
-  "packageManager": "pnpm@10.14.0"
+  "packageManager": "pnpm@10.14.0",
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
 }

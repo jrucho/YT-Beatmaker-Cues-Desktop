@@ -1,10 +1,10 @@
 {
   "name": "musike-desktop",
-  "productName": "Musike",
-  "version": "1.5.0",
-  "description": "Your music, uninterrupted.",
-  "author": "Musike",
-  "homepage": "https://github.com/Ernani1234/musike",
+  "productName": "YT Beatmaker Cues Desktop",
+  "version": "1.0.0",
+  "description": "Your music. Your instrument.",
+  "author": "jrucho",
+  "homepage": "https://github.com/jrucho/YT-Beatmaker-Cues-Desktop",
   "desktopName": "musike.desktop",
   "private": true,
   "main": "dist/main.mjs",
@@ -17,9 +17,9 @@
     "typecheck": "tsc --noEmit"
   },
   "build": {
-    "appId": "app.musike.desktop",
-    "productName": "Musike",
-    "copyright": "Musike",
+    "appId": "com.github.jrucho.ytbeatmakercues.desktop",
+    "productName": "YT Beatmaker Cues Desktop",
+    "copyright": "YT Beatmaker Cues Desktop contributors; Musike © 2026 Ernani Neto",
     "directories": {
       "output": "out",
       "buildResources": "build"
@@ -90,13 +90,13 @@
       "category": "AudioVideo",
       "synopsis": "Your music, uninterrupted.",
       "description": "A personal music player for YouTube's catalog: songs and music videos, with no ads and no account.",
-      "maintainer": "Musike <https://github.com/Ernani1234/musike>"
+      "maintainer": "jrucho <https://github.com/jrucho/YT-Beatmaker-Cues-Desktop>"
     },
     "deb": {
       "packageName": "musike"
     },
     "dmg": {
-      "title": "Musike ${version}"
+      "title": "YT Beatmaker Cues Desktop ${version}"
     },
     "nsis": {
       "oneClick": false,

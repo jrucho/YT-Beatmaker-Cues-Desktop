@@ -114,7 +114,7 @@ function createMainWindow(url: string): BrowserWindow {
     minWidth: 380,
     minHeight: 560,
     show: false,
-    title: "Musike",
+    title: "YT Beatmaker Cues Desktop",
     icon: path.join(here, "icon.png"),
     backgroundColor: THEME.dark.color,
     // Our own title bar (drawn by the web app) with the native window buttons on top of it:
@@ -139,7 +139,14 @@ function createMainWindow(url: string): BrowserWindow {
   win.on("close", () => saveWindowState(win));
 
   // Links to YouTube etc. open in the user's browser, never inside the app.
-  win.webContents.setWindowOpenHandler(({ url: target }) => {
+  win.webContents.setWindowOpenHandler(({ url: target, frameName }) => {
+    // The integrated Beatmaker compositor owns one local projection window.
+    if (frameName === "ytbm_vj_monitor" && (target === "about:blank" || target === "")) {
+      return { action: "allow", overrideBrowserWindowOptions: {
+        title: "Beatmaker — Video Output", width: 960, height: 540, backgroundColor: "#000000",
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+      } };
+    }
     if (/^https?:\/\//.test(target)) void shell.openExternal(target);
     return { action: "deny" };
   });

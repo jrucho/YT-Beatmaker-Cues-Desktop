@@ -74,7 +74,7 @@ function Dependency({ name, role, path, fix }: { name: string; role: string; pat
   );
 }
 
-export function SettingsDialog() {
+export function SettingsDialog({ studio = false }: { studio?: boolean }) {
   const open = useUi((s) => s.settingsOpen);
   const setOpen = useUi((s) => s.setSettingsOpen);
   const theme = useUi((s) => s.theme);
@@ -126,7 +126,7 @@ export function SettingsDialog() {
       {/* Side padding keeps outset rings and the scrollbar from clipping the cards' edges. */}
       <div className="scroll-area -mx-2 flex max-h-[70dvh] flex-col gap-5 overflow-y-auto px-2 pb-1">
 
-        <section className="flex flex-col gap-2">
+        {!studio && <section className="flex flex-col gap-2">
           <h3 className="text-xs font-medium text-fg-3">{t.settings.appearance}</h3>
           <Segmented
             label={t.settings.theme}
@@ -138,11 +138,11 @@ export function SettingsDialog() {
             ]}
           />
           <AccentPicker />
-        </section>
+        </section>}
 
         <section className="flex flex-col gap-2">
           <h3 className="flex items-center gap-1.5 text-xs font-medium text-fg-3">
-            <TranslateIcon size={14} /> {t.settings.language}
+            <TranslateIcon size={14} /> {studio ? "Music catalog language" : t.settings.language}
           </h3>
           <Segmented
             label={t.settings.language}
@@ -152,7 +152,7 @@ export function SettingsDialog() {
           />
         </section>
 
-        <LayoutSection />
+        {!studio && <LayoutSection />}
 
         <BackupSection />
 

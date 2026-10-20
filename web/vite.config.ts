@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
@@ -11,6 +11,57 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const src = (...p: string[]) => path.join(here, "src", ...p);
 const server = (...p: string[]) => path.join(here, "..", "server", "src", ...p);
 const same = (a: string, b: string) => path.normalize(a).toLowerCase() === path.normalize(b).toLowerCase();
+
+// Ship the user's actual DSP, sample packs, MIDI and stems engines with the app.
+function beatmakerAssets(): Plugin {
+  const source = path.resolve(here, "../YTbeatmakercues");
+  const output = path.join(here, "dist/beatmaker");
+  function generate() {
+      mkdirSync(output, { recursive: true });
+      for (const entry of ["sounds", "worklets", "addons", "style.css", "vj-live.js", "ui-tooltips.js", "player-cues-button.js", "video-region-loop.js", "THIRD_PARTY_NOTICES.md"]) {
+        cpSync(path.join(source, entry), path.join(output, entry), { recursive: true });
+      }
+      cpSync(path.join(here, "node_modules/signalsmith-stretch"), path.join(output, "node_modules/signalsmith-stretch"), { recursive: true, dereference: true });
+      let content = readFileSync(path.join(source, "content.js"), "utf8");
+      content = content.replaceAll("function getVideoElement() {", "function getVideoElement() { if (window.musikeBeatmakerHost) return window.musikeBeatmakerHost.media();");
+      content = content.replace("function getCurrentVideoID() {", "function getCurrentVideoID() { if (window.musikeBeatmakerHost) return window.musikeBeatmakerHost.cueId();");
+      content = content.replace("function getStemVideoId() {", "function getStemVideoId() { if (window.musikeBeatmakerHost) return window.musikeBeatmakerHost.trackId();");
+      content = content.replace("function getProgressBarElement() {", "function getProgressBarElement() { if (window.musikeBeatmakerHost) return document.getElementById('bm-timeline');");
+      content = content.replace("function addTrackedListener(target, type, listener, options) {", "function addTrackedListener(target, type, listener, options) { if (type === 'keydown' || type === 'keyup') { const original = listener; listener = function(event) { if (window.musikeBeatmakerHost && (!window.musikeBeatmakerHost.active || event.target.closest?.('[role=dialog]'))) return; return original.call(this, event); }; }");
+      content = content.replace(/document\.addEventListener\((["'])key(?:down|up)\1,\s*(?:\(e\)|e)\s*=>\s*\{/g, "$& if (window.musikeBeatmakerHost && (!window.musikeBeatmakerHost.active || e.target.closest?.('[role=dialog]'))) return;");
+      // Chrome-tab actions have no target in a single-player desktop app.
+      content = content.replace("vjContentWrap.appendChild(cueAllTabsRow);", "vjContentWrap.appendChild(cueAllTabsRow); if (window.musikeBeatmakerHost) { for (const row of [crossTabRow, tabAudioRow, cueAllTabsRow, streamRow]) row.style.display = 'none'; crossTabChk.disabled = tabAudioChk.disabled = cueAllTabsChk.disabled = true; vjControls.crossTabStreamsEnabled = false; singleTabPlaybackMode = cueAllTabsMode = false; vjControls.streamCount = 1; streamCountSel.value = '1'; vjLiveStatusElement.textContent = 'Source: the current desktop video player'; fxRackBtn.disabled = true; fxRackBtn.title = 'The desktop app has one video source'; }");
+      // App sessions own cue persistence; never put one track's cues in the router URL.
+      content = content.replace('function saveCuePointsToURL() {\n  let u', 'function saveCuePointsToURL() {\n  if (window.musikeBeatmakerHost) { localStorage.setItem("ytbm_cues_" + getCurrentVideoID(), JSON.stringify(cuePoints)); return; }\n  let u');
+      content = content.replace("function loadCuePointsFromURLParam() {", "function loadCuePointsFromURLParam() { if (window.musikeBeatmakerHost) return false;");
+      content = content.replace('function copyCueLink() {\n  let url = new URL(window.location.href);', 'function copyCueLink() {\n  let url = new URL(window.musikeBeatmakerHost ? "https://www.youtube.com/watch?v=" + window.musikeBeatmakerHost.trackId().replace(/^youtube:/, "") : window.location.href);');
+      content = content.replace('if (Object.keys(cuePoints).length === 0) {\n    randomizeCuesInOneClick();', 'if (Object.keys(cuePoints).length === 0) {\n    if (window.musikeBeatmakerHost) { updateCueMarkers(); refreshCuesButton(); } else randomizeCuesInOneClick();');
+      content = content.replace('if (audioContext.state === "suspended") {\n    await audioContext.resume()', 'if (audioContext.state === "suspended" && navigator.userActivation.hasBeenActive) {\n    await audioContext.resume()');
+      const api = readFileSync(src("beatmaker", "engine-api.js"), "utf8");
+      content = content.replace("initialize();\n})();", `${api}\ninitialize().then(() => { window.dispatchEvent(new Event('beatmaker-ready')); });\n})();`);
+      writeFileSync(path.join(output, "content.js"), content);
+      let tracks = readFileSync(path.join(output, "addons/stems/track-store.js"), "utf8");
+      tracks = tracks.replace("const url = new URL(value);", "const url = new URL(value); if (url.origin === location.origin && /^\\/api\\/stream\\/[A-Za-z0-9_-]{11}\\/audio$/.test(url.pathname)) return url;");
+      writeFileSync(path.join(output, "addons/stems/track-store.js"), tracks);
+      const inference = path.join(output, "addons/stems/inference-host.js");
+      writeFileSync(inference, readFileSync(inference, "utf8").replace("new Worker('stems-inference-worker.js')", "new Worker('/beatmaker/addons/stems/stems-inference-worker.js')"));
+  }
+  return {
+    name: "musike-beatmaker",
+    closeBundle: generate,
+    configureServer(server) {
+      generate();
+      server.middlewares.use((req, _res, next) => {
+        if (req.url?.startsWith("/beatmaker/")) {
+          const url = new URL(req.url, "http://localhost");
+          const file = path.resolve(output, decodeURIComponent(url.pathname.slice("/beatmaker/".length)));
+          if (file.startsWith(output + path.sep)) req.url = `/@fs${file}${url.search}`;
+        }
+        next();
+      });
+    },
+  };
+}
 
 /**
  * The Android build (`vite build --mode native`): the same app, with the backend swapped. lib/api.ts (HTTP to the
@@ -53,15 +104,16 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
+      ...(!native ? [beatmakerAssets()] : []),
       native
         ? nativeBackend()
         : VitePWA({
             registerType: "autoUpdate",
             includeAssets: ["favicon.svg", "apple-touch-icon.png"],
             manifest: {
-              name: "Musike",
-              short_name: "Musike",
-              description: "Your music, uninterrupted.",
+              name: "YT Beatmaker Cues Desktop",
+              short_name: "YT Beatmaker Cues",
+              description: "Your music. Your instrument.",
               lang: "en",
               theme_color: "#0B0C0F",
               background_color: "#0B0C0F",
@@ -74,6 +126,7 @@ export default defineConfig(({ mode }) => {
               ],
             },
             workbox: {
+              globIgnores: ["beatmaker/**"],
               navigateFallbackDenylist: [/^\/api\//],
               runtimeCaching: [
                 {

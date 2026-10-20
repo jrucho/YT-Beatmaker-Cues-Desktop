@@ -1,6 +1,5 @@
 // electron-builder hook (artifactBuildCompleted): copies each finished download to release/ at the repository root,
-// named after its system: Musike-Setup-1.4.0-Windows.exe, Musike-Setup-1.4.0-macOS-arm64.dmg,
-// Musike-Setup-1.4.0-Linux-x64.deb… The Android build (mobile/scripts/build-apk.mjs) puts its APK there too.
+// named after the app, version, system and processor.
 const { copyFileSync, mkdirSync } = require("node:fs");
 const path = require("node:path");
 
@@ -16,7 +15,7 @@ module.exports = function collect(artifact) {
   const system = SYSTEMS[artifact.packager.platform.nodeName];
   // Windows ships one build; macOS and Linux one per processor.
   const arch = system === "Windows" || artifact.arch == null ? "" : `-${ARCHS[artifact.arch]}`;
-  const name = `Musike-Setup-${artifact.packager.appInfo.version}-${system}${arch}${ext}`;
+  const name = `YT-Beatmaker-Cues-Desktop-${artifact.packager.appInfo.version}-${system}${arch}${ext}`;
   mkdirSync(release, { recursive: true });
   copyFileSync(artifact.file, path.join(release, name));
   console.log(`  • collected       ${path.join("release", name)}`);

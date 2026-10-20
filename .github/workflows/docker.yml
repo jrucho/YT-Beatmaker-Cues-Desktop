@@ -1,10 +1,7 @@
-# Builds the Docker image for every release tag (v1.2.0 → :1.2.0, :1.2 and :latest) and publishes it
-# to GitHub Container Registry as ghcr.io/<owner>/musike. Can also be started by hand from the Actions tab.
+# Optional inherited server image. The desktop v1.0 release only publishes macOS installers.
 name: Docker image
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

@@ -1,7 +1,7 @@
 {
   "name": "@musike/web",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -22,6 +22,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-router": "8.4.0",
+    "signalsmith-stretch": "1.3.2",
     "zustand": "5.0.15"
   },
   "devDependencies": {

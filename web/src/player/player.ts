@@ -73,6 +73,9 @@ videoEl.className = "block h-full w-full object-contain bg-black";
 
 const mediaFor = (k: Kind): HTMLMediaElement => (k === "video" ? videoEl : audio);
 
+/** The Beatmaker engine processes the very same media element as the music player. */
+export const beatmakerMedia = () => mediaFor(usePlayer.getState().mediaKind);
+
 let loaded: { id: string; kind: Kind; quality: Quality } | null = null;
 let pendingSeek = 0;
 let token = 0;
