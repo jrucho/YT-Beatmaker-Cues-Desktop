@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowRight, DownloadSimple, GearSix, GridFour, Heart, MagnifyingGlass, MusicNotes, Pause, Play, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, SpeakerHigh, SpeakerX, Waveform, X } from "@phosphor-icons/react";
+import { ArrowRight, DownloadSimple, GearSix, GridFour, Heart, MagnifyingGlass, MusicNotes, Pause, Play, Plus, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, SpeakerHigh, SpeakerX, Waveform, X } from "@phosphor-icons/react";
 import { api } from "../lib/api";
 import { desktop } from "../lib/desktop";
 import { formatTime } from "../lib/format";
@@ -30,7 +30,7 @@ const PACKS = [
 type Mode = "tracks" | typeof PACKS[number]["id"];
 const duration = (s: number) => `${Math.floor((s || 0) / 60)}:${Math.floor((s || 0) % 60).toString().padStart(2, "0")}`;
 
-function DiscoverPlayer({ sample, onStopSample, onOpenStudio }: { sample: string | null; onStopSample(): void; onOpenStudio(): void }) {
+function DiscoverPlayer({ sample, onStopSample, onOpenStudio, onMarkCues }: { sample: string | null; onStopSample(): void; onOpenStudio(): void; onMarkCues(track: Track): void }) {
   const current = usePlayer(selectCurrent);
   const status = usePlayer((s) => s.status);
   const statusText = useStatusText();
@@ -63,7 +63,7 @@ function DiscoverPlayer({ sample, onStopSample, onOpenStudio }: { sample: string
         {sample ? <Waveform size={22} /> : current?.art || current?.thumb ? <img src={current.art || current.thumb} alt="" /> : <MusicNotes size={21} />}
       </button>
       <div className="ds-player-meta"><strong title={title}>{title}</strong><span title={subtitle}>{subtitle}</span></div>
-      {sample ? <button className="ds-player-stop" onClick={onStopSample} aria-label="Stop sample preview">STOP</button> : current ? <button className={`ds-player-fav ${isFavorite ? "is-saved" : ""}`} onClick={() => void toggleFavorite(current)} aria-label={isFavorite ? `Remove ${current.title} from favorites` : `Add ${current.title} to favorites`}><Heart size={17} weight={isFavorite ? "fill" : "regular"} /></button> : null}
+      {sample ? <button className="ds-player-stop" onClick={onStopSample} aria-label="Stop sample preview">STOP</button> : current ? <><button className="ds-player-cues" onClick={() => onMarkCues(current)} aria-label={`Open the studio to mark cues for ${current.title}`} title="Open the studio to mark cues"><Plus size={13} weight="bold" /> MARK CUES</button><button className={`ds-player-fav ${isFavorite ? "is-saved" : ""}`} onClick={() => void toggleFavorite(current)} aria-label={isFavorite ? `Remove ${current.title} from favorites` : `Add ${current.title} to favorites`}><Heart size={17} weight={isFavorite ? "fill" : "regular"} /></button></> : null}
     </div>
     <div className="ds-player-center">
       <div className="ds-player-transport">
@@ -200,7 +200,7 @@ export function DiscoverSamples({ onStudio, onBrowse }: { onStudio(track?: Track
         <aside className="ds-sidebar"><span className="bm-eyebrow">THE INCLUDED COLLECTION</span><h2>Small hits.<br />Big possibilities.</h2><p>30 built-in drum samples. Preview or download the WAV files, then find them in the studio’s Built-in sample pack.</p><div className="ds-packs">{PACKS.map(pack => <button className={mode === pack.id ? "is-selected" : ""} key={pack.id} onClick={() => openPack(pack.id, pack.title)}><span className="ds-pack-icon"><Waveform size={22} /></span><span><strong>{pack.title}</strong><small>{pack.label}</small></span><ArrowRight size={16} /></button>)}</div><button className="ds-open-studio bm-primary" onClick={() => openStudio()}>OPEN THE STUDIO <ArrowRight size={16} /></button><span className="ds-sidebar-note">Music discovery streams from YouTube. Included WAV hits are bundled with the app.</span></aside>
       </div>
     </main>
-    <DiscoverPlayer sample={playingSample} onStopSample={() => { sample.current?.pause(); setPlayingSample(null); }} onOpenStudio={() => openStudio()} />
+    <DiscoverPlayer sample={playingSample} onStopSample={() => { sample.current?.pause(); setPlayingSample(null); }} onOpenStudio={() => openStudio()} onMarkCues={openStudio} />
     <SettingsDialog studio /><Toasts />
   </div>;
 }

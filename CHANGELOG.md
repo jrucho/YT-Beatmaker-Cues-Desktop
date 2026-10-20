@@ -7,11 +7,12 @@ First release of **YT Beatmaker Cues Desktop** as a standalone project.
 ### Added
 
 - A Discover Samples opening page with music crates, live catalog search, previews and direct loading into the studio.
-- A global Discover player bar with artwork, transport, seeking, favorites and volume.
+- A global Discover player bar with artwork, transport, seeking, favorites and volume, plus one-click cue marking that opens the studio without restarting playback.
 - Thirty bundled WAV drum hits with preview and download actions.
 - A reference-inspired, monochrome desktop studio with a music library and four-column cue-pad grid.
 - Direct integration of the original YT Beatmaker Cues 2.4.5 engine with Musike's media element.
 - Twelve cue pads and ten independent banks per track, including keyboard triggers and local autosave.
+- White cue pins on the studio timeline so cue positions stay visible against the dark theme.
 - Performance controls for the original sequencer, FX Pad, sidechain, region loops, VJ and Advanced tools.
 - Pitch control and audio/video switching.
 - Session export/import for track references and cue banks.

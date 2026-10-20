@@ -76,6 +76,8 @@
 .ds-player-meta span { font-size:10px; color:#777; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ds-player-fav { width:30px; min-width:30px; padding:0!important; border:0!important; background:none!important; color:#858585!important; flex-shrink:0; }
 .ds-player-fav.is-saved { color:#9bdab1!important; }
+.ds-player-cues { min-height:30px!important; height:30px; padding:0 10px!important; border:1px solid #333!important; border-radius:8px!important; background:#151515!important; color:#ccc!important; font:8px "Geist Mono Variable",monospace!important; flex-shrink:0; }
+.ds-player-cues:hover { background:#222!important; border-color:#777!important; color:#fff!important; }
 .ds-player-stop { min-height:28px!important; padding:0 10px!important; border-radius:7px!important; font:8px "Geist Mono Variable",monospace!important; flex-shrink:0; }
 .ds-player-center { display:flex; flex-direction:column; align-items:center; gap:4px; width:100%; max-width:600px; justify-self:center; }
 .ds-player-transport { display:flex; align-items:center; gap:7px; }
