@@ -89,6 +89,11 @@ try {
   await page.goto(`${origin}/?workspace=beatmaker`);
   await page.getByRole("heading", { name: "Find a sound. Make it yours." }).waitFor();
   await page.getByRole("button", { name: "Preview Midnight Tapes", exact: true }).waitFor();
+  const globalPlayer = page.locator("footer.ds-player");
+  assert(await globalPlayer.isVisible(), "Discovery shows the global player bar");
+  for (const name of ["Previous track", "Next track"]) assert(await globalPlayer.getByRole("button", { name, exact: true }).isVisible(), `Global player exposes ${name}`);
+  assert(await globalPlayer.getByRole("slider", { name: "Playback position", exact: true }).isVisible(), "Global player exposes the seek bar");
+  assert(await globalPlayer.getByRole("slider", { name: "Discovery volume", exact: true }).isVisible(), "Global player exposes volume");
   assert(queries.includes("jazz instrumental"), "Opening discovery requests a real catalog search");
   for (const title of ["Soul & dust", "Jazz cuts", "Drum breaks", "Ambient spaces", "Rare grooves", "Global sounds"]) {
     await page.locator(".ds-crate").filter({ hasText: title }).click();
@@ -122,6 +127,15 @@ try {
   await discoverySearch.fill("Nujabes"); await page.getByRole("button", { name: "START DIGGING" }).click();
   await page.getByRole("button", { name: "Preview Midnight Tapes", exact: true }).click();
   await page.getByRole("button", { name: "Pause Midnight Tapes", exact: true }).waitFor();
+  const discoverProgress = globalPlayer.getByRole("slider", { name: "Playback position", exact: true });
+  const bar = await discoverProgress.boundingBox();
+  assert(bar && bar.width > 100, "Global player seek bar spans the footer");
+  await page.mouse.click(bar.x + bar.width / 2, bar.y + bar.height / 2);
+  await page.waitForFunction(() => {
+    const value = Number(document.querySelector('footer.ds-player [aria-label="Playback position"]')?.getAttribute("aria-valuenow"));
+    return value >= 12 && value <= 18;
+  }, null, { timeout: 5000 });
+  assert(await globalPlayer.getByRole("button", { name: "Add Midnight Tapes to favorites", exact: true }).isVisible(), "Global player favorites the active track");
   await page.getByRole("button", { name: "Save Midnight Tapes", exact: true }).click();
   await page.getByRole("button", { name: "Unsave Midnight Tapes", exact: true }).waitFor();
   assert((await (await fetch(`${origin}/api/library`)).json()).favorites.some(t => t.id === tracks[0].id), "Favorite button persists to the real library API");

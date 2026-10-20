@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowRight, DownloadSimple, GearSix, GridFour, Heart, MagnifyingGlass, MusicNotes, Pause, Play, Shuffle, SpeakerHigh, Waveform, X } from "@phosphor-icons/react";
+import { ArrowRight, DownloadSimple, GearSix, GridFour, Heart, MagnifyingGlass, MusicNotes, Pause, Play, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, SpeakerHigh, SpeakerX, Waveform, X } from "@phosphor-icons/react";
 import { api } from "../lib/api";
 import { desktop } from "../lib/desktop";
+import { formatTime } from "../lib/format";
 import type { Track } from "../lib/types";
 import { selectCurrent, usePlayer, useStatusText } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { openSettings } from "../stores/system";
 import { toast } from "../stores/ui";
 import { SettingsDialog } from "../components/SettingsDialog";
+import { Slider } from "../components/Slider";
 import { Toasts } from "../components/Toasts";
 import "./beatmaker.css";
 import "./discover.css";
@@ -28,11 +30,70 @@ const PACKS = [
 type Mode = "tracks" | typeof PACKS[number]["id"];
 const duration = (s: number) => `${Math.floor((s || 0) / 60)}:${Math.floor((s || 0) % 60).toString().padStart(2, "0")}`;
 
+function DiscoverPlayer({ sample, onStopSample, onOpenStudio }: { sample: string | null; onStopSample(): void; onOpenStudio(): void }) {
+  const current = usePlayer(selectCurrent);
+  const status = usePlayer((s) => s.status);
+  const statusText = useStatusText();
+  const position = usePlayer((s) => s.position);
+  const duration = usePlayer((s) => s.duration);
+  const buffered = usePlayer((s) => s.buffered);
+  const hasQueue = usePlayer((s) => s.queue.length > 0);
+  const shuffle = usePlayer((s) => s.shuffle);
+  const repeat = usePlayer((s) => s.repeat);
+  const volume = usePlayer((s) => s.volume);
+  const muted = usePlayer((s) => s.muted);
+  const seek = usePlayer((s) => s.seek);
+  const toggle = usePlayer((s) => s.toggle);
+  const prev = usePlayer((s) => s.prev);
+  const next = usePlayer((s) => s.next);
+  const toggleShuffle = usePlayer((s) => s.toggleShuffle);
+  const cycleRepeat = usePlayer((s) => s.cycleRepeat);
+  const setVolume = usePlayer((s) => s.setVolume);
+  const toggleMute = usePlayer((s) => s.toggleMute);
+  const isFavorite = useLibrary((s) => !!current && s.isFavorite(current.id));
+  const toggleFavorite = useLibrary((s) => s.toggleFavorite);
+  const level = muted ? 0 : volume;
+  const RepeatIcon = repeat === "one" ? RepeatOnce : Repeat;
+  const playing = status === "playing" || status === "loading";
+  const title = sample ? `Previewing ${sample.split("/").at(-1)}` : current?.title || "Pick a track or audition a sample";
+  const subtitle = sample ? "Included sample bank · WAV" : statusText || current?.artist || "Your next session starts with a sound.";
+  return <footer className="ds-player" aria-label="Global player">
+    <div className="ds-player-track">
+      <button className="ds-player-art" onClick={onOpenStudio} aria-label="Open the studio from the player">
+        {sample ? <Waveform size={22} /> : current?.art || current?.thumb ? <img src={current.art || current.thumb} alt="" /> : <MusicNotes size={21} />}
+      </button>
+      <div className="ds-player-meta"><strong title={title}>{title}</strong><span title={subtitle}>{subtitle}</span></div>
+      {sample ? <button className="ds-player-stop" onClick={onStopSample} aria-label="Stop sample preview">STOP</button> : current ? <button className={`ds-player-fav ${isFavorite ? "is-saved" : ""}`} onClick={() => void toggleFavorite(current)} aria-label={isFavorite ? `Remove ${current.title} from favorites` : `Add ${current.title} to favorites`}><Heart size={17} weight={isFavorite ? "fill" : "regular"} /></button> : null}
+    </div>
+    <div className="ds-player-center">
+      <div className="ds-player-transport">
+        <button aria-label="Shuffle discovery queue" className={shuffle ? "is-active" : ""} disabled={!hasQueue || !!sample} onClick={toggleShuffle}><Shuffle size={16} /></button>
+        <button aria-label="Previous track" disabled={!hasQueue || !!sample} onClick={prev}><SkipBack size={18} weight="fill" /></button>
+        <button className="ds-player-play" aria-label={sample ? "Pause sample preview" : playing ? "Pause" : "Play"} disabled={!sample && !hasQueue} onClick={sample ? onStopSample : toggle}>{sample || playing ? <Pause size={18} weight="fill" /> : <Play size={18} weight="fill" />}</button>
+        <button aria-label="Next track" disabled={!hasQueue || !!sample} onClick={next}><SkipForward size={18} weight="fill" /></button>
+        <button aria-label="Repeat discovery queue" className={repeat !== "off" ? "is-active" : ""} disabled={!hasQueue || !!sample} onClick={cycleRepeat}><RepeatIcon size={16} /></button>
+      </div>
+      <div className="ds-player-progress">
+        <span>{formatTime(position)}</span>
+        <Slider label="Playback position" value={position} max={duration} buffered={buffered} onChange={seek} step={5} valueText={formatTime} className="ds-player-scrubber" />
+        <span>{formatTime(duration)}</span>
+      </div>
+    </div>
+    <div className="ds-player-side">
+      <div className="ds-player-volume">
+        <button aria-label={muted ? "Unmute" : "Mute"} onClick={toggleMute}>{level === 0 ? <SpeakerX size={18} /> : <SpeakerHigh size={18} />}</button>
+        <Slider label="Discovery volume" value={level} max={1} step={0.05} live onChange={setVolume} valueText={(v) => `${Math.round(v * 100)}%`} className="ds-player-volume-slider" />
+        <span>{Math.round(level * 100)}%</span>
+      </div>
+      <span className="ds-player-hint">DISCOVER → CUE → CREATE</span>
+    </div>
+  </footer>;
+}
+
 export function DiscoverSamples({ onStudio, onBrowse }: { onStudio(track?: Track): void; onBrowse(): void }) {
   const library = useLibrary();
   const player = usePlayer();
   const current = usePlayer(selectCurrent);
-  const statusText = useStatusText();
   const [mode, setMode] = useState<Mode>("tracks");
   const [query, setQuery] = useState("");
   const [heading, setHeading] = useState("Jazz cuts");
@@ -139,12 +200,7 @@ export function DiscoverSamples({ onStudio, onBrowse }: { onStudio(track?: Track
         <aside className="ds-sidebar"><span className="bm-eyebrow">THE INCLUDED COLLECTION</span><h2>Small hits.<br />Big possibilities.</h2><p>30 built-in drum samples. Preview or download the WAV files, then find them in the studio’s Built-in sample pack.</p><div className="ds-packs">{PACKS.map(pack => <button className={mode === pack.id ? "is-selected" : ""} key={pack.id} onClick={() => openPack(pack.id, pack.title)}><span className="ds-pack-icon"><Waveform size={22} /></span><span><strong>{pack.title}</strong><small>{pack.label}</small></span><ArrowRight size={16} /></button>)}</div><button className="ds-open-studio bm-primary" onClick={() => openStudio()}>OPEN THE STUDIO <ArrowRight size={16} /></button><span className="ds-sidebar-note">Music discovery streams from YouTube. Included WAV hits are bundled with the app.</span></aside>
       </div>
     </main>
-    <footer className="ds-player">
-      <div className="ds-player-title"><span className="bm-dot" /><div><strong>{playingSample ? `Previewing ${playingSample.split("/").at(-1)}` : current?.title || "Pick a track or audition a sample"}</strong><span>{playingSample ? "Included sample bank" : statusText || current?.artist || "Your next session starts with a sound."}</span></div></div>
-      {playingSample ? <button aria-label="Stop sample preview" onClick={() => { sample.current?.pause(); setPlayingSample(null); }}><Pause size={19} weight="fill" /></button> : <button disabled={!current} aria-label={player.status === "playing" ? "Pause discovery preview" : "Play discovery preview"} onClick={player.toggle}>{player.status === "playing" ? <Pause size={19} weight="fill" /> : <Play size={19} weight="fill" />}</button>}
-      <label className="bm-volume"><SpeakerHigh size={18} /><input aria-label="Discovery volume" type="range" min="0" max="1" step="0.01" value={player.muted ? 0 : player.volume} onChange={e => player.setVolume(Number(e.target.value))} /><span>{Math.round((player.muted ? 0 : player.volume) * 100)}%</span></label>
-      <span className="ds-player-hint">DISCOVER → CUE → CREATE</span>
-    </footer>
+    <DiscoverPlayer sample={playingSample} onStopSample={() => { sample.current?.pause(); setPlayingSample(null); }} onOpenStudio={() => openStudio()} />
     <SettingsDialog studio /><Toasts />
   </div>;
 }
