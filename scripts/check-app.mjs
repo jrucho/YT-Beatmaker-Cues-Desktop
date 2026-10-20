@@ -285,7 +285,7 @@ try {
   await page.getByRole("dialog", { name: "Réglages", exact: true }).getByRole("radio", { name: "English", exact: true }).click();
   await page.getByRole("dialog", { name: "Settings", exact: true }).waitFor();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: /Beatmaker workspace/ }).click();
+  await page.getByRole("button", { name: /Beatmaker workspace/ }).first().click();
   await page.getByText("AUDIO ENGINE ACTIVE", { exact: false }).waitFor();
   assert.equal(await page.evaluate(() => window.musikeBeatmakerEngine.snapshot().cues["1"]), 7, "Beatmaker workspace returns to the studio from the library");
   await page.reload();

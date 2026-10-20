@@ -49,6 +49,8 @@ export const en = {
     search: "Search",
     library: "Library",
     settings: "Settings",
+    beatmaker: "Beatmaker",
+    beatmakerWorkspace: "Beatmaker workspace",
     settingsAttention: "Settings (needs attention)",
     settingsUpdate: "Settings (yt-dlp update available)",
     updatePill: "Update",

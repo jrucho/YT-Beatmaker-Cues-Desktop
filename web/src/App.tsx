@@ -44,10 +44,19 @@ export default function App() {
     }
     setDiscover(false);
   }} onBrowse={() => setStudio(false)} />;
-  return studio ? <Beatmaker onDiscover={() => setDiscover(true)} onBrowse={() => setStudio(false)} /> : <>{!capabilities.retryOnError && <button type="button" className="studio-return app-no-drag" onClick={() => { setDiscover(false); setStudio(true); }}>↗ Beatmaker workspace</button>}<MusicApp /></>;
+  return studio ? (
+    <Beatmaker onDiscover={() => setDiscover(true)} onBrowse={() => setStudio(false)} />
+  ) : (
+    <MusicApp
+      onStudio={capabilities.retryOnError ? undefined : () => {
+        setDiscover(false);
+        setStudio(true);
+      }}
+    />
+  );
 }
 
-function MusicApp() {
+function MusicApp({ onStudio }: { onStudio?: () => void }) {
   const location = useLocation();
   const legacy = legacyRedirect(location.pathname, location.search, location.hash);
   const navigate = useNavigate();
@@ -124,7 +133,7 @@ function MusicApp() {
     <div className={cn("music-app grain flex h-dvh flex-col bg-bg md:gap-2 md:p-2", desktop && "md:pt-0")}>
       {desktop && <TitleBar />}
       <div className="flex min-h-0 flex-1 md:gap-2">
-        <Rail />
+        <Rail onStudio={onStudio} />
         <main
           ref={main}
           className={cn(
@@ -159,7 +168,7 @@ function MusicApp() {
       ) : (
         <>
           <MiniPlayer />
-          <TabBar />
+          <TabBar onStudio={onStudio} />
         </>
       )}
 

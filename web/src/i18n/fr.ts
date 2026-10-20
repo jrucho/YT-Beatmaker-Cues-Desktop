@@ -49,6 +49,8 @@ export const fr: Messages = {
     search: "Rechercher",
     library: "Bibliothèque",
     settings: "Réglages",
+    beatmaker: "Beatmaker",
+    beatmakerWorkspace: "Espace Beatmaker",
     settingsAttention: "Réglages (attention requise)",
     settingsUpdate: "Réglages (mise à jour yt-dlp disponible)",
     updatePill: "Mettre à jour",

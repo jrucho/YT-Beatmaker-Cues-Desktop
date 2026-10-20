@@ -6,6 +6,7 @@ import {
   HouseIcon,
   MagnifyingGlassIcon,
   PlusIcon,
+  WaveformIcon,
 } from "@phosphor-icons/react";
 import { useState, type ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router";
@@ -92,7 +93,7 @@ function RailLink({ to, label, sub, end, children }: { to: string; label: string
   );
 }
 
-export function Rail() {
+export function Rail({ onStudio }: { onStudio?: () => void }) {
   const t = useT();
   const sidebarPlaylists = useAppearance((s) => s.sidebarPlaylists);
   const playlists = useLibrary((s) => s.playlists);
@@ -168,7 +169,19 @@ export function Rail() {
           ))}
         </div>
 
-        <div className="flex border-t border-line p-2">
+        <div className="flex flex-col gap-1 border-t border-line p-2">
+          {onStudio && (
+            <button
+              type="button"
+              onClick={onStudio}
+              aria-label={t.nav.beatmakerWorkspace}
+              title={t.nav.beatmakerWorkspace}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-full bg-accent-soft px-3 text-sm font-medium text-accent-text transition-colors hover:bg-accent hover:text-accent-ink wide:justify-start"
+            >
+              <WaveformIcon size={19} />
+              <span className="hidden flex-1 text-left wide:inline">{t.nav.beatmaker}</span>
+            </button>
+          )}
           <SettingsButton />
         </div>
       </div>

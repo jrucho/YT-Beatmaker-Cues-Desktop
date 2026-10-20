@@ -1,4 +1,4 @@
-import { BooksIcon, HouseIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { BooksIcon, HouseIcon, MagnifyingGlassIcon, WaveformIcon } from "@phosphor-icons/react";
 import { NavLink, useNavigate } from "react-router";
 import { cn } from "../lib/format";
 import { useT } from "../i18n";
@@ -13,14 +13,14 @@ const tabs = [
   { to: paths.library, key: "library", Icon: BooksIcon, end: false },
 ] as const;
 
-export function TabBar() {
+export function TabBar({ onStudio }: { onStudio?: () => void }) {
   const t = useT();
   return (
     <nav
       aria-label={t.nav.main}
       className="safe-bottom fixed inset-x-0 bottom-0 z-20 border-t border-line bg-bg/85 backdrop-blur-xl"
     >
-      <ul className="mx-auto grid h-16 max-w-md grid-cols-3">
+      <ul className={cn("mx-auto grid h-16 max-w-md", onStudio ? "grid-cols-4" : "grid-cols-3")}>
         {tabs.map(({ to, key, Icon, end }) => (
           <li key={to}>
             <NavLink
@@ -48,6 +48,20 @@ export function TabBar() {
             </NavLink>
           </li>
         ))}
+        {onStudio && (
+          <li>
+            <button
+              type="button"
+              onClick={onStudio}
+              aria-label={t.nav.beatmakerWorkspace}
+              title={t.nav.beatmakerWorkspace}
+              className="relative flex h-full w-full flex-col items-center justify-center gap-1 text-[11px] font-medium text-fg-3 transition-colors active:text-fg"
+            >
+              <WaveformIcon size={24} />
+              {t.nav.beatmaker}
+            </button>
+          </li>
+        )}
       </ul>
     </nav>
   );
