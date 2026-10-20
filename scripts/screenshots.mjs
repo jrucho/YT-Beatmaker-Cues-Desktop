@@ -118,15 +118,16 @@ try {
   await mkdir(shots, { recursive: true });
   await page.goto(`${origin}/?workspace=beatmaker`);
   await page.getByRole("heading", { name: "Find a sound. Make it yours." }).waitFor();
-  await page.getByRole("button", { name: "Preview Midnight Tapes", exact: true }).click();
+  await page.locator(".ds-track-grid").getByRole("button", { name: "Preview Midnight Tapes", exact: true }).click();
   await page.locator("footer.ds-player").waitFor();
   await page.waitForTimeout(1400);
   await page.evaluate(() => document.fonts.ready);
+  await page.locator(".ds-scroll").evaluate(el => { el.scrollTop = 0; });
   await page.screenshot({ path: path.join(shots, "discover-samples.png") });
   console.log("Captured discover-samples.png");
 
-  await page.getByRole("button", { name: "Load Midnight Tapes into studio", exact: true }).click();
-  await page.getByText("AUDIO ENGINE ACTIVE", { exact: false }).waitFor({ timeout: 30000 });
+  await page.locator(".ds-track-grid").getByRole("button", { name: "Load Midnight Tapes into studio", exact: true }).click();
+  await page.locator(".bm-footer").getByText("Ready", { exact: true }).waitFor({ timeout: 30000 });
   await page.getByRole("button", { name: "Randomize cues", exact: true }).waitFor();
   await page.getByRole("button", { name: "Randomize cues", exact: true }).click();
   await page.locator("#bm-timeline .cue-marker").first().waitFor();
@@ -144,7 +145,7 @@ try {
   console.log("Captured library.png");
 
   await page.setViewportSize({ width: 1440, height: 1600 });
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: /^Settings/ }).click();
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   await settings.waitFor();
   // The real dialog scrolls; let it grow so the screenshot shows the whole panel.

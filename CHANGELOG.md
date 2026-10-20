@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.1
+
+- Discover now includes recently played library tracks and quick access to saved playlists.
+- Search finds saved playlists in Discover and the full music browser.
+- Create playlists and add tracks to them directly from the studio; use the collection selector to keep the track list focused.
+- Simplified studio status text and removed technical readiness banners.
+- Enlarged the green mark in the macOS, Windows and Linux application icons.
+- Added Windows x64 installers and Linux x64/ARM64 AppImage and Debian packages, built on GitHub Actions.
+- Fixed the CI Settings check when playback tools need installation.
+
 ## 1.0.0
 
 First release of **YT Beatmaker Cues Desktop** as a standalone project.

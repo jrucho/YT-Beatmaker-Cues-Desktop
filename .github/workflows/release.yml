@@ -86,6 +86,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           path: release
@@ -93,8 +94,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd release
-          sha256sum * > SHA256SUMS-1.0.0.txt
-          cat SHA256SUMS-1.0.0.txt
+          sha256sum * > "SHA256SUMS-${GITHUB_REF_NAME#v}.txt"
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}

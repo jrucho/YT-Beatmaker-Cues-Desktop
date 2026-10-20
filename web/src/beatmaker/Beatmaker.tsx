@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowCounterClockwise, ArrowSquareOut, DownloadSimple, FolderOpen, GearSix, GridFour, Info, List, MagnifyingGlass, MusicNotes, Pause, Play, Plus, Shuffle, SlidersHorizontal, SpeakerHigh, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowSquareOut, DownloadSimple, FolderOpen, GearSix, GridFour, Info, List, MagnifyingGlass, MusicNotes, Pause, Play, PlaylistIcon, Plus, Shuffle, SlidersHorizontal, SpeakerHigh, X } from "@phosphor-icons/react";
 import { api, saveFile } from "../lib/api";
 import { desktop } from "../lib/desktop";
 import type { Track } from "../lib/types";
 import { selectCurrent, usePlayer, useStatusText, videoEl } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { openSettings } from "../stores/system";
-import { toast } from "../stores/ui";
+import { toast, useUi } from "../stores/ui";
 import { LogoMark } from "../components/Brand";
+import { AddToPlaylistDialog, NamePlaylistDialog } from "../components/Dialogs";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { Toasts } from "../components/Toasts";
 import { loadBeatmaker, setEngineBank, type Engine } from "./runtime";
@@ -25,12 +26,14 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
   const [bank, setBank] = useState(() => { const saved = localStorage.getItem("musike:studio:bank"); return saved && BANKS.includes(saved) ? saved : "A"; });
   const [name, setName] = useState(() => localStorage.getItem("musike:studio:name") || "Untitled_Session");
   const [source, setSource] = useState("all");
+  const [creatingPlaylist, setCreatingPlaylist] = useState(false);
+  const openAddToPlaylist = useUi((s) => s.openAddToPlaylist);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Track[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [list, setList] = useState(false);
   const [guide, setGuide] = useState(false);
-  const [engineStatus, setEngineStatus] = useState("Starting engine…");
+  const [engineStatus, setEngineStatus] = useState("Loading…");
   const [engineReady, setEngineReady] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
   const [cues, setCues] = useState<Record<string, number>>({});
@@ -50,10 +53,10 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
     setEngineBank(bank);
     const onEngineError = (event: Event) => toast((event as CustomEvent<string>).detail, "error");
     window.addEventListener("beatmaker-error", onEngineError);
-    void loadBeatmaker().then(() => setEngineStatus("Engine connected"), err => setEngineStatus((err as Error).message));
+    void loadBeatmaker().then(() => setEngineStatus("Ready"), err => setEngineStatus((err as Error).message));
     const timer = setInterval(() => {
       const snapshot = window.musikeBeatmakerEngine?.snapshot();
-      if (snapshot) { setCues(snapshot.cues); setPitch(snapshot.pitch); setEngineReady(snapshot.ready); setMediaReady(snapshot.mediaReady); setRateLabel(`${snapshot.rateTarget === "loop" ? "LOOP " : ""}${snapshot.rateMode}`); setRateLimits([snapshot.rateMin, snapshot.rateMax]); setCuesSaved(snapshot.saved); if (snapshot.ready) setEngineStatus("Engine connected"); }
+      if (snapshot) { setCues(snapshot.cues); setPitch(snapshot.pitch); setEngineReady(snapshot.ready); setMediaReady(snapshot.mediaReady); setRateLabel(`${snapshot.rateTarget === "loop" ? "LOOP " : ""}${snapshot.rateMode}`); setRateLimits([snapshot.rateMin, snapshot.rateMax]); setCuesSaved(snapshot.saved); if (snapshot.ready) setEngineStatus("Ready"); }
     }, 150);
     return () => {
       clearInterval(timer); controller.current?.abort(); window.removeEventListener("beatmaker-error", onEngineError);
@@ -103,12 +106,12 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
 
   function trigger(key: string, overwrite = false) {
     if (!track) { toast("Choose a track from the library or search YouTube Music first."); input.current?.focus(); return; }
-    try { if (!engineReady) throw new Error("The Beatmaker engine is still loading."); window.musikeBeatmakerEngine!.cue(key, overwrite); setActive(key); }
+    try { if (!engineReady) throw new Error("Studio is still loading."); window.musikeBeatmakerEngine!.cue(key, overwrite); setActive(key); }
     catch (error) { toast((error as Error).message, "error"); }
   }
 
   function engineAction(action: Exclude<keyof Engine, "snapshot" | "cue" | "remove" | "bank" | "pitch">) {
-    try { if (!engineReady) throw new Error("The Beatmaker engine is still loading."); window.musikeBeatmakerEngine![action](); }
+    try { if (!engineReady) throw new Error("Studio is still loading."); window.musikeBeatmakerEngine![action](); }
     catch (error) { toast((error as Error).message, "error"); }
   }
 
@@ -117,7 +120,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
     const storage = Object.fromEntries(Object.keys(localStorage).filter(key => /^ytbm_cues_[\w-]{11}:bank:[A-J]$/.test(key)).map(key => [key, JSON.parse(localStorage.getItem(key)!)]));
     const sessionTracks = [...new Map([...library.favorites, ...library.history, ...library.playlists.flatMap(x => x.tracks), ...(track ? [track] : [])].map(t => [t.id, t])).values()];
     await saveFile(`${name.replace(/[^a-zA-Z0-9_-]/g, "_") || "Session"}.beatmaker.json`, JSON.stringify({ format: "musike-beatmaker", version: 1, name, bank, tracks: sessionTracks, cues: storage }, null, 2));
-    toast("Session exported. Cues are also saved automatically on this Mac.");
+    toast("Session exported.");
     } catch (err) { toast((err as Error).message, "error"); }
   }
 
@@ -147,10 +150,10 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
 
   return (
     <div className={`bm-app ${desktop?.platform === "darwin" ? "bm-mac" : ""}`}>
-      {desktop && <div className="bm-titlebar app-drag"><span>YT BEATMAKER CUES DESKTOP</span><span>v{__APP_VERSION__} · POWERED BY MUSIKE</span></div>}
+      {desktop && <div className="bm-titlebar app-drag"><span>MUSIKE STUDIO</span><span>v{__APP_VERSION__}</span></div>}
       <header className="bm-header">
         <div className="bm-brand"><span className="bm-brand-icon"><LogoMark className="bm-brand-mark" /></span><strong>BEATMAKER CUES</strong></div>
-        <div className="bm-device"><span className="bm-dot" /> MUSIKE <span className="bm-dim">/</span> STUDIO</div>
+        <div className="bm-device"><span className="bm-dot" /> STUDIO</div>
         <input aria-label="Session name" className="bm-session" value={name} onChange={e => setName(e.target.value)} maxLength={100} />
         <label className="bm-volume"><SpeakerHigh size={18} /><input aria-label="Master volume" type="range" min="0" max="1" step="0.01" value={p.muted ? 0 : p.volume} onChange={e => p.setVolume(Number(e.target.value))} /><span>{Math.round((p.muted ? 0 : p.volume) * 100)}%</span></label>
         <div className="bm-header-actions">
@@ -171,7 +174,11 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
             <div className="bm-search"><MagnifyingGlass size={18} /><input ref={input} value={query} onChange={e => { setQuery(e.target.value); if (!e.target.value) { controller.current?.abort(); setSearching(false); setResults(null); } }} placeholder="Search music or paste a YouTube link…" aria-label="Search music" /><button type="button" aria-label="Clear search" onClick={() => { controller.current?.abort(); setSearching(false); setQuery(""); setResults(null); }}><X size={13} /></button></div>
             <button className="bm-icon-button" type="submit" aria-label="Search YouTube Music"><Plus size={21} /></button>
           </form>
-          <div className="bm-library-filter"><select aria-label="Library collection" value={source} onChange={e => { setSource(e.target.value); setResults(null); }}><option value="all">All tracks</option><option value="favorites">Favorites</option><option value="history">Recently played</option>{library.playlists.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select><span>{searching ? "SEARCHING…" : results ? `${results.length} SEARCH RESULTS` : "YOUR COLLECTION"}</span></div>
+          <div className="bm-library-filter">
+            <select aria-label="Library collection" value={source} onChange={e => { setSource(e.target.value); setResults(null); }}><option value="all">All tracks</option><option value="favorites">Favorites</option><option value="history">Recently played</option>{library.playlists.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+            <button type="button" className="bm-new-playlist" onClick={() => setCreatingPlaylist(true)} aria-label="New playlist" title="New playlist"><Plus size={14} /> Playlist</button>
+            <span>{searching ? "SEARCHING…" : results ? `${results.length} RESULTS` : "YOUR COLLECTION"}</span>
+          </div>
           <div className={`bm-covers ${list ? "bm-list" : ""}`} aria-busy={searching}>
             {shown.map(t => <div className={`bm-track ${track?.id === t.id ? "is-current" : ""}`} key={t.id}>
               <button className="bm-track-main" onClick={() => launch(t)} aria-label={`Play ${t.title}`}>
@@ -179,6 +186,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
                 <div className="bm-track-info"><strong title={t.title}>{t.title}</strong><span>{t.artist || "Unknown artist"}</span></div>
               </button>
               <button className={`bm-favorite ${library.isFavorite(t.id) ? "is-saved" : ""}`} aria-label={library.isFavorite(t.id) ? "Remove from favorites" : "Save to favorites"} onClick={() => void library.toggleFavorite(t)}>{library.isFavorite(t.id) ? "♥" : "+"}</button>
+              <button className="bm-track-playlist" aria-label={`Add ${t.title} to a playlist`} title="Add to playlist" onClick={() => openAddToPlaylist([t])}><PlaylistIcon size={15} /></button>
             </div>)}
             {!shown.length && <div className="bm-empty-library"><span className="bm-empty-symbol"><MusicNotes size={34} weight="thin" /></span><h2>{library.status === "error" ? "Library unavailable" : results ? "No tracks found" : "Your next idea starts here."}</h2><p>{library.status === "error" ? "Check the local server, then retry." : "Search YouTube Music above, choose a track, and make it your own."}</p>{library.status === "error" ? <button onClick={() => void library.load()}>Retry library</button> : <div className="bm-suggestions">{["J Dilla", "Nujabes", "Jazz samples"].map(q => <button key={q} onClick={() => { setQuery(q); void search(q); }}>{q} ↗</button>)}</div>}</div>}
           </div>
@@ -188,7 +196,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
         <main className="bm-deck">
           <nav className="bm-banks" aria-label="Cue banks">{BANKS.map(b => <button key={b} className={bank === b ? "is-active" : ""} aria-pressed={bank === b} onClick={() => { setBank(b); setEngineBank(b); setActive(null); }}>{b}</button>)}<button className="bm-map" disabled={!engineReady} onClick={() => engineAction("mapping")} title="Open MIDI mappings"><GridFour size={17} /> MAP</button></nav>
           <section className="bm-pad-shell">
-            <div className="bm-section-label"><span>YT BEATMAKER CUES — BANK [{bank}]</span><span>12 PADS <span className="bm-dim">/</span> {track ? "LIVE CUES" : "NO SOURCE"}</span></div>
+            <div className="bm-section-label"><span>BANK {bank}</span><span>12 PADS</span></div>
             <div className="bm-pads">{Array.from({ length: 12 }, (_, i) => {
               const key = cueKey(i), cue = cues[key];
               const assigned = track && cue !== undefined;
@@ -204,7 +212,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
           <div id="bm-timeline" className="bm-cue-timeline ytp-progress-bar" aria-label="Cue timeline" />
           <section className="bm-transport">
             <div className="bm-now-art" ref={video}>{p.mediaKind !== "video" && (track ? <img src={track.art || track.thumb} alt="" /> : <MusicNotes size={23} />)}</div>
-            <div className="bm-now"><strong>{track?.title || "No track selected"}</strong><span>{status || track?.artist || "Search. Cue. Play. Repeat."}</span></div>
+            <div className="bm-now"><strong>{track?.title || "No track selected"}</strong><span>{status || track?.artist || "Choose a track"}</span></div>
             <button className="bm-video-toggle" disabled={!track} aria-label="Toggle music video" aria-pressed={p.preferVideo} onClick={() => p.setPreferVideo(!p.preferVideo)}>{p.preferVideo ? "VIDEO" : "AUDIO"}</button>
             <button className="bm-icon-button" aria-label="Return to start" disabled={!track} onClick={() => p.seek(0)}><ArrowCounterClockwise size={18} /></button>
             <button className="bm-play" aria-label={p.status === "playing" ? "Pause" : "Play"} disabled={!track} onClick={p.toggle}>{p.status === "playing" ? <Pause weight="fill" size={19} /> : <Play weight="fill" size={19} />}</button>
@@ -227,8 +235,24 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
           </div>
         </main>
       </div>
-      <footer className="bm-footer"><span><i className={`bm-dot ${engineStatus === "Engine connected" ? "" : "is-loading"}`} /> {engineStatus === "Engine connected" ? "YT BEATMAKER 2.4.5 · AUDIO ENGINE ACTIVE" : engineStatus}</span><span className="bm-footer-center">LOCAL SESSION <span className="bm-meter"><i style={{ width: `${Math.min(1, Object.keys(cues).length / 12) * 100}%` }} /></span><b>{!mediaReady ? "LOCAL AUTOSAVE" : cuesSaved ? "CUES SAVED" : "UNSAVED CUES"}</b></span><span>Bank {bank}: <b>{Object.keys(cues).length}/12</b></span></footer>
-      {guide && <div className="bm-modal-backdrop" onClick={() => setGuide(false)}><section className="bm-guide" role="dialog" aria-modal="true" aria-label="Beatmaker guide" onClick={e => e.stopPropagation()}><button className="bm-guide-close" aria-label="Close guide" autoFocus onClick={() => setGuide(false)}><X size={20} /></button><span className="bm-eyebrow">THE WORKFLOW</span><h2>Your music. Your instrument.</h2><p>Search for a track, then use its cue pads to jump straight into a moment. The original YT Beatmaker Cues engine handles audio, effects, loops and MIDI inside this app.</p><dl><dt>1–9 / 0</dt><dd>Trigger the first ten cues</dd><dt>Click an empty pad</dt><dd>Mark the current playback position</dd><dt>Shift + click</dt><dd>Replace a cue with the current position</dd><dt>I / O</dt><dd>Set region loop IN / OUT</dd><dt>Space</dt><dd>Play / pause</dd><dt>A–J bank buttons</dt><dd>Switch cue banks for this track</dd><dt>CUES / LOOP</dt><dd>Open or hide the compact performance bar</dd><dt>MAP</dt><dd>Open MIDI mappings</dd><dt>Advanced</dt><dd>Original MIDI, stems, routing, loopers and effects controls</dd><dt>Settings</dt><dd>Catalog language, yt-dlp and library backup</dd><dt>Save / Load</dt><dd>Export or restore a session with its cue banks</dd></dl><button className="bm-primary" onClick={() => setGuide(false)}>LET’S MAKE SOMETHING</button></section></div>}
+      <footer className="bm-footer"><span><i className={`bm-dot ${engineReady ? "" : "is-loading"}`} /> {engineReady ? "Ready" : engineStatus}</span><span className="bm-footer-center">{cuesSaved ? "Cues saved" : "Unsaved cues"}</span><span>Bank {bank} · <b>{Object.keys(cues).length}/12</b></span></footer>
+      {guide && <div className="bm-modal-backdrop" onClick={() => setGuide(false)}><section className="bm-guide" role="dialog" aria-modal="true" aria-label="Beatmaker guide" onClick={e => e.stopPropagation()}><button className="bm-guide-close" aria-label="Close guide" autoFocus onClick={() => setGuide(false)}><X size={20} /></button><span className="bm-eyebrow">GUIDE</span><h2>Studio basics</h2><p>Choose a track, then use its cue pads to jump to a moment. Loops, effects and MIDI are available from the toolbars.</p><dl><dt>1–9 / 0</dt><dd>Trigger the first ten cues</dd><dt>Click an empty pad</dt><dd>Mark the current playback position</dd><dt>Shift + click</dt><dd>Replace a cue with the current position</dd><dt>I / O</dt><dd>Set region loop IN / OUT</dd><dt>Space</dt><dd>Play / pause</dd><dt>A–J bank buttons</dt><dd>Switch cue banks for this track</dd><dt>CUES / LOOP</dt><dd>Open or hide the compact performance bar</dd><dt>MAP</dt><dd>Open MIDI mappings</dd><dt>Advanced</dt><dd>Original MIDI, stems, routing, loopers and effects controls</dd><dt>Settings</dt><dd>Catalog language, yt-dlp and library backup</dd><dt>Save / Load</dt><dd>Export or restore a session with its cue banks</dd></dl><button className="bm-primary" onClick={() => setGuide(false)}>Close</button></section></div>}
+      <NamePlaylistDialog
+        open={creatingPlaylist}
+        title="New playlist"
+        action="Create"
+        onClose={() => setCreatingPlaylist(false)}
+        onSubmit={async (next) => {
+          const playlist = await library.createPlaylist(next);
+          setCreatingPlaylist(false);
+          if (playlist) {
+            setSource(playlist.id);
+            setResults(null);
+            setQuery("");
+          }
+        }}
+      />
+      <AddToPlaylistDialog />
       <SettingsDialog studio /><Toasts />
     </div>
   );

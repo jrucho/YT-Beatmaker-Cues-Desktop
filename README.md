@@ -2,9 +2,9 @@
 
 **Your music. Your instrument.**
 
-A standalone macOS music and beatmaking app combining [Musike](https://github.com/Ernani1234/musike)'s music player with the original **YT Beatmaker Cues 2.4.5** engine. A dark, hardware-inspired workspace puts your library, cue banks and performance tools in one window.
+A standalone desktop music and beatmaking app combining [Musike](https://github.com/Ernani1234/musike)'s music player with the original **YT Beatmaker Cues 2.4.5** engine. A dark workspace puts your library, cue banks and performance tools in one window.
 
-**[Download v1.0.0](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.0)** · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
+**[Download v1.0.1 — macOS, Windows and Linux](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.1)** · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
 
 <p align="center">
   <a href="docs/screenshots/discover-samples.png"><img src="docs/screenshots/discover-samples.png" alt="Discover Samples opening page with live search and the global player bar" width="100%"></a>
@@ -24,8 +24,8 @@ Requires macOS 12 or newer.
 
 | Mac | Download |
 | --- | --- |
-| Apple Silicon — M1 and newer | [YT-Beatmaker-Cues-Desktop-1.0.0-macOS-arm64.dmg](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.0/YT-Beatmaker-Cues-Desktop-1.0.0-macOS-arm64.dmg) |
-| Intel | [YT-Beatmaker-Cues-Desktop-1.0.0-macOS-x64.dmg](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.0/YT-Beatmaker-Cues-Desktop-1.0.0-macOS-x64.dmg) |
+| Apple Silicon — M1 and newer | [macOS ARM64 DMG](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-macOS-arm64.dmg) |
+| Intel | [macOS x64 DMG](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-macOS-x64.dmg) |
 
 Open the DMG and drag **YT Beatmaker Cues Desktop** to **Applications**. The first launch downloads yt-dlp, Deno and FFmpeg for playback.
 
@@ -37,9 +37,24 @@ xattr -dr com.apple.quarantine "/Applications/YT Beatmaker Cues Desktop.app"
 
 Personal data lives in `~/Library/Application Support/YT Beatmaker Cues Desktop`, separate from an existing Musike installation.
 
+## Install on Windows
+
+Download the [Windows x64 installer](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-Windows.exe) for Windows 10 or 11. Run it and choose an installation folder. User data is preserved when upgrading.
+
+## Install on Linux
+
+| Processor | Portable AppImage | Debian / Ubuntu |
+| --- | --- | --- |
+| x64 | [AppImage](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-Linux-x64.AppImage) | [.deb](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-Linux-x64.deb) |
+| ARM64 | [AppImage](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-Linux-arm64.AppImage) | [.deb](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-Linux-arm64.deb) |
+
+For AppImage, enable **Allow executing as a program** in the file's properties, then open it. For Debian/Ubuntu, install the downloaded package with `sudo apt install ./YT-Beatmaker-Cues-Desktop-1.0.1-Linux-x64.deb` (use the ARM64 filename on ARM machines).
+
 ## What's inside
 
 - **Discover Samples:** the opening page, with searchable music crates, live previews, favorites and one-click loading into the studio.
+- **Your library in Discover:** recently played tracks and saved playlists, with playlist-name matches included in search.
+- **Studio playlists:** create a playlist, add tracks with the playlist button on each card, and choose a collection to keep the studio library focused.
 - **Included drum banks:** 30 real kick, snare and hi-hat WAV files with working preview and download actions, available without an internet connection in the desktop app.
 - **Music discovery:** search YouTube Music, paste a YouTube link, browse the full Musike catalog, and keep favorites and playlists.
 - **Cue workspace:** 12 pads, A–J banks per track, keyboard triggering, Shift-click cue replacement, and local autosave.
@@ -65,7 +80,7 @@ Controls are connected to real playback, files, library APIs or the original eng
 
 ## Version 1.0 scope
 
-macOS installers are provided for Apple Silicon and Intel. The inherited web, Windows, Linux and mobile source remains available, but those platforms are not release downloads for this version.
+Installers are provided for macOS Apple Silicon/Intel, Windows x64 and Linux x64/ARM64. The inherited mobile source remains available separately.
 
 - One music player is integrated. Chrome's multi-tab VJ feeds are not multiple desktop decks.
 - Session exports contain track metadata and cue banks, not recorded audio, the AI model or every engine preference.
@@ -74,7 +89,7 @@ macOS installers are provided for Apple Silicon and Intel. The inherited web, Wi
 
 ## Build from source
 
-Requires **Node.js 22.19+** (Node 24 recommended) and **pnpm 10**. Build the macOS installers on a Mac.
+Requires **Node.js 22.19+** (Node 24 recommended) and **pnpm 10**. Build each installer on its target operating system; GitHub Actions builds all three platforms.
 
 ```sh
 git clone https://github.com/jrucho/YT-Beatmaker-Cues-Desktop.git
@@ -84,7 +99,7 @@ pnpm typecheck
 pnpm installer:mac
 ```
 
-Installers are collected in `release/`. To run the desktop app during development, use `pnpm desktop`. For a browser preview: `pnpm build && pnpm start`, then open `http://localhost:4180/?workspace=beatmaker`.
+Use `pnpm installer:win` on Windows or `pnpm installer:linux` on Linux. Installers are collected in `release/`. To run the desktop app during development, use `pnpm desktop`. For a browser preview: `pnpm build && pnpm start`, then open `http://localhost:4180/?workspace=beatmaker`.
 
 Run the automated application checks after building:
 

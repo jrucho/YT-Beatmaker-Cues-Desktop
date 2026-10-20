@@ -1,7 +1,7 @@
 {
   "name": "musike-desktop",
   "productName": "YT Beatmaker Cues Desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Your music. Your instrument.",
   "author": "jrucho",
   "homepage": "https://github.com/jrucho/YT-Beatmaker-Cues-Desktop",
@@ -110,7 +110,8 @@
       "uninstallerIcon": "build/icon.ico",
       "installerLanguages": [
         "en_US",
-        "pt_BR"
+        "fr_FR",
+        "es_ES"
       ],
       "language": "1033",
       "deleteAppDataOnUninstall": false,

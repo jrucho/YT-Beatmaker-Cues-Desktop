@@ -23,6 +23,7 @@ import { cn } from "../lib/format";
 import { paths } from "../lib/routes";
 import type { AlbumCard, Track } from "../lib/types";
 import { usePlayer } from "../player/player";
+import { useLibrary } from "../stores/library";
 import { parseList } from "./BatchSearch";
 
 const RECENT_KEY = "musike:recent-searches";
@@ -79,6 +80,8 @@ export default function Search() {
   const input = useRef<HTMLInputElement>(null);
   const isMd = useMediaQuery(MD);
   const playTrack = usePlayer((s) => s.playTrack);
+  const playlists = useLibrary((s) => s.playlists);
+  const playlistMatches = q.trim() ? playlists.filter(p => p.name.toLowerCase().includes(q.trim().toLowerCase())) : [];
 
   const linkId = videoIdFromUrl(text);
   // "a, b, c" probably means three songs; offer to search each one (titles can have commas, so only offer).
@@ -310,6 +313,13 @@ export default function Search() {
       </div>
 
       <div className="mt-4 px-2 md:px-3">
+        {!linkId && playlistMatches.length > 0 && <section aria-label={t.common.playlist} className="mb-5 px-2 md:px-3">
+          <h2 className="mb-3 text-sm font-semibold">{t.common.playlist}</h2>
+          <div className="grid gap-2 sm:grid-cols-2">{playlistMatches.map(p => <Link key={p.id} to={paths.playlist(p.id)} className="flex min-w-0 items-center gap-3 rounded-xl bg-surface-2 p-3 hover:bg-surface-3">
+            <Artwork src={p.tracks[0]?.thumb} className="size-11 shrink-0 rounded-lg" />
+            <span className="min-w-0 flex-1"><strong className="block truncate text-sm">{p.name}</strong><span className="text-xs text-fg-2">{t.common.tracks(p.tracks.length)}</span></span><ArrowRightIcon size={16} />
+          </Link>)}</div>
+        </section>}
         {linkId && (
           <div className="px-2 md:px-3">
             {linkTrack === "loading" && <TrackListSkeleton rows={1} />}

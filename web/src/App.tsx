@@ -35,6 +35,7 @@ import Search from "./views/Search";
 const SHEET_HASH = `#${NOW_PLAYING_HASH}`;
 
 export default function App() {
+  const navigate = useNavigate();
   const [studio, setStudio] = useState(!!desktop || (!capabilities.retryOnError && new URLSearchParams(window.location.search).get("workspace") === "beatmaker"));
   const [discover, setDiscover] = useState(true);
   if (studio && discover) return <DiscoverSamples onStudio={track => {
@@ -43,7 +44,10 @@ export default function App() {
       usePlayer.getState().playList([track]);
     }
     setDiscover(false);
-  }} onBrowse={() => setStudio(false)} />;
+  }} onBrowse={() => setStudio(false)} onOpenPlaylist={id => {
+    setStudio(false);
+    navigate(paths.playlist(id));
+  }} />;
   return studio ? (
     <Beatmaker onDiscover={() => setDiscover(true)} onBrowse={() => setStudio(false)} />
   ) : (

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowRight, DownloadSimple, GearSix, Heart, MagnifyingGlass, MusicNotes, Pause, Play, Plus, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, SpeakerHigh, SpeakerX, Waveform, X } from "@phosphor-icons/react";
+import { ArrowRight, DownloadSimple, GearSix, Heart, MagnifyingGlass, MusicNotes, Pause, Play, PlaylistIcon, Plus, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, SpeakerHigh, SpeakerX, Waveform, X } from "@phosphor-icons/react";
 import { api } from "../lib/api";
 import { desktop } from "../lib/desktop";
 import { formatTime } from "../lib/format";
@@ -56,8 +56,8 @@ function DiscoverPlayer({ sample, onStopSample, onOpenStudio, onMarkCues }: { sa
   const level = muted ? 0 : volume;
   const RepeatIcon = repeat === "one" ? RepeatOnce : Repeat;
   const playing = status === "playing" || status === "loading";
-  const title = sample ? `Previewing ${sample.split("/").at(-1)}` : current?.title || "Pick a track or audition a sample";
-  const subtitle = sample ? "Included sample bank · WAV" : statusText || current?.artist || "Your next session starts with a sound.";
+  const title = sample ? `Previewing ${sample.split("/").at(-1)}` : current?.title || "Choose a track";
+  const subtitle = sample ? "Included sample · WAV" : statusText || current?.artist || "Nothing playing";
   return <footer className="ds-player" aria-label="Global player">
     <div className="ds-player-track">
       <button className="ds-player-art" onClick={onOpenStudio} aria-label="Open the studio from the player">
@@ -86,12 +86,11 @@ function DiscoverPlayer({ sample, onStopSample, onOpenStudio, onMarkCues }: { sa
         <Slider label="Discovery volume" value={level} max={1} step={0.05} live onChange={setVolume} valueText={(v) => `${Math.round(v * 100)}%`} className="ds-player-volume-slider" />
         <span>{Math.round(level * 100)}%</span>
       </div>
-      <span className="ds-player-hint">DISCOVER → CUE → CREATE</span>
     </div>
   </footer>;
 }
 
-export function DiscoverSamples({ onStudio, onBrowse }: { onStudio(track?: Track): void; onBrowse(): void }) {
+export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStudio(track?: Track): void; onBrowse(): void; onOpenPlaylist(id: string): void }) {
   const library = useLibrary();
   const player = usePlayer();
   const current = usePlayer(selectCurrent);
@@ -105,6 +104,14 @@ export function DiscoverSamples({ onStudio, onBrowse }: { onStudio(track?: Track
   const [playingSample, setPlayingSample] = useState<string | null>(null);
   const sample = useRef<HTMLAudioElement | null>(null);
   const request = useRef<AbortController | null>(null);
+  const recentTracks = (library.history.length
+    ? library.history
+    : [...new Map([...library.favorites, ...library.playlists.flatMap(p => p.tracks)].map(t => [t.id, t])).values()]
+  ).slice(0, 8);
+  const playlistMatches = query.trim()
+    ? library.playlists.filter(p => p.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6)
+    : [];
+  const libraryTitle = library.history.length ? "Recently played" : "Your tracks";
 
   useEffect(() => {
     if (window.musikeBeatmakerHost) window.musikeBeatmakerHost.active = false;
@@ -156,29 +163,67 @@ export function DiscoverSamples({ onStudio, onBrowse }: { onStudio(track?: Track
   }
 
   return <div className="bm-app ds-app">
-    {desktop && <div className="bm-titlebar app-drag"><span>YT BEATMAKER CUES DESKTOP</span><span>v{__APP_VERSION__} · POWERED BY MUSIKE</span></div>}
+    {desktop && <div className="bm-titlebar app-drag"><span>MUSIKE</span><span>v{__APP_VERSION__}</span></div>}
     <header className="bm-header ds-header">
-      <div className="bm-brand"><span className="bm-brand-icon"><LogoMark className="bm-brand-mark" /></span><strong>BEATMAKER CUES</strong></div>
-      <span className="ds-header-caption">YOUR NEXT IDEA IS IN HERE.</span>
+      <div className="bm-brand"><span className="bm-brand-icon"><LogoMark className="bm-brand-mark" /></span><strong>MUSIKE</strong></div>
       <div className="ds-navigation"><span className="ds-current-page">DISCOVER</span><button onClick={() => openStudio()}>STUDIO <ArrowRight size={16} /></button><button onClick={onBrowse}>MUSIC LIBRARY</button><button className="bm-icon-button" aria-label="Settings" onClick={openSettings}><GearSix size={19} /></button></div>
     </header>
     <main className="ds-scroll">
       <section className="ds-hero">
-        <div><span className="bm-eyebrow">01 / DISCOVER SAMPLES</span><h1>Find a sound.<br /><span>Make it yours.</span></h1><p>Dig through music, audition a drum hit, and bring your next idea into the studio.</p></div>
+        <div><span className="bm-eyebrow">DISCOVER</span><h1>Find a sound.<br /><span>Make it yours.</span></h1><p>Search music, preview an included drum hit, or open a track from your library.</p></div>
         <form className="ds-search-form" onSubmit={e => { e.preventDefault(); void search(query); }}>
           <label className="bm-search"><MagnifyingGlass size={21} /><input aria-label="Discover samples search" placeholder="Search artists, sounds, or paste a YouTube link…" value={query} onChange={e => setQuery(e.target.value)} /><button type="button" aria-label="Clear discovery search" onClick={() => setQuery("")}><X size={14} /></button></label>
           <button className="bm-primary" type="submit" disabled={!query.trim()}>START DIGGING <ArrowRight size={17} /></button>
-          <span className="ds-search-note">LIVE MUSIC DISCOVERY + 30 INCLUDED DRUM SAMPLES</span>
+          <span className="ds-search-note">YouTube search · 30 included drum samples</span>
         </form>
       </section>
       <section className="ds-crates" aria-label="Music discovery categories">{CRATES.map(crate => <button key={crate.title} className={`ds-crate ${heading === crate.title && mode === "tracks" ? "is-selected" : ""}`} onClick={() => void search(crate.query, crate.title)} style={{ "--crate-color": crate.color } as CSSProperties}><span className="ds-crate-texture"><MusicNotes size={28} weight="thin" /></span><strong>{crate.title}</strong><span>{crate.label}</span><ArrowRight className="ds-crate-arrow" size={16} /></button>)}</section>
+      {(recentTracks.length > 0 || library.playlists.length > 0) && <section className="ds-library" aria-label="Your library">
+        <div className="ds-section-heading">
+          <div><span className="bm-eyebrow">YOUR LIBRARY</span><h2>{libraryTitle}</h2></div>
+          <button onClick={onBrowse}>OPEN LIBRARY <ArrowRight size={16} /></button>
+        </div>
+        {recentTracks.length > 0 && <div className="ds-library-tracks">{recentTracks.map(t => {
+          const active = current?.id === t.id && (player.status === "playing" || player.status === "loading");
+          return <article className="ds-library-track" key={t.id}>
+            <button className="ds-library-art" aria-label={`${active ? "Pause" : "Preview"} ${t.title}`} onClick={() => previewTrack(t)}>
+              {t.art || t.thumb ? <img src={t.art || t.thumb} alt="" loading="lazy" /> : <MusicNotes size={22} />}
+              <span className="ds-library-play">{active ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}</span>
+            </button>
+            <div className="ds-library-meta"><strong title={t.title}>{t.title}</strong><span>{t.artist}</span></div>
+            <button className="ds-library-open" aria-label={`Load ${t.title} into studio`} title="Load in studio" onClick={() => openStudio(t)}><ArrowRight size={15} /></button>
+          </article>;
+        })}</div>}
+        {library.playlists.length > 0 && <div className="ds-library-playlists">
+          <span className="bm-eyebrow">PLAYLISTS</span>
+          <div className="ds-playlist-row">{library.playlists.slice(0, 6).map(p => <button className="ds-playlist-card" key={p.id} onClick={() => onOpenPlaylist(p.id)}>
+            <span className="ds-playlist-icon"><PlaylistIcon size={17} /></span>
+            <span className="ds-playlist-name"><strong>{p.name}</strong><small>{p.tracks.length} tracks</small></span>
+            <ArrowRight size={14} />
+          </button>)}</div>
+        </div>}
+      </section>}
       <div className="ds-content">
         <section className="ds-results">
           <div className="ds-section-heading"><div><span className="bm-eyebrow">{mode === "tracks" ? "MUSIC TO EXPLORE" : "BUNDLED / AVAILABLE OFFLINE"}</span><h2>{heading}</h2></div><button aria-label="Discover a random music category" onClick={() => { const crate = CRATES[Math.floor(Math.random() * CRATES.length)]; void search(crate.query, crate.title); }}><Shuffle size={16} /> SURPRISE ME</button></div>
           {mode === "tracks" ? <>
-            {busy && <div className="ds-state" role="status"><span className="ds-loading" /><strong>Digging through the catalog…</strong><span>Fetching real music results.</span></div>}
-            {!busy && error && <div className="ds-state" role="alert"><MusicNotes size={30} /><strong>Couldn’t load music discovery</strong><p>{error}</p><button onClick={() => void search(lastQuery, heading)}>Retry search</button><span>The included drum collections are still available.</span></div>}
-            {!busy && !error && !tracks.length && <div className="ds-state"><MusicNotes size={30} /><strong>No matches this time.</strong><p>Try another artist, sound or discovery category.</p></div>}
+            {playlistMatches.length > 0 && (
+              <div className="ds-playlist-matches">
+                <span className="bm-eyebrow">MATCHING PLAYLISTS</span>
+                <div className="ds-playlist-row">
+                  {playlistMatches.map(p => (
+                    <button className="ds-playlist-card" key={p.id} onClick={() => onOpenPlaylist(p.id)}>
+                      <span className="ds-playlist-icon"><PlaylistIcon size={17} /></span>
+                      <span className="ds-playlist-name"><strong>{p.name}</strong><small>{p.tracks.length} tracks</small></span>
+                      <ArrowRight size={14} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {busy && <div className="ds-state" role="status"><span className="ds-loading" /><strong>Searching…</strong><span>Searching YouTube.</span></div>}
+            {!busy && error && <div className="ds-state" role="alert"><MusicNotes size={30} /><strong>Search unavailable</strong><p>{error}</p><button onClick={() => void search(lastQuery, heading)}>Retry</button></div>}
+            {!busy && !error && !tracks.length && <div className="ds-state"><MusicNotes size={30} /><strong>No matches</strong><p>Try another search.</p></div>}
             <div className="ds-track-grid">{tracks.map(track => {
               const active = current?.id === track.id && (player.status === "playing" || player.status === "loading");
               return <article className={`ds-track-card ${active ? "is-previewing" : ""}`} key={track.id}>
@@ -198,7 +243,7 @@ export function DiscoverSamples({ onStudio, onBrowse }: { onStudio(track?: Track
             </article>;
           })}</div>}
         </section>
-        <aside className="ds-sidebar"><span className="bm-eyebrow">THE INCLUDED COLLECTION</span><h2>Small hits.<br />Big possibilities.</h2><p>30 built-in drum samples. Preview or download the WAV files, then find them in the studio’s Built-in sample pack.</p><div className="ds-packs">{PACKS.map(pack => <button className={mode === pack.id ? "is-selected" : ""} key={pack.id} onClick={() => openPack(pack.id, pack.title)}><span className="ds-pack-icon"><Waveform size={22} /></span><span><strong>{pack.title}</strong><small>{pack.label}</small></span><ArrowRight size={16} /></button>)}</div><button className="ds-open-studio bm-primary" onClick={() => openStudio()}>OPEN THE STUDIO <ArrowRight size={16} /></button><span className="ds-sidebar-note">Music discovery streams from YouTube. Included WAV hits are bundled with the app.</span></aside>
+        <aside className="ds-sidebar"><span className="bm-eyebrow">INCLUDED SAMPLES</span><h2>Drum hits</h2><p>30 built-in samples. Preview or download the WAV files, then open them in the studio.</p><div className="ds-packs">{PACKS.map(pack => <button className={mode === pack.id ? "is-selected" : ""} key={pack.id} onClick={() => openPack(pack.id, pack.title)}><span className="ds-pack-icon"><Waveform size={22} /></span><span><strong>{pack.title}</strong><small>{pack.label}</small></span><ArrowRight size={16} /></button>)}</div><button className="ds-open-studio bm-primary" onClick={() => openStudio()}>OPEN THE STUDIO <ArrowRight size={16} /></button><span className="ds-sidebar-note">Music discovery streams from YouTube. Included WAV hits are bundled with the app.</span></aside>
       </div>
     </main>
     <DiscoverPlayer sample={playingSample} onStopSample={() => { sample.current?.pause(); setPlayingSample(null); }} onOpenStudio={() => openStudio()} onMarkCues={openStudio} />
