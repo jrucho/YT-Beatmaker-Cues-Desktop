@@ -115,6 +115,7 @@ export const api: MusikeApi = {
   updateYtdlp: async () => {
     throw new ApiError(400, "yt-dlp isn't used on this device.");
   },
+  installFfmpeg: async () => {},
 };
 
 /** On the phone, the media element plays YouTube's stream directly: resolved here, no proxy needed. */

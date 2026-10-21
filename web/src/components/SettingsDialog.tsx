@@ -9,10 +9,10 @@ import {
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LANGUAGES, useI18n, useT, type Lang } from "../i18n";
-import { capabilities, type Channel } from "../lib/api";
+import { api, capabilities, type Channel } from "../lib/api";
 import { cn } from "../lib/format";
 import { useSystem } from "../stores/system";
-import { useUi } from "../stores/ui";
+import { toast, useUi } from "../stores/ui";
 import { BackupSection } from "./BackupSection";
 import { AccentPicker, LayoutSection } from "./CustomizeSection";
 import { Modal } from "./Modal";
@@ -49,7 +49,19 @@ function Segmented<T extends string>({
   );
 }
 
-function Dependency({ name, role, path, fix }: { name: string; role: string; path: string | null; fix: string }) {
+function Dependency({
+  name,
+  role,
+  path,
+  fix,
+  action,
+}: {
+  name: string;
+  role: string;
+  path: string | null;
+  fix: string;
+  action?: ReactNode;
+}) {
   const t = useT();
   return (
     <li className="flex items-center gap-3 py-2.5" title={path ?? undefined}>
@@ -61,7 +73,7 @@ function Dependency({ name, role, path, fix }: { name: string; role: string; pat
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{name}</span>
         <span className="block text-xs text-fg-2">
-          {path ? (
+          {path || action ? (
             role
           ) : (
             <>
@@ -70,6 +82,7 @@ function Dependency({ name, role, path, fix }: { name: string; role: string; pat
           )}
         </span>
       </span>
+      {action}
     </li>
   );
 }
@@ -81,6 +94,7 @@ export function SettingsDialog({ studio = false }: { studio?: boolean }) {
   const setTheme = useUi((s) => s.setTheme);
   const { info, status, load, update } = useSystem();
   const [channel, setChannel] = useState<Channel>("stable");
+  const [ffmpegBusy, setFfmpegBusy] = useState(false);
   const logBox = useRef<HTMLPreElement>(null);
   const t = useT();
   const lang = useI18n((s) => s.lang);
@@ -96,6 +110,18 @@ export function SettingsDialog({ studio = false }: { studio?: boolean }) {
 
   const job = info?.job;
   const running = job?.status === "running";
+
+  const installFfmpeg = async () => {
+    setFfmpegBusy(true);
+    try {
+      await api.installFfmpeg();
+      await load();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setFfmpegBusy(false);
+    }
+  };
 
   useEffect(() => {
     logBox.current?.scrollTo({ top: logBox.current.scrollHeight });
@@ -238,7 +264,29 @@ export function SettingsDialog({ studio = false }: { studio?: boolean }) {
           {info && (
             <ul className="divide-y divide-line px-1">
               <Dependency name="Deno" role={t.settings.denoRole} path={info.deno} fix="winget install DenoLand.Deno" />
-              <Dependency name="FFmpeg" role={t.settings.ffmpegRole} path={info.ffmpeg} fix="winget install yt-dlp.FFmpeg" />
+              <Dependency
+                name="FFmpeg"
+                role={t.settings.ffmpegRole}
+                path={info.ffmpeg}
+                fix="winget install yt-dlp.FFmpeg"
+                action={
+                  info.canInstall && !info.ffmpeg ? (
+                    <button
+                      type="button"
+                      disabled={ffmpegBusy}
+                      onClick={() => void installFfmpeg()}
+                      className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-surface-3 px-3 text-xs font-medium text-fg ring-1 ring-line transition-colors hover:bg-surface-4 disabled:opacity-60"
+                    >
+                      {ffmpegBusy ? (
+                        <ArrowsClockwiseIcon size={14} weight="bold" className="animate-spin" />
+                      ) : (
+                        <DownloadSimpleIcon size={14} weight="bold" />
+                      )}
+                      {ffmpegBusy ? t.settings.installing : t.settings.installFfmpeg}
+                    </button>
+                  ) : undefined
+                }
+              />
             </ul>
           )}
         </section>

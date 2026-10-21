@@ -28,29 +28,28 @@ const arm = process.arch === "arm64";
 const exe = process.platform === "win32" ? ".exe" : "";
 
 /**
- * Official builds for the desktop app's platform. On Windows, FFmpeg is the LGPL "shared" build (about half the
- * size of the static one). On macOS and Linux it comes from Martin Riedl's builds, a single binary: a release,
- * except on Apple Silicon, where the latest snapshot is the only arm64 build published.
+ * Official builds for the desktop app's platform. yt-dlp and FFmpeg on macOS/Linux are single binaries; Deno and
+ * the Windows FFmpeg build are zips. The Windows FFmpeg build is the LGPL "shared" one (about half the size of
+ * the static build), with ffmpeg.exe and the DLLs it needs.
  */
-const SOURCES: Record<Component, string> = isMac
+const sources = (): Record<Component, string> => isMac
   ? {
       "yt-dlp": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos",
       deno: `https://github.com/denoland/deno/releases/latest/download/deno-${arm ? "aarch64" : "x86_64"}-apple-darwin.zip`,
-      ffmpeg: arm
-        ? "https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/snapshot/ffmpeg.zip"
-        : "https://ffmpeg.martin-riedl.de/redirect/latest/macos/amd64/release/ffmpeg.zip",
+      ffmpeg: `https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-${arm ? "arm64" : "x64"}`,
     }
   : isLinux
     ? {
         "yt-dlp": `https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux${arm ? "_aarch64" : ""}`,
         deno: `https://github.com/denoland/deno/releases/latest/download/deno-${arm ? "aarch64" : "x86_64"}-unknown-linux-gnu.zip`,
-        ffmpeg: `https://ffmpeg.martin-riedl.de/redirect/latest/linux/${arm ? "arm64" : "amd64"}/release/ffmpeg.zip`,
+        ffmpeg: `https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-linux-${arm ? "arm64" : "x64"}`,
       }
     : {
         "yt-dlp": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
         deno: "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip",
         ffmpeg: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl-shared.zip",
       };
+const SOURCES = sources();
 
 /** Moves a downloaded binary into place, executable. */
 async function install(from: string, to: string) {
@@ -95,6 +94,12 @@ export function ensureComponent(c: Component): Promise<void> {
 
     if (c === "yt-dlp") {
       await install(tmp, path.join(bin, `yt-dlp${exe}`));
+    } else if (c === "ffmpeg" && (isMac || isLinux)) {
+      // macOS and Linux use eugeneware/ffmpeg-static's single binary, not an archive.
+      const target = path.join(bin, "ffmpeg");
+      await rm(target, { recursive: true, force: true });
+      await mkdir(target, { recursive: true });
+      await install(tmp, path.join(target, "ffmpeg"));
     } else {
       state.status = "extracting";
       const out = path.join(bin, `.${c}-extract`);
@@ -110,12 +115,6 @@ export function ensureComponent(c: Component): Promise<void> {
       }
       if (c === "deno") {
         await install(path.join(out, `deno${exe}`), path.join(bin, `deno${exe}`));
-      } else if (isMac || isLinux) {
-        // The macOS and Linux zips hold the ffmpeg binary alone.
-        const target = path.join(bin, "ffmpeg");
-        await rm(target, { recursive: true, force: true });
-        await mkdir(target, { recursive: true });
-        await install(path.join(out, "ffmpeg"), path.join(target, "ffmpeg"));
       } else {
         // ffmpeg-<build>/bin holds ffmpeg.exe, ffprobe.exe and the DLLs they need.
         const root = (await readdir(out)).find((d) => d.startsWith("ffmpeg"));

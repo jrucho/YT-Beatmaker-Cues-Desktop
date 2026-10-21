@@ -4,7 +4,7 @@
 
 A standalone desktop music and beatmaking app combining [Musike](https://github.com/Ernani1234/musike)'s music player with the original **YT Beatmaker Cues 2.4.5** engine. A dark workspace puts your library, cue banks and performance tools in one window.
 
-**[Download v1.0.1 — macOS, Windows and Linux](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.1)** · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
+**[Download v1.0.2 — macOS, Windows and Linux](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.2)** · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
 
 <p align="center">
   <a href="docs/screenshots/discover-samples.png"><img src="docs/screenshots/discover-samples.png" alt="Discover Samples opening page with live search and the global player bar" width="100%"></a>
@@ -26,8 +26,8 @@ Requires macOS 12 or newer.
 
 | Mac | Download |
 | --- | --- |
-| Apple Silicon — M1 and newer | [macOS ARM64 DMG](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-macOS-arm64.dmg) |
-| Intel | [macOS x64 DMG](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-macOS-x64.dmg) |
+| Apple Silicon — M1 and newer | [macOS ARM64 DMG](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.2/YT-Beatmaker-Cues-Desktop-1.0.2-macOS-arm64.dmg) |
+| Intel | [macOS x64 DMG](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.2/YT-Beatmaker-Cues-Desktop-1.0.2-macOS-x64.dmg) |
 
 Open the DMG and drag **YT Beatmaker Cues Desktop** to **Applications**. The first launch downloads yt-dlp, Deno and FFmpeg for playback.
 
@@ -39,18 +39,35 @@ xattr -dr com.apple.quarantine "/Applications/YT Beatmaker Cues Desktop.app"
 
 Personal data lives in `~/Library/Application Support/YT Beatmaker Cues Desktop`, separate from an existing Musike installation.
 
+### Share the Mac app without the Privacy & Security prompt
+
+Build a clean copy for another Mac with:
+
+```sh
+pnpm share:mac          # this Mac's architecture
+pnpm share:mac x64      # Intel Mac
+pnpm share:mac arm64    # Apple Silicon
+```
+
+This creates `release/share/YT-Beatmaker-Cues-Desktop-<version>-macOS-<arch>/` plus a matching `.zip`, with no download quarantine flag.
+
+- **USB drive:** copy that folder or just `YT Beatmaker Cues Desktop.app` to the USB drive, then drag it into Applications on the other Mac. It opens directly.
+- **AirDrop:** send the folder or zip, unpack it, then run `Install.command`. It installs the app and clears the quarantine flag locally.
+
+AirDrop adds a quarantine flag to everything it sends, so an app sent that way still needs `Install.command` (or `xattr -dr com.apple.quarantine "/Applications/YT Beatmaker Cues Desktop.app"`) before macOS will open it. To remove that step entirely, the app would need to be signed with an Apple Developer ID and notarized.
+
 ## Install on Windows
 
-Download the [Windows x64 installer](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-Windows.exe) for Windows 10 or 11. Run it and choose an installation folder. User data is preserved when upgrading.
+Download the [Windows x64 installer](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.2/YT-Beatmaker-Cues-Desktop-1.0.2-Windows.exe) for Windows 10 or 11. Run it and choose an installation folder. User data is preserved when upgrading.
 
 ## Install on Linux
 
 | Processor | Portable AppImage | Debian / Ubuntu |
 | --- | --- | --- |
-| x64 | [AppImage](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-Linux-x64.AppImage) | [.deb](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-Linux-x64.deb) |
-| ARM64 | [AppImage](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-Linux-arm64.AppImage) | [.deb](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.1/YT-Beatmaker-Cues-Desktop-1.0.1-Linux-arm64.deb) |
+| x64 | [AppImage](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.2/YT-Beatmaker-Cues-Desktop-1.0.2-Linux-x64.AppImage) | [.deb](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.2/YT-Beatmaker-Cues-Desktop-1.0.2-Linux-x64.deb) |
+| ARM64 | [AppImage](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.2/YT-Beatmaker-Cues-Desktop-1.0.2-Linux-arm64.AppImage) | [.deb](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.2/YT-Beatmaker-Cues-Desktop-1.0.2-Linux-arm64.deb) |
 
-For AppImage, enable **Allow executing as a program** in the file's properties, then open it. For Debian/Ubuntu, install the downloaded package with `sudo apt install ./YT-Beatmaker-Cues-Desktop-1.0.1-Linux-x64.deb` (use the ARM64 filename on ARM machines).
+For AppImage, enable **Allow executing as a program** in the file's properties, then open it. For Debian/Ubuntu, install the downloaded package with `sudo apt install ./YT-Beatmaker-Cues-Desktop-1.0.2-Linux-x64.deb` (use the ARM64 filename on ARM machines).
 
 ## What's inside
 

@@ -351,6 +351,7 @@ export const es: Messages = {
     installing: "Instalando",
     updating: "Actualizando",
     install: "Instalar yt-dlp",
+    installFfmpeg: "Descargar FFmpeg",
     toNightly: "Cambiar a Nightly",
     toStable: "Volver a Estable",
     updateTo: (version) => `Actualizar a ${version}`,

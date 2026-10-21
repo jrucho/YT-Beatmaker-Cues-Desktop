@@ -98,4 +98,5 @@ export interface MusikeApi {
 
   system(): Promise<SystemInfo>;
   updateYtdlp(channel: Channel): Promise<SystemJob>;
+  installFfmpeg(): Promise<void>;
 }

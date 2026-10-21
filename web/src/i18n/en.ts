@@ -344,6 +344,7 @@ export const en = {
     installing: "Installing",
     updating: "Updating",
     install: "Install yt-dlp",
+    installFfmpeg: "Download FFmpeg",
     toNightly: "Switch to Nightly",
     toStable: "Back to Stable",
     updateTo: (version: string) => `Update to ${version}`,

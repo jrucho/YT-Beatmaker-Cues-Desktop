@@ -10,7 +10,7 @@ import { findVideoFor, radio, search, suggestions } from "./search.js";
 import { getPlaylist, searchPlaylists } from "./playlists.js";
 import { proxyStream, serveFile } from "./stream.js";
 import { langOf, msg, tr } from "./i18n.js";
-import { presentJob, startJob, systemInfo, type Channel } from "./system.js";
+import { installFfmpeg, presentJob, startJob, systemInfo, type Channel } from "./system.js";
 import { refreshTools, type Tools } from "./tools.js";
 import { HttpError, VIDEO_ID } from "./types.js";
 import { downloadHd, pruneCache, resolveStreams } from "./ytdlp.js";
@@ -65,6 +65,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     const { channel } = (req.body ?? {}) as { channel?: string };
     return presentJob(startJob((channel === "nightly" ? "nightly" : "stable") satisfies Channel), langOf(req));
   });
+
+  app.post("/api/system/ffmpeg", () => installFfmpeg());
 
   // Discovery
 

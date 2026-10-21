@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+- Fixed automatic FFmpeg installation on macOS and Linux by downloading builds from GitHub instead of an unavailable third-party host.
+- Added a **Download FFmpeg** action in Settings, and FFmpeg is retried in the background on every launch when missing.
+- Added `pnpm share:mac` to build quarantine-free macOS folders and zips for USB drives or AirDrop, with an installer that avoids the Privacy & Security prompt.
+
 ## 1.0.1
 
 - Discover search results appear above recent library tracks, with a horizontally scrollable row of matching YouTube playlists.

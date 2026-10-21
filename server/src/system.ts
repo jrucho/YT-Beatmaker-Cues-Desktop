@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { downloads, ensureEssentials } from "./bootstrap.js";
+import { downloads, ensureComponent, ensureEssentials } from "./bootstrap.js";
 import { config } from "./config.js";
 import { refreshTools, tools } from "./tools.js";
 import { msg, tr, type Lang, type Text } from "./i18n.js";
@@ -117,6 +117,13 @@ export async function systemInfo(lang: Lang) {
     downloads: downloads(lang),
     job: job && presentJob(job, lang),
   };
+}
+
+/** Fetches the optional FFmpeg build now instead of waiting for the next launch or the first HD video. */
+export async function installFfmpeg(): Promise<{ ffmpeg: string | null }> {
+  if (!config.binDir) throw new HttpError(400, msg("noWinget"));
+  await ensureComponent("ffmpeg");
+  return { ffmpeg: tools().ffmpeg };
 }
 
 export function startJob(channel: Channel) {

@@ -84,6 +84,7 @@ export const api: MusikeApi = {
 
   system: () => request<SystemInfo>("/api/system"),
   updateYtdlp: (channel: Channel) => request<SystemJob>("/api/system/ytdlp", { method: "POST", json: { channel } }),
+  installFfmpeg: () => request<{ ffmpeg: string | null }>("/api/system/ffmpeg", { method: "POST" }).then(() => undefined),
 };
 
 /** What a media element plays for a track: here, the server's stream proxy. The Android backend resolves it on the phone. */
