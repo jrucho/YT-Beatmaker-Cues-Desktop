@@ -52,7 +52,7 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
     // MARK: - The two requests
 
     /// The player, with a visitor id YouTube accepts.
-    private func resolve(videoId: String, lang: String, region: String, done: @escaping ([String: Any]) -> Void) {
+    func resolve(videoId: String, lang: String, region: String, done: @escaping ([String: Any]) -> Void) {
         visitor(lang: lang, region: region) { [weak self] visitorData in
             guard let self else { return }
             self.tryClient(videoId: videoId, visitorData: visitorData, lang: lang, region: region, at: 0, done: done)

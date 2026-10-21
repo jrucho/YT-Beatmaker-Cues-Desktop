@@ -4,7 +4,7 @@
 
 A standalone desktop music and beatmaking app combining [Musike](https://github.com/Ernani1234/musike)'s music player with the original **YT Beatmaker Cues 2.4.5** engine. A dark workspace puts your library, cue banks and performance tools in one window.
 
-**[Download v1.0.2 — macOS, Windows and Linux](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.2)** · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
+**[Download v1.0.2 — desktop, Android and iOS](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.2)** · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
 
 <p align="center">
   <a href="docs/screenshots/discover-samples.png"><img src="docs/screenshots/discover-samples.png" alt="Discover Samples opening page with live search and the global player bar" width="100%"></a>
@@ -69,6 +69,18 @@ Download the [Windows x64 installer](https://github.com/jrucho/YT-Beatmaker-Cues
 
 For AppImage, enable **Allow executing as a program** in the file's properties, then open it. For Debian/Ubuntu, install the downloaded package with `sudo apt install ./YT-Beatmaker-Cues-Desktop-1.0.2-Linux-x64.deb` (use the ARM64 filename on ARM machines).
 
+## Android and iOS — Beatmaker Cues
+
+- [Android APK](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.2/Beatmaker-Cues-Test-1.0.2-Android.apk) — Android 7.0+, development-key-signed test build.
+- [iOS IPA](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.2/Beatmaker-Cues-Test-1.0.2-iOS.ipa) — unsigned; sign it with your Apple account before installing.
+- [Portable Xcode project ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.2/Beatmaker-Cues-Xcode-1.0.2.zip) — Xcode 26+, iPhone/iPad on iOS 15+.
+
+Both mobile apps share twelve cue pads, ten saved banks, sequential **Mark**, IN/OUT loops, **1% speed faders**, independent semitone tuning and native MIDI inputs. The native players own the playlist and prepare the next track so screen-off track changes do not depend on WebView JavaScript.
+
+Source projects: [`mobile/android/`](mobile/android/) and [`mobile/ios/App/App.xcodeproj`](mobile/ios/App/App.xcodeproj). See [iOS setup](docs/ios-xcode.md) and [local Android backups](docs/android-local-builds.md).
+
+GitHub Actions → **iOS IPA and Xcode project** → **Run workflow** builds an unsigned IPA and Xcode ZIP and replaces their assets in the existing `v1.0.2` release. `iOS-Build-1.0.2.json` records the source commit and build run.
+
 ## What's inside
 
 - **Discover Samples:** the opening page, with searchable music crates, live previews, favorites and one-click loading into the studio.
@@ -101,7 +113,7 @@ Controls are connected to real playback, files, library APIs or the original eng
 
 ## Version 1.0 scope
 
-Installers are provided for macOS Apple Silicon/Intel, Windows x64 and Linux x64/ARM64. The inherited mobile source remains available separately.
+Installers are provided for macOS Apple Silicon/Intel, Windows x64 and Linux x64/ARM64, plus Android/iOS test builds and an Xcode project.
 
 - One music player is integrated. Chrome's multi-tab VJ feeds are not multiple desktop decks.
 - Session exports contain track metadata and cue banks, not recorded audio, the AI model or every engine preference.
@@ -140,7 +152,7 @@ The checks use an isolated local library and deterministic audio/video fixtures.
 | `desktop/` | Electron shell, packaging and installer collection |
 | `server/` | Musike catalog, stream proxy and local library |
 | `web/` | React player and full music browser |
-| `mobile/` | Inherited mobile source |
+| `mobile/` | Android and iOS projects, native audio/MIDI and packaging scripts |
 
 Internal `@musike/*` workspace names are retained for compatibility. The desktop application and this project are versioned independently of the extension engine.
 

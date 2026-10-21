@@ -1,19 +1,20 @@
-import { DatabaseIcon, PlusIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { DatabaseIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Cover, type CoverKind } from "../components/Cover";
 import { NamePlaylistDialog } from "../components/Dialogs";
+import { Modal } from "../components/Modal";
 import { PageHeader } from "../components/Page";
 import { useT } from "../i18n";
 import { paths } from "../lib/routes";
-import type { Track } from "../lib/types";
+import type { Playlist, Track } from "../lib/types";
 import { IconButton } from "../components/IconButton";
 import { useLibrary } from "../stores/library";
 import { useUi } from "../stores/ui";
 
-function Entry({ to, name, kind, tracks, sub }: { to: string; name: string; kind: CoverKind; tracks: Track[]; sub: string }) {
+function Entry({ to, name, kind, tracks, sub, onDelete, deleteLabel }: { to: string; name: string; kind: CoverKind; tracks: Track[]; sub: string; onDelete?: () => void; deleteLabel?: string }) {
   return (
-    <li>
+    <li className="group relative">
       <Link
         to={to}
         className="group flex items-center gap-3 rounded-[16px] p-2 transition-colors hover:bg-surface-2 md:flex-col md:items-stretch md:gap-3 md:p-3"
@@ -24,21 +25,38 @@ function Entry({ to, name, kind, tracks, sub }: { to: string; name: string; kind
           iconSize={26}
           className="size-16 shrink-0 rounded-[12px] md:aspect-square md:size-auto md:w-full md:rounded-[14px] md:shadow-[0_12px_32px_rgb(0_0_0/0.3)]"
         />
-        <span className="min-w-0">
+        <span className={onDelete ? "min-w-0 pr-9 md:pr-0" : "min-w-0"}>
           <span className="block truncate font-medium">{name}</span>
           <span className="block truncate text-sm text-fg-2">{sub}</span>
         </span>
       </Link>
+      {onDelete && (
+        <button
+          type="button"
+          aria-label={deleteLabel}
+          onClick={onDelete}
+          className="absolute top-1.5 right-1.5 grid size-9 place-items-center rounded-full bg-bg/75 text-fg-2 backdrop-blur-sm transition-colors hover:text-danger active:scale-90 md:top-4 md:right-4"
+        >
+          <TrashIcon size={16} />
+        </button>
+      )}
     </li>
   );
 }
 
+
 export default function Library() {
-  const { favorites, playlists, history, createPlaylist } = useLibrary();
+  const { favorites, playlists, history, createPlaylist, deletePlaylist } = useLibrary();
   const [creating, setCreating] = useState(false);
+  const [pending, setPending] = useState<Playlist | null>(null);
   const setSettingsOpen = useUi((s) => s.setSettingsOpen);
   const navigate = useNavigate();
   const t = useT();
+
+  // Reaching the playlists menu (the back button, the rail) means "show me the library", not "reopen my playlist".
+  useEffect(() => {
+    useUi.getState().setLastPlaylist(null);
+  }, []);
 
   return (
     <div className="pb-8">
@@ -72,6 +90,8 @@ export default function Library() {
             kind="playlist"
             tracks={p.tracks}
             sub={t.library.playlistSub(p.tracks.length)}
+            onDelete={() => setPending(p)}
+            deleteLabel={`${t.collection.deletePlaylist}: ${p.name}`}
           />
         ))}
       </ul>
@@ -93,6 +113,25 @@ export default function Library() {
           if (p) navigate(paths.playlist(p.id));
         }}
       />
+
+      <Modal open={!!pending} onClose={() => setPending(null)} title={t.collection.deleteTitle}>
+        <p className="text-sm text-fg-2">{pending ? t.collection.deleteBody(pending.name, pending.tracks.length) : ""}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={() => setPending(null)} className="h-11 rounded-full px-5 text-sm font-medium text-fg-2 hover:text-fg">
+            {t.common.cancel}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (pending) void deletePlaylist(pending.id);
+              setPending(null);
+            }}
+            className="h-11 rounded-full bg-danger px-6 text-sm font-semibold text-white"
+          >
+            {t.collection.delete}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

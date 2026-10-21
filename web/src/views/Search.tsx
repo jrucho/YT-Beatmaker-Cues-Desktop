@@ -284,7 +284,7 @@ export default function Search() {
               {tab("song", t.search.songs)}
               {tab("video", t.search.videos)}
               {tab("album", t.search.albums)}
-              {tab("playlist", "YouTube playlists")}
+              {tab("playlist", "Playlists")}
             </div>
             <span className="flex-1" />
             <div className="flex items-center gap-1">
@@ -317,7 +317,7 @@ export default function Search() {
 
       <div className="mt-4 px-2 md:px-3">
         {!linkId && kind === "playlist" && <YouTubePlaylists query={q} />}
-        {!linkId && playlistMatches.length > 0 && <section aria-label={t.common.playlist} className="mb-5 px-2 md:px-3">
+        {!linkId && kind !== "playlist" && playlistMatches.length > 0 && <section aria-label={t.common.playlist} className="mb-5 px-2 md:px-3">
           <h2 className="mb-3 text-sm font-semibold">{t.common.playlist}</h2>
           <div className="grid gap-2 sm:grid-cols-2">{playlistMatches.map(p => <Link key={p.id} to={paths.playlist(p.id)} className="flex min-w-0 items-center gap-3 rounded-xl bg-surface-2 p-3 hover:bg-surface-3">
             <Artwork src={p.tracks[0]?.thumb} className="size-11 shrink-0 rounded-lg" />

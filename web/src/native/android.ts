@@ -8,7 +8,7 @@ const Device = registerPlugin<{ info(): Promise<{ tv: boolean }> }>("MusikeDevic
 });
 
 // How the app fits into Android itself: Android TV, the Back button and the system bars.
-if (Capacitor.isNativePlatform()) {
+if (Capacitor.getPlatform() === "android") {
   // One APK for phones and TVs: on a TV, switch to the remote-friendly 10-foot UI (web/src/tv).
   void Device.info()
     .then(({ tv }) => {
@@ -31,10 +31,13 @@ if (Capacitor.isNativePlatform()) {
     else void App.minimizeApp();
   });
 
-  // Status and navigation bar icons stay readable in both themes.
+}
+
+if (Capacitor.isNativePlatform()) {
+  // Status and navigation bar icons stay readable in both themes on Android and iOS.
   const syncBars = () => {
     const light = document.documentElement.dataset.theme === "light";
-    void SystemBars.setStyle({ style: light ? SystemBarsStyle.Light : SystemBarsStyle.Dark });
+    void SystemBars.setStyle({ style: light ? SystemBarsStyle.Light : SystemBarsStyle.Dark }).catch(() => {});
   };
   syncBars();
   new MutationObserver(syncBars).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });

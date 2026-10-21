@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { getT, useT } from "../i18n";
 import { api, capabilities, explainStreamError, streamSource, systemMedia, type ApiError, type ErrorCode } from "../lib/api";
-import { createAudio } from "../lib/audio";
+import { createAudio, cueAudio, readAudioPosition, setAudioLoop, setAudioPlaylist, setAudioStart, setAudioTuning, supportsIndependentPitch } from "../lib/audio";
 import { shuffled } from "../lib/format";
 import type { Track } from "../lib/types";
 import { useLibrary } from "../stores/library";
@@ -12,6 +12,12 @@ export type Repeat = "off" | "all" | "one";
 /** A code translated where it is shown (so switching languages updates it), or a server error already in the right language. */
 export type StatusNote = "findingClip" | "preparingHd" | "loadingVideo" | "fetchingRadio" | { error: string };
 export type Status = "idle" | "loading" | "playing" | "paused" | "error";
+export type SpeedMode = "pitch" | "speed";
+export interface CueLoop {
+  from: number | null;
+  to: number | null;
+  on: boolean;
+}
 type Kind = "audio" | "video";
 type Quality = "sd" | "hd";
 
@@ -39,6 +45,13 @@ interface PlayerState {
   preferVideo: boolean;
   quality: Quality;
   autoRadio: boolean;
+  loop: CueLoop;
+  /** Playback rate change in percent: 0 is normal speed, +100 is double speed. */
+  speed: number;
+  /** "pitch" is varispeed (rate changes pitch); "speed" keeps the original pitch. */
+  speedMode: SpeedMode;
+  /** Independent key shift in semitones, used only in pitch-kept mode. */
+  tuning: number;
 
   playList: (tracks: Track[], start?: number) => void;
   playTrack: (track: Track) => void;
@@ -52,6 +65,8 @@ interface PlayerState {
   next: () => void;
   prev: () => void;
   seek: (seconds: number) => void;
+  /** Jumps to a cue point as fast as possible: the loaded stream is only re-seeked, never reloaded. */
+  cue: (seconds: number) => void;
   setVolume: (v: number) => void;
   toggleMute: () => void;
   toggleShuffle: () => void;
@@ -59,6 +74,13 @@ interface PlayerState {
   setPreferVideo: (on: boolean) => void;
   setQuality: (q: Quality) => void;
   setAutoRadio: (on: boolean) => void;
+  setLoopFrom: (seconds?: number) => void;
+  setLoopTo: (seconds?: number) => void;
+  toggleLoop: () => void;
+  clearLoop: () => void;
+  setSpeed: (percent: number) => void;
+  setSpeedMode: (mode: SpeedMode) => void;
+  setTuning: (semitones: number) => void;
 }
 
 // Media elements live outside React so playback survives any re-render or route change.
@@ -75,6 +97,10 @@ const mediaFor = (k: Kind): HTMLMediaElement => (k === "video" ? videoEl : audio
 
 /** The Beatmaker engine processes the very same media element as the music player. */
 export const beatmakerMedia = () => mediaFor(usePlayer.getState().mediaKind);
+export const independentTuningAvailable = supportsIndependentPitch(audio);
+
+/** Mark cues from the actual playhead, rather than the UI's throttled position. */
+export const cuePosition = () => loaded ? readAudioPosition(mediaFor(loaded.kind)) : Promise.resolve(usePlayer.getState().position);
 
 let loaded: { id: string; kind: Kind; quality: Quality } | null = null;
 let pendingSeek = 0;
@@ -82,6 +108,7 @@ let token = 0;
 let recordedToken = -1;
 
 const STORAGE_KEY = "musike:player";
+const LOOPS_KEY = "musike:loops";
 
 interface Saved {
   queue: Track[];
@@ -95,6 +122,33 @@ interface Saved {
   preferVideo: boolean;
   quality: Quality;
   autoRadio: boolean;
+  speed: number;
+  speedMode: SpeedMode;
+  tuning: number;
+}
+
+interface Loops {
+  [trackId: string]: { from: number | null; to: number | null; on: boolean };
+}
+
+function readLoops(): Loops {
+  try {
+    const data = JSON.parse(localStorage.getItem(LOOPS_KEY) ?? "{}") as Loops;
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLoop(trackId: string, loop: CueLoop) {
+  const loops = readLoops();
+  if (loop.from == null && loop.to == null) delete loops[trackId];
+  else loops[trackId] = { from: loop.from, to: loop.to, on: loop.on };
+  try {
+    localStorage.setItem(LOOPS_KEY, JSON.stringify(loops));
+  } catch {
+    /* storage full or blocked */
+  }
 }
 
 function readSaved(): Partial<Saved> {
@@ -106,6 +160,11 @@ function readSaved(): Partial<Saved> {
 }
 
 const saved = readSaved();
+const initialLoop = (): CueLoop => {
+  const track = saved.queue?.[saved.index ?? 0];
+  const loop = track ? readLoops()[track.id] : undefined;
+  return { from: loop?.from ?? null, to: loop?.to ?? null, on: loop?.on ?? false };
+};
 
 /**
  * Songs from YouTube Music are "art tracks": audio with a still cover. In Video mode we play the
@@ -148,7 +207,31 @@ export const usePlayer = create<PlayerState>((set, get) => {
     get().preferVideo && track.kind === "song" && clipFor.get(track.id) === null ? ("noClip" as const) : null;
   const activeMedia = (): HTMLMediaElement | null => (loaded ? mediaFor(loaded.kind) : null);
 
+  /** Applies the current speed and pitch mode to a media element. */
+  function applyPlaybackRate(media: HTMLMediaElement) {
+    const { speed, speedMode, tuning } = get();
+    const rate = Math.min(4, Math.max(0.25, 1 + speed / 100));
+    if (Math.abs(media.playbackRate - rate) > 0.001) media.playbackRate = rate;
+    const preserve = speedMode === "speed";
+    try {
+      media.preservesPitch = preserve;
+      (media as HTMLMediaElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = preserve;
+    } catch {
+      /* older engines only support playbackRate */
+    }
+    setAudioTuning(media, tuning);
+  }
+
+  /** Stores loop points for the current track and keeps the enabled loop in sync. */
+  function saveLoop(loop: CueLoop) {
+    const track = get().queue[get().index];
+    set({ loop });
+    setAudioLoop(audio, loop);
+    if (track) writeLoop(track.id, loop);
+  }
+
   function play(media: HTMLMediaElement) {
+    applyPlaybackRate(media);
     media.play().catch((err: DOMException) => {
       if (err.name === "AbortError") return; // src changed mid-start
       if (err.name === "NotAllowedError") set({ status: "paused" }); // autoplay blocked
@@ -204,7 +287,13 @@ export const usePlayer = create<PlayerState>((set, get) => {
     });
     media.volume = s.volume;
     media.muted = s.muted;
+    applyPlaybackRate(media);
+    const savedLoop = readLoops()[track.id];
+    const loop = { from: savedLoop?.from ?? null, to: savedLoop?.to ?? null, on: savedLoop?.on ?? false };
+    set({ loop });
+    setAudioLoop(audio, loop);
     const start = (src: string) => {
+      setAudioStart(media, pendingSeek);
       media.src = src;
       if (autoplay) play(media);
     };
@@ -256,6 +345,15 @@ export const usePlayer = create<PlayerState>((set, get) => {
 
   function onEnded() {
     const s = get();
+    if (s.loop.on && s.loop.from != null) {
+      const media = activeMedia();
+      if (media) {
+        media.currentTime = s.loop.from;
+        set({ position: s.loop.from });
+        play(media);
+      }
+      return;
+    }
     if (s.repeat === "one") {
       const media = activeMedia();
       if (media) {
@@ -308,13 +406,29 @@ export const usePlayer = create<PlayerState>((set, get) => {
 
   function wire(media: HTMLMediaElement) {
     const isActive = () => activeMedia() === media;
+    media.addEventListener("nativetrackchange", (event) => {
+      const data = (event as CustomEvent<{ queueIndex: number; trackId: string; position?: number; duration?: number; buffered?: number; playing?: boolean; ready?: boolean; loop?: CueLoop }>).detail;
+      const track = get().queue[data.queueIndex];
+      if (!track || track.id !== data.trackId || media !== audio) return;
+      const changed = loaded?.id !== track.id || get().index !== data.queueIndex;
+      if (changed) token++;
+      loaded = { id: track.id, kind: "audio", quality: get().quality };
+      pendingSeek = 0;
+      set({ index: data.queueIndex, mediaKind: "audio", position: data.position ?? 0,
+        duration: data.duration || track.duration, buffered: data.buffered ?? 0,
+        status: data.playing === false ? "paused" : data.ready ? "playing" : "loading", statusText: null,
+        loop: data.loop ?? { from: null, to: null, on: false } });
+      if (changed) { setMetadata(track); onStarted(); }
+      syncPlaybackState();
+    });
     media.addEventListener("loadedmetadata", () => {
       if (!isActive()) return;
       if (pendingSeek > 0) {
-        media.currentTime = pendingSeek;
+        if (Math.abs(media.currentTime - pendingSeek) > 0.001) media.currentTime = pendingSeek;
         pendingSeek = 0;
       }
       if (Number.isFinite(media.duration)) set({ duration: media.duration });
+      applyPlaybackRate(media);
       if (media === videoEl && videoEl.videoWidth && videoEl.videoHeight) {
         set({ videoAspect: videoEl.videoWidth / videoEl.videoHeight });
       }
@@ -339,6 +453,14 @@ export const usePlayer = create<PlayerState>((set, get) => {
     });
     media.addEventListener("timeupdate", () => {
       if (!isActive() || pendingSeek > 0) return;
+      const loop = get().loop;
+      if (!supportsIndependentPitch(media) && !media.seeking && loop.on && loop.to != null && media.currentTime >= loop.to) {
+        const from = Math.max(0, Math.min(loop.from ?? 0, loop.to - 0.05));
+        media.currentTime = from;
+        set({ position: from });
+        syncSystemMedia();
+        return;
+      }
       if (Math.abs(media.currentTime - get().position) >= 0.2) set({ position: media.currentTime });
       syncSystemMedia(); // throttled on the other side
     });
@@ -386,6 +508,10 @@ export const usePlayer = create<PlayerState>((set, get) => {
     preferVideo: capabilities.video && (saved.preferVideo ?? false),
     quality: saved.quality ?? "sd",
     autoRadio: saved.autoRadio ?? true,
+    loop: initialLoop(),
+    speed: Math.min(100, Math.max(-50, saved.speed ?? 0)),
+    speedMode: saved.speedMode === "pitch" ? "pitch" : "speed",
+    tuning: Number.isFinite(saved.tuning) ? Math.max(-12, Math.min(12, Math.round(saved.tuning!))) : 0,
 
     playList: (tracks, start = 0) => {
       if (!tracks.length) return;
@@ -509,6 +635,28 @@ export const usePlayer = create<PlayerState>((set, get) => {
       media.currentTime = t;
     },
 
+    // Cue pads are an instrument: a hit must be heard now, so this only re-seeks the stream that is already
+    // loaded. `seek` alone is not enough (it leaves a paused track paused) and `toggle` may reload the track.
+    cue: (seconds) => {
+      const s = get();
+      const track = s.queue[s.index];
+      if (!track) return;
+      const kind = kindFor(track);
+      const media = mediaFor(kind);
+      const t = Math.max(0, Math.min(seconds, s.duration || seconds));
+      // An explicit cue outside the loop must be audible, not immediately bounced back to IN.
+      if (s.loop.on && (t < (s.loop.from ?? 0) || (s.loop.to != null && t >= s.loop.to - 0.03))) {
+        saveLoop({ ...s.loop, on: false });
+      }
+      const ready =
+        !!loaded && loaded.id === track.id && loaded.kind === kind && media.readyState > 0 && !needsClipLookup(track, s.preferVideo);
+      if (!ready) return load(s.index, { startAt: seconds });
+      set({ position: t });
+      if (cueAudio(media, t)) return;
+      media.currentTime = t;
+      if (media.paused) play(media);
+    },
+
     setVolume: (v) => {
       const volume = Math.max(0, Math.min(1, v));
       audio.volume = videoEl.volume = volume;
@@ -556,13 +704,99 @@ export const usePlayer = create<PlayerState>((set, get) => {
     },
 
     setAutoRadio: (autoRadio) => set({ autoRadio }),
+
+    setLoopFrom: (seconds) => {
+      if (!get().queue[get().index]) return;
+      if (seconds == null) {
+        const mine = token;
+        void cuePosition().then((at) => { if (mine === token) get().setLoopFrom(at); }).catch(() => {});
+        return;
+      }
+      if (!Number.isFinite(seconds)) return;
+      const from = Math.max(0, Math.min(seconds ?? get().position, get().duration || Number.POSITIVE_INFINITY));
+      const to = get().loop.to;
+      // A loop with both edges is meant to play: it switches on by itself as soon as the second one is set.
+      const next = to != null && to > from ? { from, to, on: true } : { from, to: null, on: false };
+      saveLoop(next);
+    },
+
+    setLoopTo: (seconds) => {
+      if (!get().queue[get().index]) return;
+      if (seconds == null) {
+        const mine = token;
+        void cuePosition().then((at) => { if (mine === token) get().setLoopTo(at); }).catch(() => {});
+        return;
+      }
+      if (!Number.isFinite(seconds)) return;
+      const to = Math.max(0, Math.min(seconds ?? get().position, get().duration || Number.POSITIVE_INFINITY));
+      const from = get().loop.from;
+      const next = from != null && from < to ? { from, to, on: true } : { from: null, to, on: false };
+      saveLoop(next);
+    },
+
+    toggleLoop: () => {
+      const loop = get().loop;
+      if (loop.from == null || loop.to == null || loop.to <= loop.from) return;
+      const on = !loop.on;
+      saveLoop({ ...loop, on });
+      if (on && (get().position < loop.from || get().position >= loop.to)) get().seek(loop.from);
+    },
+
+    clearLoop: () => {
+      if (!get().queue[get().index]) return;
+      saveLoop({ from: null, to: null, on: false });
+    },
+
+    setSpeed: (percent) => {
+      const speed = Math.min(100, Math.max(-50, Math.round(percent)));
+      set({ speed });
+      applyPlaybackRate(audio);
+      applyPlaybackRate(videoEl);
+    },
+
+    setSpeedMode: (speedMode) => {
+      set({ speedMode });
+      applyPlaybackRate(audio);
+      applyPlaybackRate(videoEl);
+    },
+
+    setTuning: (semitones) => {
+      if (!independentTuningAvailable || !Number.isFinite(semitones)) return;
+      set({ tuning: Math.max(-12, Math.min(12, Math.round(semitones))) });
+      applyPlaybackRate(audio);
+    },
   };
 });
 
 audio.volume = videoEl.volume = usePlayer.getState().volume;
 audio.muted = videoEl.muted = usePlayer.getState().muted;
+{
+  const { speed, speedMode, tuning } = usePlayer.getState();
+  for (const media of [audio, videoEl]) {
+    const rate = Math.min(4, Math.max(0.25, 1 + speed / 100));
+    media.playbackRate = rate;
+    media.preservesPitch = speedMode === "speed";
+    (media as HTMLMediaElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = speedMode === "speed";
+    setAudioTuning(media, tuning);
+  }
+}
 
 export const selectCurrent = (s: PlayerState): Track | null => s.queue[s.index] ?? null;
+
+function syncNativePlaylist() {
+  if (!independentTuningAvailable) return;
+  const s = usePlayer.getState();
+  const loops = readLoops();
+  setAudioPlaylist(audio, { index: s.index, repeat: s.repeat, tracks: s.queue.map((track, index) => ({
+    id: track.id, title: track.title, artist: track.artist, album: track.album,
+    artwork: track.art || track.thumb, duration: track.duration,
+    loop: index === s.index ? s.loop : loops[track.id] ?? { from: null, to: null, on: false },
+  })) });
+}
+usePlayer.subscribe((state, previous) => {
+  if (state.queue !== previous.queue || state.index !== previous.index || state.repeat !== previous.repeat || state.loop !== previous.loop) syncNativePlaylist();
+});
+syncNativePlaylist();
 
 /** Whether the track can be shown as video (art tracks are audio with a still image). */
 
@@ -582,6 +816,9 @@ function persist() {
     preferVideo: s.preferVideo,
     quality: s.quality,
     autoRadio: s.autoRadio,
+    speed: s.speed,
+    speedMode: s.speedMode,
+    tuning: s.tuning,
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -633,7 +870,12 @@ function syncPositionState() {
   if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState) return;
   if (!Number.isFinite(duration) || duration <= 0) return;
   try {
-    navigator.mediaSession.setPositionState({ duration, position: Math.min(position, duration), playbackRate: 1 });
+    const rate = loaded ? mediaFor(loaded.kind).playbackRate : 1;
+    navigator.mediaSession.setPositionState({
+      duration,
+      position: Math.min(position, duration),
+      playbackRate: Math.min(4, Math.max(0.25, rate)),
+    });
   } catch {
     /* some browsers reject transient states */
   }

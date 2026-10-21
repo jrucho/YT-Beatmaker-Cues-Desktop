@@ -1,4 +1,4 @@
-// Builds the release APK and copies it to release/Musike-Setup-<version>-Android.apk at the repository root,
+// Builds the release APK and copies it to release/Beatmaker-Cues-Setup-<version>-Android.apk at the repository root,
 // next to the desktop downloads.
 // Needs JDK 17+ (JAVA_HOME) and the Android SDK (ANDROID_HOME or android/local.properties).
 // Signed when android/keystore.properties or the MUSIKE_KEYSTORE* variables are set; unsigned otherwise.
@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { archiveApk } from "./archive-apk.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const { version } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -23,7 +24,9 @@ if (gradle.status !== 0) process.exit(gradle.status ?? 1);
 const outputs = join(android, "app", "build", "outputs", "apk", "release");
 const signed = join(outputs, "app-release.apk");
 const apk = existsSync(signed) ? signed : join(outputs, "app-release-unsigned.apk");
-const target = join(root, "..", "release", `Musike-Setup-${version}-Android${apk === signed ? "" : "-unsigned"}.apk`);
+const target = join(root, "..", "release", `Beatmaker-Cues-Setup-${version}-Android${apk === signed ? "" : "-unsigned"}.apk`);
 mkdirSync(dirname(target), { recursive: true });
+if (existsSync(target)) archiveApk(target, "Previous APK preserved before replacement");
 copyFileSync(apk, target);
+archiveApk(target, "Android release build", { snapshotSource: true });
 console.log(`\n${target}`);

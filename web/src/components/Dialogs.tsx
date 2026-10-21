@@ -1,5 +1,5 @@
 import { CheckIcon, PlusIcon } from "@phosphor-icons/react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useT, type Messages } from "../i18n";
 import { cn } from "../lib/format";
 import { useLibrary } from "../stores/library";
@@ -15,6 +15,7 @@ export function AddToPlaylistDialog() {
   const create = useLibrary((s) => s.createPlaylist);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const creatingRef = useRef(false);
   const many = !!tracks && tracks.length > 1;
   const t = useT();
 
@@ -22,14 +23,17 @@ export function AddToPlaylistDialog() {
     if (tracks) {
       setCreating(playlists.length === 0);
       setName("");
+      creatingRef.current = false;
     }
   }, [tracks]);
 
   const onCreate = async (e: FormEvent) => {
     e.preventDefault();
-    if (!tracks || !name.trim()) return;
+    if (!tracks || !name.trim() || creatingRef.current) return;
+    creatingRef.current = true;
     const p = await create(name, tracks);
     if (p) close(null);
+    else creatingRef.current = false;
   };
 
   return (
@@ -121,13 +125,17 @@ export function NamePlaylistDialog({
   initial?: string;
   title: string;
   action: string;
-  onSubmit: (name: string) => void;
+  onSubmit: (name: string) => void | Promise<unknown>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(initial);
+  const submitting = useRef(false);
   const t = useT();
   useEffect(() => {
-    if (open) setName(initial);
+    if (open) {
+      setName(initial);
+      submitting.current = false;
+    }
   }, [open, initial]);
 
   return (
@@ -135,7 +143,12 @@ export function NamePlaylistDialog({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (name.trim()) onSubmit(name.trim());
+          const clean = name.trim();
+          if (!clean || submitting.current) return;
+          submitting.current = true;
+          void Promise.resolve(onSubmit(clean)).finally(() => {
+            submitting.current = false;
+          });
         }}
         className="flex flex-col gap-3"
       >

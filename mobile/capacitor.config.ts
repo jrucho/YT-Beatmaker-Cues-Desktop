@@ -6,7 +6,7 @@ const serverUrl = (globalThis as { process?: { env?: Record<string, string | und
 
 const config: CapacitorConfig = {
   appId: "app.musike.android",
-  appName: "Musike",
+  appName: "Beatmaker Cues",
   // The web app built in Android mode: same UI, backend running on the phone (see web/src/native).
   webDir: "../web/dist-native",
   backgroundColor: "#0B0C0F",

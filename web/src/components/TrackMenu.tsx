@@ -42,6 +42,13 @@ export function TrackMenu() {
   const close = useUi((s) => s.closeMenu);
   const openAddToPlaylist = useUi((s) => s.openAddToPlaylist);
   const isFavorite = useLibrary((s) => (menu ? s.favorites.some((t) => t.id === menu.track.id) : false));
+  const inLibrary = useLibrary((s) =>
+    menu
+      ? s.favorites.some((t) => t.id === menu.track.id) ||
+        s.history.some((t) => t.id === menu.track.id) ||
+        s.playlists.some((p) => p.tracks.some((t) => t.id === menu.track.id))
+      : false,
+  );
   const isMd = useMediaQuery(MD);
   const box = useRef<HTMLDivElement>(null);
   const t = useT();
@@ -103,6 +110,11 @@ export function TrackMenu() {
           onClick={run(() => void useLibrary.getState().removeFromPlaylist(menu.playlistId!, menu.track.id))}
         >
           {t.trackMenu.removeFromPlaylist}
+        </Item>
+      )}
+      {inLibrary && (
+        <Item danger icon={<TrashIcon size={18} />} onClick={run(() => void useLibrary.getState().removeTrack(menu.track.id))}>
+          {t.trackMenu.removeFromLibrary}
         </Item>
       )}
       <div className="mx-3 my-1 h-px bg-line" />

@@ -30,6 +30,7 @@ public class MusikePlaybackPlugin extends Plugin {
 
     @PluginMethod
     public void update(PluginCall call) {
+        if (MusikeAudioPlugin.ownsPlayback()) { call.resolve(); return; }
         String title = call.getString("title");
         String artist = call.getString("artist");
         String album = call.getString("album");

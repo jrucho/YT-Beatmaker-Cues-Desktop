@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ uses a 288dp image with a 192dp circular safe area. The ~119dp mark fits fully inside it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+    <group android:translateX="67.2" android:translateY="67.2" android:scaleX="3.2" android:scaleY="3.2">
+        <path
+            android:fillColor="#FFC3EC52"
+            android:fillType="evenOdd"
+            android:pathData="M11.5,7 H17.5 A4.5,4.5 0 0 1 22,11.5 V17.5 A4.5,4.5 0 0 1 17.5,22 H11.5 A4.5,4.5 0 0 1 7,17.5 V11.5 A4.5,4.5 0 0 1 11.5,7 Z M12.6,10.9 L19.4,14.5 L12.6,18.1 Z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFC3EC52"
+            android:strokeWidth="3.2"
+            android:pathData="M30.5,7 H36.5 A4.5,4.5 0 0 1 41,11.5 V17.5 A4.5,4.5 0 0 1 36.5,22 H30.5 A4.5,4.5 0 0 1 26,17.5 V11.5 A4.5,4.5 0 0 1 30.5,7 Z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFC3EC52"
+            android:strokeWidth="3.2"
+            android:pathData="M11.5,26 H17.5 A4.5,4.5 0 0 1 22,30.5 V36.5 A4.5,4.5 0 0 1 17.5,41 H11.5 A4.5,4.5 0 0 1 7,36.5 V30.5 A4.5,4.5 0 0 1 11.5,26 Z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFC3EC52"
+            android:strokeWidth="3.2"
+            android:pathData="M30.5,26 H36.5 A4.5,4.5 0 0 1 41,30.5 V36.5 A4.5,4.5 0 0 1 36.5,41 H30.5 A4.5,4.5 0 0 1 26,36.5 V30.5 A4.5,4.5 0 0 1 30.5,26 Z" />
+    </group>
+</vector>

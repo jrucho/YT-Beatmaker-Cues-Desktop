@@ -20,6 +20,8 @@
 		AA0000000000000000000003 /* MusikeWebViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000004 /* MusikeWebViewController.swift */; };
 		AA0000000000000000000006 /* MusikeYouTube.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000005 /* MusikeYouTube.swift */; };
 		AA0000000000000000000008 /* MusikeAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000007 /* MusikeAudio.swift */; };
+		AA0000000000000000000009 /* MusikeMidiPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000010 /* MusikeMidiPlugin.swift */; };
+		AA0000000000000000000011 /* PlaylistCursor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000012 /* PlaylistCursor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +39,8 @@
 		AA0000000000000000000004 /* MusikeWebViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusikeWebViewController.swift; sourceTree = "<group>"; };
 		AA0000000000000000000005 /* MusikeYouTube.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusikeYouTube.swift; sourceTree = "<group>"; };
 		AA0000000000000000000007 /* MusikeAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusikeAudio.swift; sourceTree = "<group>"; };
+		AA0000000000000000000010 /* MusikeMidiPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusikeMidiPlugin.swift; sourceTree = "<group>"; };
+		AA0000000000000000000012 /* PlaylistCursor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistCursor.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -77,6 +81,8 @@
 				AA0000000000000000000004 /* MusikeWebViewController.swift */,
 				AA0000000000000000000005 /* MusikeYouTube.swift */,
 				AA0000000000000000000007 /* MusikeAudio.swift */,
+				AA0000000000000000000010 /* MusikeMidiPlugin.swift */,
+				AA0000000000000000000012 /* PlaylistCursor.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -176,6 +182,8 @@
 				AA0000000000000000000003 /* MusikeWebViewController.swift in Sources */,
 				AA0000000000000000000006 /* MusikeYouTube.swift in Sources */,
 				AA0000000000000000000008 /* MusikeAudio.swift in Sources */,
+				AA0000000000000000000009 /* MusikeMidiPlugin.swift in Sources */,
+				AA0000000000000000000011 /* PlaylistCursor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -316,14 +324,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10500;
+				CURRENT_PROJECT_VERSION = 10002;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.2;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = app.musike.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -338,14 +346,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10500;
+				CURRENT_PROJECT_VERSION = 10002;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = app.musike.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";

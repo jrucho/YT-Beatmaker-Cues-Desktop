@@ -15,6 +15,8 @@ final class MusikePlayback: NSObject, WKScriptMessageHandler {
     private var artworks: [String: MPMediaItemArtwork] = [:]
     private var artworkURL = ""
     private var artworkTask: URLSessionDataTask?
+    var nativeAction: ((String, Double?) -> Bool)?
+    private var rate = 1.0
 
     override init() {
         super.init()
@@ -62,10 +64,12 @@ final class MusikePlayback: NSObject, WKScriptMessageHandler {
     }
 
     private func send(_ action: String, position: Double? = nil) {
-        var js = "window.__musikeMediaAction && window.__musikeMediaAction('\(action)')"
-        if let position { js = "window.__musikeMediaAction && window.__musikeMediaAction('\(action)', \(position))" }
         DispatchQueue.main.async { [weak self] in
-            self?.webView?.evaluateJavaScript(js)
+            guard let self else { return }
+            if self.nativeAction?(action, position) == true { return }
+            var js = "window.__musikeMediaAction && window.__musikeMediaAction('\(action)')"
+            if let position { js = "window.__musikeMediaAction && window.__musikeMediaAction('\(action)', \(position))" }
+            self.webView?.evaluateJavaScript(js)
         }
     }
 
@@ -96,7 +100,7 @@ final class MusikePlayback: NSObject, WKScriptMessageHandler {
     private func setState(_ body: [String: Any]) {
         let playing = body["playing"] as? Bool ?? false
         nowPlaying[MPNowPlayingInfoPropertyElapsedPlaybackTime] = number(body["position"])
-        nowPlaying[MPNowPlayingInfoPropertyPlaybackRate] = playing ? 1.0 : 0.0
+        nowPlaying[MPNowPlayingInfoPropertyPlaybackRate] = playing ? rate : 0.0
         if number(body["duration"]) > 0 { nowPlaying[MPMediaItemPropertyPlaybackDuration] = number(body["duration"]) }
         if playing { try? AVAudioSession.sharedInstance().setActive(true) }
         publish(state: playing ? .playing : .paused)
@@ -106,6 +110,16 @@ final class MusikePlayback: NSObject, WKScriptMessageHandler {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlaying
         if let state { MPNowPlayingInfoCenter.default().playbackState = state }
     }
+
+    func updateAudio(playing: Bool, position: Double, duration: Double, rate: Double) {
+        self.rate = rate
+        nowPlaying[MPNowPlayingInfoPropertyElapsedPlaybackTime] = position
+        nowPlaying[MPMediaItemPropertyPlaybackDuration] = duration
+        nowPlaying[MPNowPlayingInfoPropertyPlaybackRate] = playing ? rate : 0
+        publish(state: playing ? .playing : .paused)
+    }
+
+    func updateTrack(_ track: [String: Any]) { setTrack(track) }
 
     private func number(_ value: Any?) -> Double {
         if let d = value as? Double { return d }

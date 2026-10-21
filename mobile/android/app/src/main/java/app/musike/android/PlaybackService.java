@@ -32,7 +32,7 @@ import java.net.URL;
 /**
  * Keeps Musike alive while music plays and connects it to the system: the media notification, the lock screen,
  * headphone and Bluetooth buttons, and pausing when headphones are unplugged. The music itself plays in the
- * WebView; this service only mirrors what the app reports (see MusikePlaybackPlugin) and relays the buttons back.
+ * native player; native transport and progress continue even when the WebView is suspended.
  * Everything here runs on the main thread.
  */
 // A media-session notification doesn't need the notification permission (Android 13+ exempts it).
@@ -55,9 +55,10 @@ public class PlaybackService extends Service {
         /** When positionMs was measured (elapsedRealtime), so the system can keep the clock moving on its own. */
         long positionAt = SystemClock.elapsedRealtime();
         long durationMs;
+        float rate = 1;
 
         long currentPositionMs() {
-            return playing ? positionMs + (SystemClock.elapsedRealtime() - positionAt) : positionMs;
+            return playing ? positionMs + (long) ((SystemClock.elapsedRealtime() - positionAt) * rate) : positionMs;
         }
     }
 
@@ -69,6 +70,8 @@ public class PlaybackService extends Service {
 
     static final NowPlaying state = new NowPlaying();
     static Listener listener;
+    interface NativeListener { boolean onAction(String action, double position); }
+    static NativeListener nativeListener;
     private static PlaybackService instance;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -166,7 +169,7 @@ public class PlaybackService extends Service {
         String action = intent == null ? null : intent.getAction();
         if (action != null && action.startsWith(ACTION)) {
             String name = action.substring(ACTION.length());
-            if (listener == null) {
+            if (listener == null && nativeListener == null) {
                 // A leftover notification from an app Android already closed: there is no music to control.
                 stopSelf();
                 return START_NOT_STICKY;
@@ -209,6 +212,7 @@ public class PlaybackService extends Service {
     }
 
     private void emit(String action, double position) {
+        if (nativeListener != null && nativeListener.onAction(action, position)) return;
         if (listener != null) listener.onAction(action, position);
     }
 
@@ -274,7 +278,7 @@ public class PlaybackService extends Service {
             .setState(
                 state.playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
                 state.positionMs,
-                state.playing ? 1f : 0f,
+                state.playing ? state.rate : 0f,
                 state.positionAt
             )
             .build();
@@ -321,8 +325,8 @@ public class PlaybackService extends Service {
         if (wakeLock.isHeld()) wakeLock.release();
     }
 
-    // Audio focus (calls, other players) is left to the WebView: it takes focus when the music starts and pauses
-    // or resumes it on its own. Asking for focus here too would take it away from the WebView, which then pauses.
+    // Audio focus (calls, other players) is owned by the native audio engine. The service forwards transport
+    // commands directly to that engine, including while the WebView is suspended.
 
     // Headphones unplugged or Bluetooth disconnected: pause instead of playing out loud.
 

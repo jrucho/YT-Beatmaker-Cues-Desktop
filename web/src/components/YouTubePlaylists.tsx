@@ -19,6 +19,7 @@ export function YouTubePlaylists({ query, onImported, onPreview, layout = "grid"
   const [page, setPage] = useState<CatalogPlaylistPage | null>(null);
   const [pageError, setPageError] = useState("");
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const mounted = useRef(true);
   const playlists = useLibrary(s => s.playlists);
   const navigate = useNavigate();
@@ -50,11 +51,14 @@ export function YouTubePlaylists({ query, onImported, onPreview, layout = "grid"
     else { usePlayer.getState().setAutoRadio(false); usePlayer.getState().playList([track]); }
   };
   async function save() {
-    if (!page || saving) return;
+    // A ref, not the state: a quick second tap lands before React re-renders and would create the playlist twice.
+    if (!page || savingRef.current) return;
     if (existing) { setSelected(null); openSaved(existing); return; }
+    savingRef.current = true;
     setSaving(true);
     const saved = await useLibrary.getState().createPlaylist(page.title, page.tracks);
     if (mounted.current) {
+      savingRef.current = false;
       setSaving(false);
       if (saved) { setSelected(null); openSaved(saved); }
     }

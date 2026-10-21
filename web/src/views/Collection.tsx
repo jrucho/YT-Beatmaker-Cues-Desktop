@@ -1,11 +1,11 @@
 import { DotsThreeIcon, MagnifyingGlassIcon, PauseIcon, PencilSimpleIcon, PlayIcon, ShuffleIcon, TrashIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Cover, type CoverKind } from "../components/Cover";
 import { NamePlaylistDialog } from "../components/Dialogs";
 import { IconButton, PlayDisc } from "../components/IconButton";
 import { Modal } from "../components/Modal";
-import { EmptyState, PageHeader } from "../components/Page";
+import { BackButton, EmptyState, PageHeader } from "../components/Page";
 import { TrackList } from "../components/TrackList";
 import { useT } from "../i18n";
 import { shuffled } from "../lib/format";
@@ -13,6 +13,7 @@ import { paths } from "../lib/routes";
 import type { Track } from "../lib/types";
 import { usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
+import { useUi } from "../stores/ui";
 
 interface Props {
   kind: CoverKind;
@@ -37,6 +38,11 @@ export default function Collection({ kind }: Props) {
   const name = kind === "favorites" ? t.nav.favorites : kind === "history" ? t.nav.recentlyPlayed : playlist?.name ?? "";
   const label =
     kind === "playlist" ? t.collection.labelPlaylist : kind === "favorites" ? t.collection.labelFavorites : t.collection.labelHistory;
+
+  // The Library tab reopens this playlist, so leaving it is not the same as leaving the library.
+  useEffect(() => {
+    if (playlist) useUi.getState().setLastPlaylist(playlist.id);
+  }, [playlist?.id]);
 
   if (kind === "playlist" && !playlist) {
     if (lib.status !== "ready") return <PageHeader />;
@@ -64,7 +70,11 @@ export default function Collection({ kind }: Props) {
 
   return (
     <div className="pb-8">
-      <PageHeader title={name} mobileOnly />
+      <PageHeader
+        title={name}
+        mobileOnly
+        actions={kind === "playlist" ? <BackButton fallback={paths.library} force /> : undefined}
+      />
 
       <div className="relative">
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-20 h-72 bg-linear-to-b from-accent-soft to-transparent" />
@@ -187,6 +197,7 @@ export default function Collection({ kind }: Props) {
                 type="button"
                 onClick={() => {
                   setConfirmDelete(false);
+                  useUi.getState().setLastPlaylist(null);
                   void lib.deletePlaylist(playlist.id);
                   navigate(paths.library);
                 }}

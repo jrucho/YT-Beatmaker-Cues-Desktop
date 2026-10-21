@@ -1,0 +1,85 @@
+name: iOS IPA and Xcode project
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release to update (must match mobile/package.json)
+        required: true
+        default: v1.0.2
+        type: string
+      publish_release:
+        description: Replace the iOS assets in this release
+        default: true
+        type: boolean
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-release-${{ inputs.release_tag || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: xcodebuild -version
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm exec playwright install chromium
+      - name: Verify mobile controls and native playlist policies
+        run: |
+          node scripts/check-android-cues.mjs
+          MUSIKE_TEST_PLATFORM=ios node scripts/check-android-cues.mjs
+          node scripts/check-ios-midi.mjs
+          node scripts/check-native-playlist.mjs
+      - name: Archive unsigned iOS app and create IPA
+        run: pnpm --filter @musike/mobile ipa
+      - name: Export portable Xcode project
+        run: node mobile/scripts/export-xcode.mjs
+      - name: Verify release files and record build provenance
+        run: node mobile/scripts/ios-release-assets.mjs prepare
+      - uses: actions/upload-artifact@v7
+        with:
+          name: beatmaker-cues-ios-${{ github.sha }}
+          path: |
+            release/Beatmaker-Cues-Test-*-iOS.ipa
+            release/Beatmaker-Cues-Xcode-*.zip
+            release/SHA256SUMS-iOS-*.txt
+            release/iOS-Build-*.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: build
+    if: github.event_name == 'release' || inputs.publish_release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: beatmaker-cues-ios-${{ github.sha }}
+          path: release
+      - name: Update existing release assets and notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
+        run: node mobile/scripts/ios-release-assets.mjs publish "$RELEASE_TAG"

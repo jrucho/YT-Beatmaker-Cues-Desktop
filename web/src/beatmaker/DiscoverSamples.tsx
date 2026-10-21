@@ -195,7 +195,7 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
       <section className="ds-hero">
         <div><span className="bm-eyebrow">DISCOVER</span><h1>Find a sound.<br /><span>Make it yours.</span></h1><p>Search music, preview an included drum hit, or open a track from your library.</p></div>
         <form className="ds-search-form" onSubmit={e => { e.preventDefault(); setSubmittedQuery(query.trim()); document.querySelector(".ds-scroll")?.scrollTo({ top: 0 }); void search(query); }}>
-          <label className="ds-search-type">Search <select aria-label="Discover search type" value={searchType} onChange={e => setSearchType(e.target.value)}><option value="songs">Songs</option><option value="playlists">YouTube playlists</option></select></label>
+          <label className="ds-search-type">Search <select aria-label="Discover search type" value={searchType} onChange={e => setSearchType(e.target.value)}><option value="songs">Songs</option><option value="playlists">Playlists</option></select></label>
           <label className="bm-search"><MagnifyingGlass size={21} /><input aria-label="Discover samples search" placeholder="Search artists, sounds, or paste a YouTube link…" value={query} onChange={e => setQuery(e.target.value)} /><button type="button" aria-label="Clear discovery search" onClick={() => setQuery("")}><X size={14} /></button></label>
           <button className="bm-primary" type="submit" disabled={!query.trim()}>START DIGGING <ArrowRight size={17} /></button>
           <span className="ds-search-note">YouTube search · 30 included drum samples</span>

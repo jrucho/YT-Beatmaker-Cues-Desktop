@@ -63,14 +63,15 @@ export function Section({ title, action, children, className }: { title: string;
   );
 }
 
-/** Back in history when there is somewhere to go back to (in the app), else to `fallback`. */
-export function BackButton({ fallback, label }: { fallback: string; label?: string }) {
+/** Back in history when there is somewhere to go back to (in the app), else to `fallback`.
+ *  `force` always goes to `fallback`, for a page with a fixed parent (a playlist lives in the library). */
+export function BackButton({ fallback, label, force }: { fallback: string; label?: string; force?: boolean }) {
   const navigate = useNavigate();
   const t = useT();
   return (
     <button
       type="button"
-      onClick={() => ((window.history.state as { idx?: number } | null)?.idx ? navigate(-1) : navigate(fallback))}
+      onClick={() => (!force && (window.history.state as { idx?: number } | null)?.idx ? navigate(-1) : navigate(fallback))}
       className="flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-fg-2 hover:bg-surface-3 hover:text-fg"
     >
       <ArrowLeftIcon size={16} /> {label ?? t.common.back}

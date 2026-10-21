@@ -121,6 +121,13 @@ export async function createPlaylist(name: string, tracks: Track[] = []): Promis
   const lib = await load();
   const clean = name.trim().slice(0, 80);
   if (!clean) throw new HttpError(400, msg("playlistNameRequired"));
+  // Importing the same playlist twice (a double tap, a retry) should open the one already there, not add another.
+  const existing = tracks.length
+    ? lib.playlists.find(
+        (p) => p.name === clean && p.tracks.length === tracks.length && p.tracks.every((t, i) => t.id === tracks[i]!.id),
+      )
+    : undefined;
+  if (existing) return existing;
   const now = Date.now();
   const playlist: Playlist = { id: randomUUID(), name: clean, createdAt: now, updatedAt: now, tracks };
   lib.playlists.unshift(playlist);

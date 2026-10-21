@@ -1,174 +1,507 @@
 import AVFoundation
-import Capacitor
-import WebKit
+import CryptoKit
+import UIKit
+@preconcurrency import WebKit
 
-/// Plays audio natively, so the music doesn't go through the web view's media stack.
-///
-/// WKWebView hands media to a separate process that YouTube cuts off after a few hundred kilobytes: the element
-/// just pauses, with no error, about fifteen seconds in. AVPlayer uses the app's own network stack instead, which
-/// reads the same URL from beginning to end. The web app drives it through the `musikeAudio` handler and gets
-/// `window.__musikeAudioEvent(...)` back, so the player code doesn't have to know the difference.
-final class MusikeAudio: NSObject, WKScriptMessageHandler {
+/// The iOS implementation of the Android audio contract. Cached files feed a native player node;
+/// independent time/pitch processing never goes through WKWebView or a remote-media seek.
+final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
     private weak var webView: WKWebView?
-    /// Durations as YouTube reported them, by stream URL. AVPlayer often guesses twice the real length for these
-    /// audio-only streams, which would show a seven-minute song as fourteen.
     private static var knownDurations: [String: Double] = [:]
-    private var player: AVPlayer?
-    private var item: AVPlayerItem?
-    private var knownDuration: Double?
-    /// Set once the real end was reported, so a padded stream doesn't end a second time.
-    private var ended = false
-    private var ticker: Any?
-    private var statusObservation: NSKeyValueObservation?
-    private var endObserver: NSObjectProtocol?
+    private let engine = AVAudioEngine()
+    private let node = AVAudioPlayerNode()
+    private let varispeed = AVAudioUnitVarispeed()
+    private let timePitch = AVAudioUnitTimePitch()
+    private var file: AVAudioFile?
+    private var download: URLSessionDownloadTask?
+    private var ticker: Timer?
+    private var observers: [NSObjectProtocol] = []
+    private var sourceID = 0
+    private var loadGeneration = 0
+    private var scheduleID = 0
+    private var wantedPlaying = false
+    private var resumeAfterInterruption = false
+    private var pendingPosition = 0.0
+    private var anchor: AVAudioFramePosition = 0
+    private var duration = 0.0
+    private var rate = 1.0
+    private var preservePitch = true
+    private var semitones = 0.0
+    private var volume: Float = 1
+    private var muted = false
+    private var loopFrom = 0.0
+    private var loopTo = 0.0
+    private var loopOn = false
+    private var scheduledLoop = false
+    private var endFrame: AVAudioFramePosition = 0
+    private var loopStartFrame: AVAudioFramePosition = 0
+    private var loopEndFrame: AVAudioFramePosition = 0
+    var onState: ((Bool, Double, Double, Double) -> Void)?
+    var onTrack: (([String: Any]) -> Void)?
+    private var queue = PlaylistCursor()
+    private var tracks: [[String: Any]] = []
+    private let resolver = MusikeYouTube()
+    private struct PreparedTrack { let remote: String; let local: URL; let duration: Double }
+    private var prepared: [String: PreparedTrack] = [:]
+    private var preparing: [String: [(Result<PreparedTrack, Error>) -> Void]] = [:]
+    private var transition = 0
+    private var advancing = false
+    private var sourceURL = ""
+    private var backgroundTask = UIBackgroundTaskIdentifier.invalid
+    private var failedTracks = 0
 
-    func attach(_ webView: WKWebView?) {
-        self.webView = webView
+    private let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("BeatmakerCuesAudio", isDirectory: true)
+
+    override init() {
+        super.init()
+        engine.attach(node)
+        engine.attach(varispeed)
+        engine.attach(timePitch)
+        try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        let notifications = NotificationCenter.default
+        observers.append(notifications.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] notification in
+            guard let self, let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            if type == .began {
+                self.resumeAfterInterruption = self.wantedPlaying
+                self.pause()
+            } else {
+                let options = AVAudioSession.InterruptionOptions(rawValue: notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0)
+                if self.resumeAfterInterruption && options.contains(.shouldResume) { self.play() }
+                self.resumeAfterInterruption = false
+            }
+        })
+        observers.append(notifications.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            guard let self, self.file != nil else { return }
+            // A configuration change may already have reset the node's render clock.
+            let at = self.pendingPosition
+            self.schedule(at: at, playing: self.wantedPlaying)
+        })
+        observers.append(notifications.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] notification in
+            let reason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { self?.pause() }
+        })
     }
+
+    func attach(_ webView: WKWebView?) { self.webView = webView }
 
     static func remember(url: String, duration: Double) {
-        guard duration > 0 else { return }
-        knownDurations[url] = duration
-        if knownDurations.count > 40 { knownDurations.removeAll() }
-    }
-
-    // MARK: - What the web app sends
-
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "musikeAudio",
-              let body = message.body as? [String: Any],
-              let command = body["cmd"] as? String
-        else { return }
-
-        switch command {
-        case "load":
-            load(body["url"] as? String ?? "", startAt: body["startAt"] as? Double ?? 0)
-        case "play":
-            play()
-        case "pause":
-            player?.pause()
-        case "seek":
-            seek(body["to"] as? Double ?? 0)
-        case "volume":
-            player?.volume = Float(body["value"] as? Double ?? 1)
-        case "muted":
-            player?.isMuted = body["value"] as? Bool ?? false
-        default:
-            break
+        guard duration.isFinite, duration > 0 else { return }
+        let save = {
+            if knownDurations.count > 80 { knownDurations.removeAll() }
+            knownDurations[url] = duration
         }
+        if Thread.isMainThread { save() }
+        else { DispatchQueue.main.async(execute: save) }
     }
 
-    // MARK: - Playback
-
-    private func load(_ link: String, startAt: Double) {
-        tearDown()
-        guard let url = URL(string: link), !link.isEmpty else {
-            emit("error", ["message": "No stream"])
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage,
+                               replyHandler: @escaping (Any?, String?) -> Void) {
+        guard let body = message.body as? [String: Any], let command = body["cmd"] as? String else {
+            replyHandler(nil, "Invalid audio command")
             return
         }
-        let asset = AVURLAsset(url: url, options: [
-            "AVURLAssetHTTPHeaderFieldsKey": [
-                "User-Agent": "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
-            ],
-        ])
-        let newItem = AVPlayerItem(asset: asset)
-        knownDuration = Self.knownDurations[link]
-        // Keep a visible amount ahead of the playhead, so the buffered part of the progress bar means something.
-        newItem.preferredForwardBufferDuration = 30
-        ended = false
-        let newPlayer = AVPlayer(playerItem: newItem)
-        newPlayer.automaticallyWaitsToMinimizeStalling = true
-        newPlayer.volume = player?.volume ?? 1
-        player = newPlayer
-        item = newItem
+        let id = (body["sourceId"] as? NSNumber)?.intValue ?? sourceID
+        if ["position", "seek", "cue", "loop"].contains(command), id != sourceID {
+            replyHandler(nil, "Audio source changed")
+            return
+        }
+        switch command {
+        case "load":
+            transition += 1
+            advancing = false
+            replaceQueue(body["queue"] as? [String: Any], bind: true)
+            load(body["url"] as? String ?? "", id: id, startAt: number(body["startAt"]))
+        case "queue": replaceQueue(body["queue"] as? [String: Any], bind: false)
+        case "snapshot": replyHandler(snapshot(), nil); return
+        case "play": play()
+        case "pause": pause()
+        case "seek": schedule(at: number(body["to"]), playing: wantedPlaying)
+        case "cue": schedule(at: number(body["to"]), playing: true)
+        case "position":
+            replyHandler(["position": position()], nil)
+            return
+        case "loop":
+            let at = position()
+            loopFrom = max(0, number(body["from"]))
+            loopTo = number(body["to"])
+            loopOn = body["on"] as? Bool == true && loopTo > loopFrom
+            if file != nil { schedule(at: at, playing: wantedPlaying) }
+        case "volume": volume = Float(min(1, max(0, number(body["value"], fallback: 1)))); applyVolume()
+        case "muted": muted = body["value"] as? Bool ?? false; applyVolume()
+        case "rate":
+            rate = min(4, max(0.25, number(body["value"], fallback: 1)))
+            preservePitch = body["preservePitch"] as? Bool ?? true
+            semitones = min(12, max(-12, number(body["semitones"])))
+            applyRate()
+            publishState()
+        default: break
+        }
+        replyHandler([:], nil)
+    }
 
-        statusObservation = newItem.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
-            guard let self else { return }
-            switch item.status {
-            case .readyToPlay:
-                let seconds = CMTimeGetSeconds(item.duration)
-                self.emit("ready", ["duration": self.duration(from: seconds)])
-                if startAt > 0 { self.seek(startAt) }
-            case .failed:
-                self.emit("error", ["message": item.error?.localizedDescription ?? "Playback failed"])
-            default:
-                break
+    // MARK: - Local compressed-file cache
+
+    private func load(_ link: String, id: Int, startAt: Double, autoplay: Bool = false, remote: String? = nil, announce: Bool = false) {
+        sourceID = id
+        sourceURL = remote ?? link
+        loadGeneration += 1
+        let generation = loadGeneration
+        scheduleID += 1
+        wantedPlaying = autoplay
+        pendingPosition = max(0, startAt)
+        duration = 0
+        loopOn = false
+        scheduledLoop = false
+        download?.cancel()
+        download = nil
+        node.stop()
+        engine.stop()
+        file = nil
+        ticker?.invalidate()
+        ticker = nil
+        guard !link.isEmpty else { return }
+        if announce {
+            if let loop = currentTrack()["loop"] as? [String: Any] {
+                loopFrom = number(loop["from"])
+                loopTo = number(loop["to"])
+                loopOn = loop["on"] as? Bool == true && loopTo > loopFrom
+            }
+            onTrack?(currentTrack())
+            emit("track", snapshot())
+        }
+        guard let url = URL(string: link), ["https", "http", "file"].contains(url.scheme ?? "") else {
+            emit("error", ["message": "Invalid audio URL"])
+            return
+        }
+        let name = SHA256.hash(data: Data(link.utf8)).map { String(format: "%02x", $0) }.joined() + ".m4a"
+        let cached = cacheDirectory.appendingPathComponent(name)
+        if url.isFileURL { open(url, original: link); return }
+        if FileManager.default.fileExists(atPath: cached.path) {
+            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: cached.path)
+            open(cached, original: link)
+            return
+        }
+        var request = URLRequest(url: url, timeoutInterval: 60)
+        request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        download = URLSession.shared.downloadTask(with: request) { [weak self] temporary, response, error in
+            // URLSession removes its temporary file when this callback returns. Move it before dispatching.
+            var result: Result<URL, Error>
+            do {
+                if let error { throw error }
+                guard let temporary, let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
+                    throw NSError(domain: "BeatmakerCuesAudio", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not load this audio stream"])
+                }
+                if !FileManager.default.fileExists(atPath: cached.path) { try FileManager.default.moveItem(at: temporary, to: cached) }
+                result = .success(cached)
+            } catch { result = .failure(error) }
+            DispatchQueue.main.async {
+                guard let self, self.sourceID == id, self.loadGeneration == generation else { return }
+                self.download = nil
+                switch result {
+                case .success(let local): self.open(local, original: link)
+                case .failure(let error): self.emit("error", ["message": error.localizedDescription])
+                }
             }
         }
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime, object: newItem, queue: .main
-        ) { [weak self] _ in
-            self?.emit("ended")
+        download?.resume()
+    }
+
+    private func open(_ url: URL, original: String) {
+        do {
+            let audio = try AVAudioFile(forReading: url)
+            let measured = Double(audio.length) / audio.processingFormat.sampleRate
+            guard measured.isFinite, measured > 0 else { throw NSError(domain: "BeatmakerCuesAudio", code: 2) }
+            duration = min(Self.knownDurations[original] ?? measured, measured)
+            endFrame = min(audio.length, AVAudioFramePosition(duration * audio.processingFormat.sampleRate))
+            file = audio
+            engine.disconnectNodeOutput(node)
+            engine.disconnectNodeOutput(varispeed)
+            engine.disconnectNodeOutput(timePitch)
+            engine.connect(node, to: varispeed, format: audio.processingFormat)
+            engine.connect(varispeed, to: timePitch, format: audio.processingFormat)
+            engine.connect(timePitch, to: engine.mainMixerNode, format: audio.processingFormat)
+            applyRate()
+            applyVolume()
+            schedule(at: pendingPosition, playing: wantedPlaying)
+            emit("ready", ["duration": duration])
+            emitTime()
+            ticker = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.emitTime() }
+            if let ticker { RunLoop.main.add(ticker, forMode: .common) }
+            trimCache(keeping: url)
+            failedTracks = 0
+            advancing = false
+            endBackgroundTask()
+            warmNext()
+        } catch { emit("error", ["message": error.localizedDescription]) }
+    }
+
+    private func trimCache(keeping active: URL) {
+        let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey]
+        guard let files = try? FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: Array(keys)) else { return }
+        let entries = files.compactMap { url -> (URL, Int, Date)? in
+            guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
+            return (url, values.fileSize ?? 0, values.contentModificationDate ?? .distantPast)
+        }.sorted { $0.2 < $1.2 }
+        var bytes = entries.reduce(0) { $0 + $1.1 }
+        for (url, size, _) in entries where bytes > 320 * 1024 * 1024 && url != active {
+            if (try? FileManager.default.removeItem(at: url)) != nil { bytes -= size }
         }
-        ticker = newPlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
-            guard let self, let item = self.item else { return }
-            let position = CMTimeGetSeconds(time)
-            self.emit("time", [
-                "position": position,
-                "duration": self.duration(from: CMTimeGetSeconds(item.duration)),
-                "buffered": self.bufferedEnd(),
-            ])
-            // These audio streams carry silence past the song, and AVPlayer only calls it finished at the very end
-            // of the file. The track really ends where YouTube says it does.
-            if let known = self.knownDuration, !self.ended, position >= known - 0.5 {
-                self.ended = true
-                self.player?.pause()
-                self.emit("ended")
+    }
+
+    // MARK: - Native cue, loop, varispeed and independent tuning
+
+    private func activate() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .default)
+        try session.setPreferredIOBufferDuration(0.005)
+        try session.setActive(true)
+        if !engine.isRunning { engine.prepare(); try engine.start() }
+    }
+
+    private func schedule(at seconds: Double, playing: Bool) {
+        pendingPosition = max(0, seconds.isFinite ? seconds : 0)
+        wantedPlaying = playing
+        guard let file else { return }
+        scheduleID += 1
+        let serial = scheduleID
+        node.stop()
+        let sampleRate = file.processingFormat.sampleRate
+        anchor = min(max(0, AVAudioFramePosition(pendingPosition * sampleRate)), max(0, endFrame - 1))
+        loopStartFrame = min(max(0, AVAudioFramePosition(loopFrom * sampleRate)), max(0, endFrame - 1))
+        loopEndFrame = min(endFrame, AVAudioFramePosition(loopTo * sampleRate))
+        scheduledLoop = loopOn && loopEndFrame > loopStartFrame
+        if scheduledLoop {
+            if anchor < loopStartFrame || anchor >= loopEndFrame { anchor = loopStartFrame }
+            // Queue ahead. Refill when consumed, rather than waiting for a timer after OUT has passed.
+            enqueue(start: anchor, end: loopEndFrame, serial: serial, looping: true)
+            enqueue(start: loopStartFrame, end: loopEndFrame, serial: serial, looping: true)
+        } else {
+            enqueue(start: anchor, end: endFrame, serial: serial, looping: false)
+        }
+        pendingPosition = Double(anchor) / sampleRate
+        emit("seeked", ["position": pendingPosition])
+        if playing { play() }
+        else { publishState() }
+    }
+
+    private func enqueue(start: AVAudioFramePosition, end: AVAudioFramePosition, serial: Int, looping: Bool) {
+        guard let file, end > start else { return }
+        let frames = AVAudioFrameCount(min(AVAudioFramePosition(UInt32.max), end - start))
+        node.scheduleSegment(file, startingFrame: start, frameCount: frames, at: nil,
+                             completionCallbackType: looping ? .dataConsumed : .dataPlayedBack) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self, self.scheduleID == serial else { return }
+                if looping {
+                    self.enqueue(start: self.loopStartFrame, end: self.loopEndFrame, serial: serial, looping: true)
+                } else {
+                    if self.advance(automatic: true) { return }
+                    self.wantedPlaying = false
+                    self.pendingPosition = self.duration
+                    self.node.stop()
+                    self.anchor = self.endFrame
+                    self.emitTime()
+                    self.emit("ended")
+                }
             }
         }
     }
 
-    private func duration(from measured: Double) -> Double {
-        if let knownDuration { return knownDuration }
-        return measured.isFinite ? measured : 0
+    private func position() -> Double {
+        guard let file else { return pendingPosition }
+        guard node.isPlaying else { return min(duration, pendingPosition) }
+        var frame = anchor
+        if let render = node.lastRenderTime, let time = node.playerTime(forNodeTime: render) {
+            frame += AVAudioFramePosition(Double(time.sampleTime) * file.processingFormat.sampleRate / time.sampleRate)
+        }
+        if scheduledLoop && frame >= loopEndFrame {
+            frame = loopStartFrame + (frame - loopEndFrame) % max(1, loopEndFrame - loopStartFrame)
+        }
+        return min(duration, max(0, Double(frame) / file.processingFormat.sampleRate))
     }
 
     private func play() {
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default)
-        try? session.setActive(true)
-        player?.play()
-        emit("playing")
+        wantedPlaying = true
+        guard file != nil else { return }
+        do {
+            if anchor >= endFrame { schedule(at: 0, playing: false); wantedPlaying = true }
+            try activate()
+            node.play()
+            emit("playing")
+            publishState()
+        } catch { wantedPlaying = false; emit("error", ["message": error.localizedDescription]) }
     }
 
-    private func seek(_ to: Double) {
-        guard let player else { return }
-        player.seek(
-            to: CMTime(seconds: max(0, to), preferredTimescale: 600),
-            toleranceBefore: .zero,
-            toleranceAfter: .zero
-        ) { [weak self] finished in
-            guard finished else { return }
-            // AVPlayer reports the old position until the seek lands; the web side waits for this.
-            self?.emit("seeked", ["position": to])
+    private func pause() {
+        let at = position()
+        node.pause()
+        pendingPosition = at
+        wantedPlaying = false
+        emit("pause")
+        publishState()
+    }
+
+    private func applyRate() {
+        varispeed.rate = preservePitch ? 1 : Float(rate)
+        timePitch.rate = preservePitch ? Float(rate) : 1
+        timePitch.pitch = preservePitch ? Float(semitones * 100) : 0
+        timePitch.bypass = !preservePitch || (rate == 1 && semitones == 0)
+    }
+
+    private func applyVolume() { node.volume = muted ? 0 : volume }
+
+    /// Handle core transport even while WKWebView is suspended in the background.
+    func handleRemote(_ action: String, position: Double?) -> Bool {
+        switch action {
+        case "play": play()
+        case "pause": pause()
+        case "toggle": wantedPlaying ? pause() : play()
+        case "seek": schedule(at: position ?? 0, playing: wantedPlaying)
+        case "next": return advance(automatic: false)
+        case "previous":
+            if self.position() > 3 || queue.index == 0 { schedule(at: 0, playing: wantedPlaying) }
+            else { startTrack(queue.index - 1) }
+        default: return false
+        }
+        return true
+    }
+
+    private func publishState() { onState?(wantedPlaying && (node.isPlaying || advancing), position(), duration, rate) }
+
+    // MARK: - Native playlist ownership (no JavaScript required between songs)
+
+    private func replaceQueue(_ value: [String: Any]?, bind: Bool) {
+        guard let value, let entries = value["tracks"] as? [[String: Any]] else { return }
+        tracks = entries
+        queue.replace(entries.map { $0["id"] as? String ?? "" }, requested: (value["index"] as? NSNumber)?.intValue ?? 0,
+                      mode: value["repeat"] as? String ?? "off", bind: bind)
+        if !bind { warmNext() }
+    }
+
+    private func currentTrack() -> [String: Any] { tracks.indices.contains(queue.index) ? tracks[queue.index] : [:] }
+
+    private func snapshot() -> [String: Any] {
+        ["sourceId": sourceID, "queueIndex": queue.index, "trackId": queue.current, "url": sourceURL,
+         "position": advancing ? 0 : position(), "duration": duration, "buffered": file == nil ? 0 : duration,
+         "playing": wantedPlaying, "ready": file != nil && !advancing,
+         "loop": ["from": loopFrom, "to": loopTo, "on": loopOn]]
+    }
+
+    private func advance(automatic: Bool) -> Bool {
+        guard let next = queue.next(automatic: automatic) else { return false }
+        if next == queue.index { schedule(at: 0, playing: true); return true }
+        startTrack(next)
+        return true
+    }
+
+    private func startTrack(_ index: Int) {
+        guard tracks.indices.contains(index) else { return }
+        queue.index = index
+        transition += 1
+        let mine = transition
+        advancing = true
+        if backgroundTask == .invalid {
+            backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Next playlist track") { [weak self] in self?.endBackgroundTask() }
+        }
+        onTrack?(currentTrack())
+        publishState()
+        prepareTrack(index) { [weak self] result in
+            guard let self, self.transition == mine else { return }
+            switch result {
+            case .success(let track):
+                Self.remember(url: track.local.absoluteString, duration: track.duration)
+                let playing = self.wantedPlaying
+                self.load(track.local.absoluteString, id: self.sourceID, startAt: 0, autoplay: playing, remote: track.remote, announce: true)
+            case .failure(let error):
+                self.failedTracks += 1
+                if self.failedTracks < self.tracks.count && self.advance(automatic: false) { return }
+                self.advancing = false
+                self.wantedPlaying = false
+                self.endBackgroundTask()
+                self.emit("error", ["message": error.localizedDescription])
+                self.publishState()
+            }
         }
     }
 
-    private func bufferedEnd() -> Double {
-        guard let range = item?.loadedTimeRanges.last?.timeRangeValue else { return 0 }
-        return CMTimeGetSeconds(CMTimeAdd(range.start, range.duration))
+    private func warmNext() {
+        guard let next = queue.next(automatic: false), next != queue.index else { return }
+        prepareTrack(next) { _ in }
     }
 
-    private func tearDown() {
-        if let ticker { player?.removeTimeObserver(ticker) }
-        ticker = nil
-        statusObservation = nil
-        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
-        endObserver = nil
-        player?.pause()
-        player = nil
-        item = nil
+    private func prepareTrack(_ index: Int, done: @escaping (Result<PreparedTrack, Error>) -> Void) {
+        guard tracks.indices.contains(index), let id = tracks[index]["id"] as? String else { return }
+        if let cached = prepared[id], FileManager.default.fileExists(atPath: cached.local.path) { done(.success(cached)); return }
+        if preparing[id] != nil { preparing[id]?.append(done); return }
+        preparing[id] = [done]
+        resolver.resolve(videoId: id, lang: "en", region: "US") { [weak self] payload in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard let link = payload["url"] as? String, let url = URL(string: link) else {
+                    self.finishPreparation(id, .failure(NSError(domain: "BeatmakerCuesAudio", code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: payload["error"] as? String ?? "Could not resolve the next song"])))
+                    return
+                }
+                let duration = self.number(payload["duration"])
+                let hash = SHA256.hash(data: Data(link.utf8)).map { String(format: "%02x", $0) }.joined()
+                let local = self.cacheDirectory.appendingPathComponent(hash + ".m4a")
+                if FileManager.default.fileExists(atPath: local.path) {
+                    self.finishPreparation(id, .success(PreparedTrack(remote: link, local: local, duration: duration)))
+                    return
+                }
+                var request = URLRequest(url: url, timeoutInterval: 60)
+                request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+                URLSession.shared.downloadTask(with: request) { [weak self] temporary, response, error in
+                    var result: Result<PreparedTrack, Error>
+                    do {
+                        if let error { throw error }
+                        guard let temporary, let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
+                            throw NSError(domain: "BeatmakerCuesAudio", code: 4, userInfo: [NSLocalizedDescriptionKey: "Could not cache the next song"])
+                        }
+                        if !FileManager.default.fileExists(atPath: local.path) { try FileManager.default.moveItem(at: temporary, to: local) }
+                        result = .success(PreparedTrack(remote: link, local: local, duration: duration))
+                    } catch { result = .failure(error) }
+                    DispatchQueue.main.async { self?.finishPreparation(id, result) }
+                }.resume()
+            }
+        }
+    }
+
+    private func finishPreparation(_ id: String, _ result: Result<PreparedTrack, Error>) {
+        if case .success(let track) = result { prepared[id] = track }
+        let callbacks = preparing.removeValue(forKey: id) ?? []
+        for callback in callbacks { callback(result) }
+    }
+
+    private func endBackgroundTask() {
+        if backgroundTask != .invalid { UIApplication.shared.endBackgroundTask(backgroundTask); backgroundTask = .invalid }
+    }
+
+    private func emitTime() {
+        let at = position()
+        pendingPosition = at
+        emit("time", ["position": at, "duration": duration, "buffered": file == nil ? 0 : duration])
+        publishState()
+    }
+
+    private func number(_ value: Any?, fallback: Double = 0) -> Double {
+        guard let number = value as? NSNumber, number.doubleValue.isFinite else { return fallback }
+        return number.doubleValue
     }
 
     private func emit(_ event: String, _ payload: [String: Any] = [:]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              let json = String(data: data, encoding: .utf8)
-        else { return }
-        let js = "window.__musikeAudioEvent && window.__musikeAudioEvent('\(event)', \(json))"
-        if Thread.isMainThread {
-            webView?.evaluateJavaScript(js)
-        } else {
-            DispatchQueue.main.async { [weak self] in self?.webView?.evaluateJavaScript(js) }
-        }
+        var data = payload
+        data["sourceId"] = sourceID
+        guard let encoded = try? JSONSerialization.data(withJSONObject: data), let json = String(data: encoded, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript("window.__musikeAudioEvent && window.__musikeAudioEvent('\(event)', \(json))")
+    }
+
+    deinit {
+        download?.cancel()
+        ticker?.invalidate()
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+        node.stop()
+        engine.stop()
     }
 }

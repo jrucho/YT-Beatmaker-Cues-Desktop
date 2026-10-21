@@ -38,6 +38,8 @@ interface UiState {
   settingsOpen: boolean;
   /** Cinema view: the video maximized over everything. */
   theater: boolean;
+  /** The playlist the Library tab reopens: browsing away from it should not lose the place. */
+  lastPlaylist: string | null;
   setTheme: (t: Theme) => void;
   toggleTheme: () => void;
   openPanel: (tab: PanelTab) => void;
@@ -53,6 +55,7 @@ interface UiState {
   setShortcutsOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setTheater: (open: boolean) => void;
+  setLastPlaylist: (id: string | null) => void;
 }
 
 const readTheme = (): Theme => (document.documentElement.dataset.theme === "light" ? "light" : "dark");
@@ -61,6 +64,14 @@ const readPanel = (): boolean => {
     return localStorage.getItem("musike:panel") !== "closed";
   } catch {
     return true;
+  }
+};
+const LAST_PLAYLIST_KEY = "musike:last-playlist";
+const readLastPlaylist = (): string | null => {
+  try {
+    return localStorage.getItem(LAST_PLAYLIST_KEY);
+  } catch {
+    return null;
   }
 };
 
@@ -77,6 +88,7 @@ export const useUi = create<UiState>((set, get) => ({
   shortcutsOpen: false,
   settingsOpen: false,
   theater: false,
+  lastPlaylist: readLastPlaylist(),
 
   setTheme: (theme) => {
     document.documentElement.dataset.theme = theme;
@@ -133,6 +145,15 @@ export const useUi = create<UiState>((set, get) => ({
   setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setTheater: (theater) => set({ theater }),
+  setLastPlaylist: (lastPlaylist) => {
+    try {
+      if (lastPlaylist) localStorage.setItem(LAST_PLAYLIST_KEY, lastPlaylist);
+      else localStorage.removeItem(LAST_PLAYLIST_KEY);
+    } catch {
+      /* private mode */
+    }
+    set({ lastPlaylist });
+  },
 }));
 
 export const toast = (message: string, tone?: Toast["tone"], action?: ToastAction) =>

@@ -8,6 +8,7 @@ import { NowPlayingSheet, PanelDrawer, SidePanel } from "./components/NowPlaying
 import { PlayerBar } from "./components/PlayerBar";
 import { Rail } from "./components/Rail";
 import { TitleBar } from "./components/TitleBar";
+import Cues from "./views/Cues";
 import { desktop } from "./lib/desktop";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Toasts } from "./components/Toasts";
@@ -52,6 +53,7 @@ export default function App() {
     <Beatmaker onDiscover={() => setDiscover(true)} onBrowse={() => setStudio(false)} />
   ) : (
     <MusicApp
+      cues={!capabilities.engineSettings}
       onStudio={capabilities.retryOnError ? undefined : () => {
         setDiscover(false);
         setStudio(true);
@@ -60,7 +62,7 @@ export default function App() {
   );
 }
 
-function MusicApp({ onStudio }: { onStudio?: () => void }) {
+function MusicApp({ onStudio, cues }: { onStudio?: () => void; cues?: boolean }) {
   const location = useLocation();
   const legacy = legacyRedirect(location.pathname, location.search, location.hash);
   const navigate = useNavigate();
@@ -157,6 +159,7 @@ function MusicApp({ onStudio }: { onStudio?: () => void }) {
               <Route path="/search/artist/:id" element={<Artist />} />
               <Route path="/search/album/:id" element={<Album />} />
               <Route path={paths.library} element={<Library />} />
+              <Route path={paths.cues} element={<Cues />} />
               <Route path={paths.favorites} element={<Collection kind="favorites" />} />
               <Route path={paths.history} element={<Collection kind="history" />} />
               <Route path="/playlist/:id" element={<Collection kind="playlist" />} />
@@ -172,7 +175,7 @@ function MusicApp({ onStudio }: { onStudio?: () => void }) {
       ) : (
         <>
           <MiniPlayer />
-          <TabBar onStudio={onStudio} />
+          <TabBar onStudio={onStudio} cues={cues} />
         </>
       )}
 

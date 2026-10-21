@@ -31,6 +31,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     try {
       const lib = await api.removeLibraryTrack(id, scope);
       set(lib);
+      toast(getT().toasts.removedFromLibrary);
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -86,7 +87,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   createPlaylist: async (name, tracks = []) => {
     try {
       const p = await api.createPlaylist(name, tracks);
-      set((s) => ({ playlists: [p, ...s.playlists] }));
+      set((s) => ({ playlists: s.playlists.some((x) => x.id === p.id) ? s.playlists : [p, ...s.playlists] }));
       toast(getT().toasts.playlistCreated(p.name));
       return p;
     } catch (e) {

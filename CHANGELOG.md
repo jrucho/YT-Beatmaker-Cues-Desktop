@@ -2,6 +2,10 @@
 
 ## 1.0.2
 
+- Added Android and iOS Beatmaker Cues projects with twelve native-backed touch cue pads, ten saved banks, sequential marking, native playhead capture, IN/OUT loops, 1% faders and independent semitone tuning.
+- Moved playlist advancement, next-track preparation and lock-screen transport into the native players so screen-off continuation does not rely on WebView JavaScript; the interface reconciles playback on return.
+- Added native USB/CoreMIDI inputs, playlist import deduplication/removal, remembered playlist navigation, updated branding and padded launch artwork.
+- Added local build backups, portable Xcode exports and a GitHub Actions workflow that builds an unsigned iOS IPA and updates existing release assets with checksums and source provenance.
 - Fixed automatic FFmpeg installation on macOS and Linux by downloading builds from GitHub instead of an unavailable third-party host.
 - Added a **Download FFmpeg** action in Settings, and FFmpeg is retried in the background on every launch when missing.
 - Added `pnpm share:mac` to build quarantine-free macOS folders and zips for USB drives or AirDrop, with an installer that avoids the Privacy & Security prompt.

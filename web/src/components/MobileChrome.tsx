@@ -1,31 +1,70 @@
-import { BooksIcon, HouseIcon, MagnifyingGlassIcon, WaveformIcon } from "@phosphor-icons/react";
-import { NavLink, useNavigate } from "react-router";
+import { BooksIcon, HouseIcon, MagnifyingGlassIcon, SlidersHorizontalIcon, WaveformIcon } from "@phosphor-icons/react";
+import { NavLink, useLocation, useNavigate } from "react-router";
 import { cn } from "../lib/format";
 import { useT } from "../i18n";
 import { NOW_PLAYING_HASH, paths } from "../lib/routes";
 import { selectCurrent, usePlayer, useStatusText } from "../player/player";
+import { useLibrary } from "../stores/library";
+import { useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { PlayPauseIcon } from "./Controls";
 
-const tabs = [
-  { to: paths.home, key: "home", Icon: HouseIcon, end: true },
-  { to: paths.search, key: "search", Icon: MagnifyingGlassIcon, end: false },
-  { to: paths.library, key: "library", Icon: BooksIcon, end: false },
-] as const;
-
-export function TabBar({ onStudio }: { onStudio?: () => void }) {
+export function TabBar({ onStudio, cues }: { onStudio?: () => void; cues?: boolean }) {
   const t = useT();
+  const location = useLocation();
+  const playlists = useLibrary((s) => s.playlists);
+  const lastPlaylist = useUi((s) => s.lastPlaylist);
+  // Library remembers the playlist that was open, so browsing away and back does not lose the place.
+  const remembered = lastPlaylist && playlists.some((p) => p.id === lastPlaylist) ? lastPlaylist : null;
+  const onLibrary = location.pathname === paths.library || location.pathname.startsWith("/playlist/");
+  const tabs = [
+    { to: paths.home, key: "home", Icon: HouseIcon, end: true, active: undefined },
+    { to: paths.search, key: "search", Icon: MagnifyingGlassIcon, end: false, active: undefined },
+    { to: remembered ? paths.playlist(remembered) : paths.library, key: "library", Icon: BooksIcon, end: false, active: onLibrary },
+  ] as const;
+  const columns = 3 + (cues ? 1 : 0) + (onStudio ? 1 : 0);
   return (
     <nav
       aria-label={t.nav.main}
       className="safe-bottom fixed inset-x-0 bottom-0 z-20 border-t border-line bg-bg/85 backdrop-blur-xl"
     >
-      <ul className={cn("mx-auto grid h-16 max-w-md", onStudio ? "grid-cols-4" : "grid-cols-3")}>
-        {tabs.map(({ to, key, Icon, end }) => (
-          <li key={to}>
+      <ul
+        className={cn(
+          "mx-auto grid h-16 max-w-md",
+          columns === 5 ? "grid-cols-5" : columns === 4 ? "grid-cols-4" : "grid-cols-3",
+        )}
+      >
+        {tabs.map(({ to, key, Icon, end, active }) => (
+          <li key={key}>
             <NavLink
               to={to}
               end={end}
+              className={({ isActive }) =>
+                cn(
+                  "relative flex h-full flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
+                  (active ?? isActive) ? "text-fg" : "text-fg-3",
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={cn(
+                      "absolute top-0 h-[3px] w-8 rounded-b-full bg-accent transition-transform duration-300 ease-out-expo",
+                      (active ?? isActive) ? "scale-x-100" : "scale-x-0",
+                    )}
+                  />
+                  <Icon size={24} weight={(active ?? isActive) ? "fill" : "regular"} />
+                  {t.nav[key]}
+                </>
+              )}
+            </NavLink>
+          </li>
+        ))}
+        {cues && (
+          <li>
+            <NavLink
+              to={paths.cues}
               className={({ isActive }) =>
                 cn(
                   "relative flex h-full flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
@@ -41,13 +80,13 @@ export function TabBar({ onStudio }: { onStudio?: () => void }) {
                       isActive ? "scale-x-100" : "scale-x-0",
                     )}
                   />
-                  <Icon size={24} weight={isActive ? "fill" : "regular"} />
-                  {t.nav[key]}
+                  <SlidersHorizontalIcon size={24} weight={isActive ? "fill" : "regular"} />
+                  {t.nav.cues}
                 </>
               )}
             </NavLink>
           </li>
-        ))}
+        )}
         {onStudio && (
           <li>
             <button
