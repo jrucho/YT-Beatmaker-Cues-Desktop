@@ -111,6 +111,7 @@ try {
     return route.fulfill({ contentType: "image/svg+xml", body: cover(match ? Number(match[1]) : 0) });
   });
   await page.route("**/api/search?*", route => route.fulfill({ json: { tracks } }));
+  await page.route("**/api/search/playlists?*", route => route.fulfill({ json: { playlists: ["Jazz samples", "Dusty jazz cuts", "Soul and jazz", "Rare jazz recordings", "Jazz breaks", "Piano samples"].map((title, n) => ({ id: `PLdemo00000${n}`, title, author: "Sample collection", thumb: tracks[n].thumb })) } }));
   await page.route("**/api/prepare/*", route => route.fulfill({ json: {} }));
   const wav = wave();
   await page.route("**/api/stream/*/audio", route => mediaResponse(route, wav, "audio/wav"));
@@ -125,6 +126,13 @@ try {
   await page.locator(".ds-scroll").evaluate(el => { el.scrollTop = 0; });
   await page.screenshot({ path: path.join(shots, "discover-samples.png") });
   console.log("Captured discover-samples.png");
+
+  await page.getByRole("textbox", { name: "Discover samples search" }).fill("jazz samples");
+  await page.getByRole("button", { name: "START DIGGING" }).click();
+  await page.getByRole("region", { name: "Matching YouTube playlists", exact: true }).getByRole("button", { name: "Open YouTube playlist Jazz samples", exact: true }).waitFor();
+  await page.locator(".ds-scroll").evaluate(el => { el.scrollTop = 0; });
+  await page.screenshot({ path: path.join(shots, "discover-search.png") });
+  console.log("Captured discover-search.png");
 
   await page.locator(".ds-track-grid").getByRole("button", { name: "Load Midnight Tapes into studio", exact: true }).click();
   await page.locator(".bm-footer").getByText("Ready", { exact: true }).waitFor({ timeout: 30000 });

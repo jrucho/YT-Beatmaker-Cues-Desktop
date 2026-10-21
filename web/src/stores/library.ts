@@ -16,6 +16,7 @@ interface LibraryState extends Library {
   deletePlaylist: (id: string) => Promise<void>;
   addToPlaylist: (id: string, t: Track | Track[]) => Promise<void>;
   removeFromPlaylist: (id: string, trackId: string) => Promise<void>;
+  removeTrack: (id: string, scope?: "all" | "history") => Promise<void>;
 }
 
 const replacePlaylist = (list: Playlist[], p: Playlist) => list.map((x) => (x.id === p.id ? p : x));
@@ -25,6 +26,15 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   playlists: [],
   history: [],
   status: "idle",
+
+  removeTrack: async (id, scope = "all") => {
+    try {
+      const lib = await api.removeLibraryTrack(id, scope);
+      set(lib);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  },
 
   load: async () => {
     set({ status: "loading" });

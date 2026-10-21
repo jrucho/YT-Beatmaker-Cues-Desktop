@@ -9,6 +9,8 @@ import {
   type SystemInfo,
   type SystemJob,
   type SystemMedia,
+  type CatalogPlaylist,
+  type CatalogPlaylistPage,
 } from "./apiTypes";
 import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, Library, Playlist, Track } from "./types";
 
@@ -36,6 +38,9 @@ async function request<T>(path: string, init?: RequestInit & { json?: unknown })
 }
 
 export const api: MusikeApi = {
+  searchPlaylists: (q, signal) => request<{ playlists: CatalogPlaylist[] }>(`/api/search/playlists?q=${encodeURIComponent(q)}`, { signal }).then(r => r.playlists),
+  youtubePlaylist: (id, signal) => request<CatalogPlaylistPage>(`/api/youtube/playlists/${encodeURIComponent(id)}`, { signal }),
+  removeLibraryTrack: (id, scope = "all") => request<Library>(`/api/library/tracks/${id}?scope=${scope}`, { method: "DELETE" }),
   search: (q: string, type: "song" | "video", signal?: AbortSignal) =>
     request<{ tracks: Track[] }>(`/api/search?q=${encodeURIComponent(q)}&type=${type}`, { signal }).then((r) => r.tracks),
   suggest: (q: string, signal?: AbortSignal) =>

@@ -7,6 +7,7 @@ import { config } from "./config.js";
 import * as library from "./library.js";
 import { fileStorage } from "./libraryFile.js";
 import { findVideoFor, radio, search, suggestions } from "./search.js";
+import { getPlaylist, searchPlaylists } from "./playlists.js";
 import { proxyStream, serveFile } from "./stream.js";
 import { langOf, msg, tr } from "./i18n.js";
 import { presentJob, startJob, systemInfo, type Channel } from "./system.js";
@@ -66,6 +67,21 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   });
 
   // Discovery
+
+  app.get("/api/search/playlists", async req => {
+    const { q } = req.query as { q?: string };
+    return { playlists: await searchPlaylists(query(q), langOf(req)) };
+  });
+
+  app.get("/api/youtube/playlists/:id", async req => {
+    const { id } = req.params as { id: string };
+    return getPlaylist(id, langOf(req));
+  });
+
+  app.delete("/api/library/tracks/:id", async req => {
+    const { scope } = req.query as { scope?: string };
+    return library.removeTrack(videoId(req.params), scope === "history" ? "history" : "all");
+  });
 
   app.get("/api/search", async (req) => {
     const { q, type } = req.query as { q?: string; type?: string };

@@ -2,6 +2,10 @@
 
 ## 1.0.1
 
+- Discover search results appear above recent library tracks, with a horizontally scrollable row of matching YouTube playlists.
+- Search public YouTube playlists or paste a playlist link, preview their songs, then save the playlist to the shared library (up to 500 playable tracks per import, with an explicit limit indicator).
+- Studio displays saved playlists by name and track count; open a playlist to see its songs or delete it directly.
+- Remove tracks from a selected playlist, favorites, history, or the whole library using the studio's trash controls.
 - Discover now includes recently played library tracks and quick access to saved playlists.
 - Search finds saved playlists in Discover and the full music browser.
 - Create playlists and add tracks to them directly from the studio; use the collection selector to keep the track list focused.

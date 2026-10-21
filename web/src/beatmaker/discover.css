@@ -10,6 +10,8 @@
 .ds-hero h1>span { color:#777; }
 .ds-hero p { max-width:350px; color:#868686; line-height:1.8; font-size:12px; }
 .ds-search-form { display:flex; flex-direction:column; gap:12px; max-width:530px; justify-self:end; width:100%; }
+.ds-search-type { display:flex; gap:8px; align-items:center; color:#888; font-size:11px; }
+.ds-search-type select { background:#0b0b0b; border:1px solid #333; border-radius:8px; padding:5px 9px; color:#ddd; }
 .ds-search-form .bm-search { min-height:52px; }
 .ds-search-form .bm-primary { align-self:flex-end; min-height:42px; padding:0 19px; }
 .ds-search-note { font:8px "Geist Mono Variable",monospace; color:#606060; letter-spacing:.05em; align-self:flex-end; }
@@ -44,6 +46,13 @@
 .ds-playlist-name small { font:8px "Geist Mono Variable",monospace; color:#777; }
 .ds-playlist-matches { display:flex; flex-direction:column; gap:9px; margin-bottom:18px; padding:14px; border:1px solid #242424; border-radius:13px; background:#0b0b0b; }
 .ds-content { display:grid; grid-template-columns:minmax(0,1fr) 270px; gap:32px; padding-top:28px; }
+.ds-results { min-width:0; }
+.ds-youtube-matches { margin-bottom:22px; min-width:0; }
+.ds-youtube-matches h3 { font-size:12px; font-weight:500; color:#aaa; margin-bottom:10px; }
+.ds-has-search .ds-hero { padding:20px 0; gap:20px; }
+.ds-has-search .ds-hero h1 { font-size:28px; margin:6px 0; letter-spacing:-1px; }
+.ds-has-search .ds-hero p { display:none; }
+.ds-has-search .ds-sidebar { grid-row:auto; }
 .ds-section-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:22px; }
 .ds-section-heading h2 { margin-top:6px; font-size:23px; font-weight:500; letter-spacing:-.6px; }
 .ds-section-heading button { min-height:32px; border-radius:9px; font:8px "Geist Mono Variable",monospace; color:#aaa; }

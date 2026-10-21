@@ -14,6 +14,8 @@ A standalone desktop music and beatmaking app combining [Musike](https://github.
 | :---: | :---: |
 | <a href="docs/screenshots/studio.png"><img src="docs/screenshots/studio.png" alt="Beatmaker studio with waveform cues and twelve cue pads"></a> | <a href="docs/screenshots/library.png"><img src="docs/screenshots/library.png" alt="Pitch-black music library with playlists, favorites and now playing panel"></a> |
 
+[Discover search with matching YouTube playlists](docs/screenshots/discover-search.png)
+
 <p align="center">
   <a href="docs/screenshots/settings.png"><img src="docs/screenshots/settings.png" alt="Settings with appearance, English, French and Spanish language options" width="420"></a>
 </p>
@@ -55,6 +57,8 @@ For AppImage, enable **Allow executing as a program** in the file's properties, 
 - **Discover Samples:** the opening page, with searchable music crates, live previews, favorites and one-click loading into the studio.
 - **Your library in Discover:** recently played tracks and saved playlists, with playlist-name matches included in search.
 - **Studio playlists:** create a playlist, add tracks with the playlist button on each card, and choose a collection to keep the studio library focused.
+- **YouTube playlists:** song searches in Discover include a horizontal playlist row. Open a playlist to preview its songs, then choose **Add playlist to library**. A dedicated YouTube playlists search is also available in the studio and music browser; playlist links work too. Imports include up to 500 playable public tracks and show when that limit is reached.
+- **Studio library management:** saved playlists are visible above the track list. Select one to browse its songs. Trash controls remove a track from that collection, or delete the playlist; in **All tracks**, removing a song also removes it from favorites, history and every saved playlist.
 - **Included drum banks:** 30 real kick, snare and hi-hat WAV files with working preview and download actions, available without an internet connection in the desktop app.
 - **Music discovery:** search YouTube Music, paste a YouTube link, browse the full Musike catalog, and keep favorites and playlists.
 - **Cue workspace:** 12 pads, A–J banks per track, keyboard triggering, Shift-click cue replacement, and local autosave.

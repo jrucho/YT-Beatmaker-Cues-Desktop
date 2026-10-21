@@ -12,6 +12,7 @@ import { LogoMark } from "../components/Brand";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { Slider } from "../components/Slider";
 import { Toasts } from "../components/Toasts";
+import { YouTubePlaylists } from "../components/YouTubePlaylists";
 import "./beatmaker.css";
 import "./discover.css";
 
@@ -28,7 +29,7 @@ const PACKS = [
   { id: "snare", title: "Snare collection", label: "SNAP & TEXTURE / 10 WAV HITS" },
   { id: "hihat", title: "Hi-hat collection", label: "TOP END / 10 WAV HITS" },
 ] as const;
-type Mode = "tracks" | typeof PACKS[number]["id"];
+type Mode = "tracks" | "playlists" | typeof PACKS[number]["id"];
 const duration = (s: number) => `${Math.floor((s || 0) / 60)}:${Math.floor((s || 0) % 60).toString().padStart(2, "0")}`;
 
 function DiscoverPlayer({ sample, onStopSample, onOpenStudio, onMarkCues }: { sample: string | null; onStopSample(): void; onOpenStudio(): void; onMarkCues(track: Track): void }) {
@@ -96,6 +97,8 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
   const current = usePlayer(selectCurrent);
   const [mode, setMode] = useState<Mode>("tracks");
   const [query, setQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const [searchType, setSearchType] = useState("songs");
   const [heading, setHeading] = useState("Jazz cuts");
   const [tracks, setTracks] = useState<Track[]>([]);
   const [busy, setBusy] = useState(false);
@@ -125,10 +128,13 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
 
   useEffect(() => { if (sample.current) sample.current.volume = player.muted ? 0 : player.volume; }, [player.volume, player.muted]);
 
-  async function search(value: string, title = value) {
+  async function search(value: string, title = value, type = searchType) {
     if (!value.trim()) return;
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
+    if (type === "playlists" || /[?&]list=/.test(value)) {
+      setMode("playlists"); setHeading(title); setLastQuery(value); setBusy(false); setError(""); return;
+    }
     setMode("tracks"); setHeading(title); setLastQuery(value); setBusy(true); setError(""); setTracks([]);
     try {
       const found = await api.search(value.trim(), "song", controller.signal);
@@ -162,7 +168,24 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
     try { await audio.play(); } catch (err) { setPlayingSample(null); if ((err as Error).name !== "AbortError") toast((err as Error).message, "error"); }
   }
 
-  return <div className="bm-app ds-app">
+  const crates = <section className="ds-crates" aria-label="Music discovery categories">{CRATES.map(crate => <button key={crate.title} className={`ds-crate ${heading === crate.title && mode === "tracks" ? "is-selected" : ""}`} onClick={() => { setSubmittedQuery(""); void search(crate.query, crate.title, "songs"); }} style={{ "--crate-color": crate.color } as CSSProperties}><span className="ds-crate-texture"><MusicNotes size={28} weight="thin" /></span><strong>{crate.title}</strong><span>{crate.label}</span><ArrowRight className="ds-crate-arrow" size={16} /></button>)}</section>;
+  const librarySection = (recentTracks.length > 0 || library.playlists.length > 0) && <section className="ds-library" aria-label="Your library">
+    <div className="ds-section-heading"><div><span className="bm-eyebrow">YOUR LIBRARY</span><h2>{libraryTitle}</h2></div><button onClick={onBrowse}>OPEN LIBRARY <ArrowRight size={16} /></button></div>
+    {recentTracks.length > 0 && <div className="ds-library-tracks">{recentTracks.map(t => {
+      const active = current?.id === t.id && (player.status === "playing" || player.status === "loading");
+      return <article className="ds-library-track" key={t.id}>
+        <button className="ds-library-art" aria-label={`${active ? "Pause" : "Preview"} ${t.title}`} onClick={() => previewTrack(t)}>
+          {t.art || t.thumb ? <img src={t.art || t.thumb} alt="" loading="lazy" /> : <MusicNotes size={22} />}
+          <span className="ds-library-play">{active ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}</span>
+        </button>
+        <div className="ds-library-meta"><strong title={t.title}>{t.title}</strong><span>{t.artist}</span></div>
+        <button className="ds-library-open" aria-label={`Load ${t.title} into studio`} title="Load in studio" onClick={() => openStudio(t)}><ArrowRight size={15} /></button>
+      </article>;
+    })}</div>}
+    {library.playlists.length > 0 && <div className="ds-library-playlists"><span className="bm-eyebrow">PLAYLISTS</span><div className="ds-playlist-row">{library.playlists.slice(0, 6).map(p => <button className="ds-playlist-card" key={p.id} onClick={() => onOpenPlaylist(p.id)}><span className="ds-playlist-icon"><PlaylistIcon size={17} /></span><span className="ds-playlist-name"><strong>{p.name}</strong><small>{p.tracks.length} tracks</small></span><ArrowRight size={14} /></button>)}</div></div>}
+  </section>;
+
+  return <div className={`bm-app ds-app ${submittedQuery ? "ds-has-search" : ""}`}>
     {desktop && <div className="bm-titlebar app-drag"><span>MUSIKE</span><span>v{__APP_VERSION__}</span></div>}
     <header className="bm-header ds-header">
       <div className="bm-brand"><span className="bm-brand-icon"><LogoMark className="bm-brand-mark" /></span><strong>MUSIKE</strong></div>
@@ -171,42 +194,20 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
     <main className="ds-scroll">
       <section className="ds-hero">
         <div><span className="bm-eyebrow">DISCOVER</span><h1>Find a sound.<br /><span>Make it yours.</span></h1><p>Search music, preview an included drum hit, or open a track from your library.</p></div>
-        <form className="ds-search-form" onSubmit={e => { e.preventDefault(); void search(query); }}>
+        <form className="ds-search-form" onSubmit={e => { e.preventDefault(); setSubmittedQuery(query.trim()); document.querySelector(".ds-scroll")?.scrollTo({ top: 0 }); void search(query); }}>
+          <label className="ds-search-type">Search <select aria-label="Discover search type" value={searchType} onChange={e => setSearchType(e.target.value)}><option value="songs">Songs</option><option value="playlists">YouTube playlists</option></select></label>
           <label className="bm-search"><MagnifyingGlass size={21} /><input aria-label="Discover samples search" placeholder="Search artists, sounds, or paste a YouTube link…" value={query} onChange={e => setQuery(e.target.value)} /><button type="button" aria-label="Clear discovery search" onClick={() => setQuery("")}><X size={14} /></button></label>
           <button className="bm-primary" type="submit" disabled={!query.trim()}>START DIGGING <ArrowRight size={17} /></button>
           <span className="ds-search-note">YouTube search · 30 included drum samples</span>
         </form>
       </section>
-      <section className="ds-crates" aria-label="Music discovery categories">{CRATES.map(crate => <button key={crate.title} className={`ds-crate ${heading === crate.title && mode === "tracks" ? "is-selected" : ""}`} onClick={() => void search(crate.query, crate.title)} style={{ "--crate-color": crate.color } as CSSProperties}><span className="ds-crate-texture"><MusicNotes size={28} weight="thin" /></span><strong>{crate.title}</strong><span>{crate.label}</span><ArrowRight className="ds-crate-arrow" size={16} /></button>)}</section>
-      {(recentTracks.length > 0 || library.playlists.length > 0) && <section className="ds-library" aria-label="Your library">
-        <div className="ds-section-heading">
-          <div><span className="bm-eyebrow">YOUR LIBRARY</span><h2>{libraryTitle}</h2></div>
-          <button onClick={onBrowse}>OPEN LIBRARY <ArrowRight size={16} /></button>
-        </div>
-        {recentTracks.length > 0 && <div className="ds-library-tracks">{recentTracks.map(t => {
-          const active = current?.id === t.id && (player.status === "playing" || player.status === "loading");
-          return <article className="ds-library-track" key={t.id}>
-            <button className="ds-library-art" aria-label={`${active ? "Pause" : "Preview"} ${t.title}`} onClick={() => previewTrack(t)}>
-              {t.art || t.thumb ? <img src={t.art || t.thumb} alt="" loading="lazy" /> : <MusicNotes size={22} />}
-              <span className="ds-library-play">{active ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}</span>
-            </button>
-            <div className="ds-library-meta"><strong title={t.title}>{t.title}</strong><span>{t.artist}</span></div>
-            <button className="ds-library-open" aria-label={`Load ${t.title} into studio`} title="Load in studio" onClick={() => openStudio(t)}><ArrowRight size={15} /></button>
-          </article>;
-        })}</div>}
-        {library.playlists.length > 0 && <div className="ds-library-playlists">
-          <span className="bm-eyebrow">PLAYLISTS</span>
-          <div className="ds-playlist-row">{library.playlists.slice(0, 6).map(p => <button className="ds-playlist-card" key={p.id} onClick={() => onOpenPlaylist(p.id)}>
-            <span className="ds-playlist-icon"><PlaylistIcon size={17} /></span>
-            <span className="ds-playlist-name"><strong>{p.name}</strong><small>{p.tracks.length} tracks</small></span>
-            <ArrowRight size={14} />
-          </button>)}</div>
-        </div>}
-      </section>}
+      {!submittedQuery && crates}
+      {!submittedQuery && librarySection}
       <div className="ds-content">
         <section className="ds-results">
-          <div className="ds-section-heading"><div><span className="bm-eyebrow">{mode === "tracks" ? "MUSIC TO EXPLORE" : "BUNDLED / AVAILABLE OFFLINE"}</span><h2>{heading}</h2></div><button aria-label="Discover a random music category" onClick={() => { const crate = CRATES[Math.floor(Math.random() * CRATES.length)]; void search(crate.query, crate.title); }}><Shuffle size={16} /> SURPRISE ME</button></div>
-          {mode === "tracks" ? <>
+          <div className="ds-section-heading"><div><span className="bm-eyebrow">{mode === "playlists" ? "YOUTUBE PLAYLISTS" : mode === "tracks" ? "MUSIC TO EXPLORE" : "BUNDLED / AVAILABLE OFFLINE"}</span><h2>{heading}</h2></div><button aria-label="Discover a random music category" onClick={() => { const crate = CRATES[Math.floor(Math.random() * CRATES.length)]; setSubmittedQuery(""); void search(crate.query, crate.title, "songs"); }}><Shuffle size={16} /> SURPRISE ME</button></div>
+          {mode === "playlists" ? <YouTubePlaylists query={lastQuery} onPreview={previewTrack} onImported={p => onOpenPlaylist(p.id)} /> : mode === "tracks" ? <>
+            {submittedQuery && <section className="ds-youtube-matches" aria-label="Matching YouTube playlists"><h3>YouTube playlists</h3><YouTubePlaylists query={submittedQuery} layout="row" onPreview={previewTrack} onImported={p => onOpenPlaylist(p.id)} /></section>}
             {playlistMatches.length > 0 && (
               <div className="ds-playlist-matches">
                 <span className="bm-eyebrow">MATCHING PLAYLISTS</span>
@@ -245,6 +246,8 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
         </section>
         <aside className="ds-sidebar"><span className="bm-eyebrow">INCLUDED SAMPLES</span><h2>Drum hits</h2><p>30 built-in samples. Preview or download the WAV files, then open them in the studio.</p><div className="ds-packs">{PACKS.map(pack => <button className={mode === pack.id ? "is-selected" : ""} key={pack.id} onClick={() => openPack(pack.id, pack.title)}><span className="ds-pack-icon"><Waveform size={22} /></span><span><strong>{pack.title}</strong><small>{pack.label}</small></span><ArrowRight size={16} /></button>)}</div><button className="ds-open-studio bm-primary" onClick={() => openStudio()}>OPEN THE STUDIO <ArrowRight size={16} /></button><span className="ds-sidebar-note">Music discovery streams from YouTube. Included WAV hits are bundled with the app.</span></aside>
       </div>
+      {submittedQuery && librarySection}
+      {submittedQuery && crates}
     </main>
     <DiscoverPlayer sample={playingSample} onStopSample={() => { sample.current?.pause(); setPlayingSample(null); }} onOpenStudio={() => openStudio()} onMarkCues={openStudio} />
     <SettingsDialog studio /><Toasts />

@@ -50,20 +50,22 @@ export const text = (v: unknown): string => (v == null ? "" : typeof v === "stri
 
 // youtubei.js node shapes differ between item types, so read them defensively.
 export function toTrack(item: any, kind: Track["kind"]): Track | null {
-  const id: string | undefined = item.id ?? item.video_id;
+  const id: string | undefined = item.id ?? item.video_id ?? item.content_id;
   if (!id || !VIDEO_ID.test(id)) return null;
   const artists: string[] = (item.artists ?? item.authors ?? []).map((a: { name: string }) => a.name).filter(Boolean);
-  const artist = artists.join(", ") || text(item.author?.name) || "";
-  const thumbs = item.thumbnail?.contents ?? item.thumbnail ?? item.thumbnails ?? [];
+  const artist = artists.join(", ") || text(item.author?.name) || text(item.metadata?.metadata?.metadata_rows?.[0]?.metadata_parts?.[0]?.text);
+  const thumbs = item.thumbnail?.contents ?? item.thumbnail ?? item.thumbnails ?? item.content_image?.image ?? [];
   const best = Array.isArray(thumbs) ? thumbs[0]?.url : undefined;
   const isSquare = typeof best === "string" && /googleusercontent\.com|ggpht\.com/.test(best);
+  const durationText = (item.content_image?.overlays ?? []).flatMap((overlay: any) => overlay.badges ?? []).map((badge: any) => text(badge.text)).find((v: string) => /^\d+(?::\d{2}){1,2}$/.test(v));
+  const durationSeconds = durationText ? durationText.split(":").reduce((n: number, part: string) => n * 60 + Number(part), 0) : 0;
   const images = isSquare ? { thumb: sized(best, 120), art: sized(best, 544) } : videoThumbs(id);
   return {
     id,
-    title: text(item.title) || text(item.name),
+    title: text(item.title ?? item.metadata?.title) || text(item.name),
     artist,
     album: item.album?.name || undefined,
-    duration: item.duration?.seconds ?? 0,
+    duration: item.duration?.seconds ?? durationSeconds,
     ...images,
     kind: isSquare ? kind : "video",
   };

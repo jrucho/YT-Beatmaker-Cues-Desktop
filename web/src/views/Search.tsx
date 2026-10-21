@@ -16,6 +16,7 @@ import { Artwork } from "../components/Artwork";
 import { GenrePanel } from "../components/GenrePanel";
 import { EmptyState, PageHeader } from "../components/Page";
 import { TrackList, TrackListSkeleton } from "../components/TrackList";
+import { YouTubePlaylists } from "../components/YouTubePlaylists";
 import { MD, useMediaQuery } from "../hooks/useMediaQuery";
 import { api } from "../lib/api";
 import { useT } from "../i18n";
@@ -56,8 +57,8 @@ function videoIdFromUrl(text: string): string | null {
   }
 }
 
-type Kind = "song" | "video" | "album";
-const KIND_PARAM: Record<Kind, string | null> = { song: null, video: "videos", album: "albums" };
+type Kind = "song" | "video" | "album" | "playlist";
+const KIND_PARAM: Record<Kind, string | null> = { song: null, video: "videos", album: "albums", playlist: "playlists" };
 
 // The genre panel stays open when coming back from a genre page.
 let genresOpenMemo = false;
@@ -65,7 +66,7 @@ let genresOpenMemo = false;
 export default function Search() {
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
-  const kind: Kind = params.get("type") === "videos" ? "video" : params.get("type") === "albums" ? "album" : "song";
+  const kind: Kind = params.get("type") === "playlists" ? "playlist" : params.get("type") === "videos" ? "video" : params.get("type") === "albums" ? "album" : "song";
   const t = useT();
   const [text, setText] = useState(q);
   const [results, setResults] = useState<Track[] | null>(null);
@@ -83,7 +84,8 @@ export default function Search() {
   const playlists = useLibrary((s) => s.playlists);
   const playlistMatches = q.trim() ? playlists.filter(p => p.name.toLowerCase().includes(q.trim().toLowerCase())) : [];
 
-  const linkId = videoIdFromUrl(text);
+  const playlistLink = /[?&]list=/.test(text);
+  const linkId = playlistLink ? null : videoIdFromUrl(text);
   // "a, b, c" probably means three songs; offer to search each one (titles can have commas, so only offer).
   const listTerms = linkId || !text.includes(",") ? [] : parseList(text);
 
@@ -105,8 +107,8 @@ export default function Search() {
 
   // Search as you type, debounced.
   useEffect(() => {
-    if (linkId || text.trim() === q) return;
-    const timer = setTimeout(() => setQuery(text), 380);
+    if (linkId || (text.trim() === q && (!playlistLink || kind === "playlist"))) return;
+    const timer = setTimeout(() => setQuery(text, playlistLink ? "playlist" : kind), 380);
     return () => clearTimeout(timer);
   }, [text]);
 
@@ -120,7 +122,7 @@ export default function Search() {
     const ctrl = new AbortController();
     setState("loading");
     const found: Promise<number> =
-      kind === "album"
+      kind === "playlist" ? Promise.resolve(0) : kind === "album"
         ? api.searchAlbums(q, ctrl.signal).then((list) => (setAlbums(list), setResults(null), list.length))
         : api.search(q, kind, ctrl.signal).then((list) => (setResults(list), setAlbums(null), list.length));
     found
@@ -204,7 +206,7 @@ export default function Search() {
           onSubmit={(e) => {
             e.preventDefault();
             input.current?.blur();
-            if (!linkId) setQuery(text);
+            if (!linkId) setQuery(text, playlistLink ? "playlist" : kind);
           }}
           className="relative"
         >
@@ -282,6 +284,7 @@ export default function Search() {
               {tab("song", t.search.songs)}
               {tab("video", t.search.videos)}
               {tab("album", t.search.albums)}
+              {tab("playlist", "YouTube playlists")}
             </div>
             <span className="flex-1" />
             <div className="flex items-center gap-1">
@@ -313,6 +316,7 @@ export default function Search() {
       </div>
 
       <div className="mt-4 px-2 md:px-3">
+        {!linkId && kind === "playlist" && <YouTubePlaylists query={q} />}
         {!linkId && playlistMatches.length > 0 && <section aria-label={t.common.playlist} className="mb-5 px-2 md:px-3">
           <h2 className="mb-3 text-sm font-semibold">{t.common.playlist}</h2>
           <div className="grid gap-2 sm:grid-cols-2">{playlistMatches.map(p => <Link key={p.id} to={paths.playlist(p.id)} className="flex min-w-0 items-center gap-3 rounded-xl bg-surface-2 p-3 hover:bg-surface-3">
@@ -347,9 +351,9 @@ export default function Search() {
           </div>
         )}
 
-        {!linkId && state === "loading" && <TrackListSkeleton />}
+        {!linkId && kind !== "playlist" && state === "loading" && <TrackListSkeleton />}
 
-        {!linkId && state === "error" && (
+        {!linkId && kind !== "playlist" && state === "error" && (
           <EmptyState
             icon={<WarningCircleIcon size={28} />}
             title={t.search.failed}
@@ -366,13 +370,13 @@ export default function Search() {
           />
         )}
 
-        {!linkId && state === "ok" && albums && (albums.length ? (
+        {!linkId && kind !== "playlist" && state === "ok" && albums && (albums.length ? (
           <AlbumGrid albums={albums} />
         ) : (
           <EmptyState icon={<MagnifyingGlassIcon size={28} />} title={t.search.nothingFound} body={t.search.nothingFoundBody(q, t.search.songs)} />
         ))}
 
-        {!linkId && state === "ok" && results && results.length === 0 && (
+        {!linkId && kind !== "playlist" && state === "ok" && results && results.length === 0 && (
           <EmptyState
             icon={<MagnifyingGlassIcon size={28} />}
             title={t.search.nothingFound}
@@ -380,7 +384,7 @@ export default function Search() {
           />
         )}
 
-        {!linkId && state === "ok" && results && results.length > 0 && <TrackList tracks={results} showAlbum={kind === "song"} />}
+        {!linkId && kind !== "playlist" && state === "ok" && results && results.length > 0 && <TrackList tracks={results} showAlbum={kind === "song"} />}
 
         {!linkId && state === "idle" && (
           <div className="px-2 md:px-3">

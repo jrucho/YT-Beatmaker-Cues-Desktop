@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowCounterClockwise, ArrowSquareOut, DownloadSimple, FolderOpen, GearSix, GridFour, Info, List, MagnifyingGlass, MusicNotes, Pause, Play, PlaylistIcon, Plus, Shuffle, SlidersHorizontal, SpeakerHigh, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowSquareOut, DownloadSimple, FolderOpen, GearSix, GridFour, Info, List, MagnifyingGlass, MusicNotes, Pause, Play, PlaylistIcon, Plus, Shuffle, SlidersHorizontal, SpeakerHigh, TrashIcon, X } from "@phosphor-icons/react";
 import { api, saveFile } from "../lib/api";
 import { desktop } from "../lib/desktop";
 import type { Track } from "../lib/types";
@@ -11,6 +11,7 @@ import { LogoMark } from "../components/Brand";
 import { AddToPlaylistDialog, NamePlaylistDialog } from "../components/Dialogs";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { Toasts } from "../components/Toasts";
+import { YouTubePlaylists } from "../components/YouTubePlaylists";
 import { loadBeatmaker, setEngineBank, type Engine } from "./runtime";
 import "./beatmaker.css";
 
@@ -29,6 +30,8 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
   const openAddToPlaylist = useUi((s) => s.openAddToPlaylist);
   const [query, setQuery] = useState("");
+  const [searchType, setSearchType] = useState("songs");
+  const [playlistQuery, setPlaylistQuery] = useState("");
   const [results, setResults] = useState<Track[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [list, setList] = useState(false);
@@ -87,10 +90,30 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
     : source === "all" ? [...new Map([...library.favorites, ...library.history, ...library.playlists.flatMap(x => x.tracks)].map(t => [t.id, t])).values()]
     : library.playlists.find(x => x.id === source)?.tracks ?? [];
   const shown = results ?? tracks.filter(t => `${t.title} ${t.artist} ${t.album ?? ""}`.toLowerCase().includes(query.toLowerCase()));
+  const selectedPlaylist = library.playlists.find(p => p.id === source);
+
+  function selectCollection(id: string) {
+    controller.current?.abort(); setSearching(false);
+    setSource(id); setResults(null); setQuery(""); setSearchType("songs"); setPlaylistQuery("");
+  }
+
+  async function deleteCollection(id: string) {
+    await library.deletePlaylist(id);
+    if (source === id && !useLibrary.getState().playlists.some(p => p.id === id)) selectCollection("all");
+  }
+
+  async function removeTrack(t: Track) {
+    if (selectedPlaylist) await library.removeFromPlaylist(source, t.id);
+    else if (source === "favorites") await library.toggleFavorite(t);
+    else await library.removeTrack(t.id, source === "history" ? "history" : "all");
+  }
 
   async function search(value = query) {
     if (!value.trim()) { setResults(null); return; }
     controller.current?.abort();
+    if (searchType === "playlists" || /[?&]list=/.test(value)) {
+      setSearchType("playlists"); setPlaylistQuery(value.trim()); setSearching(false); setResults(null); return;
+    }
     const abort = new AbortController(); controller.current = abort;
     setSearching(true);
     try { const found = await api.search(value.trim(), "song", abort.signal); if (!abort.signal.aborted) setResults(found); }
@@ -169,17 +192,22 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
 
       <div className="bm-workspace">
         <aside className="bm-library">
-          <div className="bm-library-heading"><button className="bm-tab is-active" onClick={() => { controller.current?.abort(); setSearching(false); setSource("all"); setResults(null); setQuery(""); }}>LIBRARY <span>({tracks.length})</span></button><button className={`bm-tab ${!list ? "is-selected" : ""}`} onClick={() => setList(false)} aria-label="Cover view"><GridFour size={15} /> COVERS</button><button className={`bm-tab ${list ? "is-selected" : ""}`} onClick={() => setList(true)}><List size={16} /> LIST</button></div>
+          <div className="bm-library-heading"><button className="bm-tab is-active" onClick={() => selectCollection("all")}>LIBRARY <span>({tracks.length})</span></button><button className={`bm-tab ${!list ? "is-selected" : ""}`} onClick={() => setList(false)} aria-label="Cover view"><GridFour size={15} /> COVERS</button><button className={`bm-tab ${list ? "is-selected" : ""}`} onClick={() => setList(true)}><List size={16} /> LIST</button></div>
+          <div className="bm-collections" aria-label="Studio playlists">{library.playlists.map(playlist => <div className={`bm-collection ${source === playlist.id ? "is-selected" : ""}`} key={playlist.id}>
+            <button type="button" className="bm-collection-open" aria-label={`Open playlist ${playlist.name}`} onClick={() => selectCollection(playlist.id)}><PlaylistIcon size={17} /><span>{playlist.name}</span><small>{playlist.tracks.length}</small></button>
+            <button type="button" className="bm-collection-delete" aria-label={`Delete playlist ${playlist.name}`} title="Delete playlist" onClick={() => void deleteCollection(playlist.id)}><TrashIcon size={14} /></button>
+          </div>)}</div>
           <form className="bm-search-row" onSubmit={e => { e.preventDefault(); void search(); }}>
-            <div className="bm-search"><MagnifyingGlass size={18} /><input ref={input} value={query} onChange={e => { setQuery(e.target.value); if (!e.target.value) { controller.current?.abort(); setSearching(false); setResults(null); } }} placeholder="Search music or paste a YouTube link…" aria-label="Search music" /><button type="button" aria-label="Clear search" onClick={() => { controller.current?.abort(); setSearching(false); setQuery(""); setResults(null); }}><X size={13} /></button></div>
+            <select className="bm-search-type" aria-label="Studio search type" value={searchType} onChange={e => { controller.current?.abort(); setSearching(false); setResults(null); setSearchType(e.target.value); setPlaylistQuery(""); }}><option value="songs">Songs</option><option value="playlists">YouTube playlists</option></select>
+            <div className="bm-search"><MagnifyingGlass size={18} /><input ref={input} value={query} onChange={e => { setQuery(e.target.value); if (!e.target.value) { controller.current?.abort(); setSearching(false); setResults(null); setPlaylistQuery(""); } }} placeholder="Search music or paste a YouTube link…" aria-label="Search music" /><button type="button" aria-label="Clear search" onClick={() => { controller.current?.abort(); setSearching(false); setQuery(""); setResults(null); setPlaylistQuery(""); }}><X size={13} /></button></div>
             <button className="bm-icon-button" type="submit" aria-label="Search YouTube Music"><Plus size={21} /></button>
           </form>
           <div className="bm-library-filter">
-            <select aria-label="Library collection" value={source} onChange={e => { setSource(e.target.value); setResults(null); }}><option value="all">All tracks</option><option value="favorites">Favorites</option><option value="history">Recently played</option>{library.playlists.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+            <select aria-label="Library collection" value={source} onChange={e => selectCollection(e.target.value)}><option value="all">All tracks</option><option value="favorites">Favorites</option><option value="history">Recently played</option>{library.playlists.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
             <button type="button" className="bm-new-playlist" onClick={() => setCreatingPlaylist(true)} aria-label="New playlist" title="New playlist"><Plus size={14} /> Playlist</button>
             <span>{searching ? "SEARCHING…" : results ? `${results.length} RESULTS` : "YOUR COLLECTION"}</span>
           </div>
-          <div className={`bm-covers ${list ? "bm-list" : ""}`} aria-busy={searching}>
+          {searchType === "playlists" ? <div className="bm-playlist-search"><YouTubePlaylists query={playlistQuery} onPreview={launch} onImported={playlist => selectCollection(playlist.id)} /></div> : <div className={`bm-covers ${list ? "bm-list" : ""}`} aria-busy={searching}>
             {shown.map(t => <div className={`bm-track ${track?.id === t.id ? "is-current" : ""}`} key={t.id}>
               <button className="bm-track-main" onClick={() => launch(t)} aria-label={`Play ${t.title}`}>
                 <div className="bm-cover-art">{t.art || t.thumb ? <img src={t.art || t.thumb} loading="lazy" alt="" /> : <MusicNotes size={30} />}<span className="bm-cover-play"><Play weight="fill" size={21} /></span></div>
@@ -187,9 +215,10 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
               </button>
               <button className={`bm-favorite ${library.isFavorite(t.id) ? "is-saved" : ""}`} aria-label={library.isFavorite(t.id) ? "Remove from favorites" : "Save to favorites"} onClick={() => void library.toggleFavorite(t)}>{library.isFavorite(t.id) ? "♥" : "+"}</button>
               <button className="bm-track-playlist" aria-label={`Add ${t.title} to a playlist`} title="Add to playlist" onClick={() => openAddToPlaylist([t])}><PlaylistIcon size={15} /></button>
+              {!results && <button className="bm-track-remove" aria-label={`Remove ${t.title} from ${selectedPlaylist ? selectedPlaylist.name : source === "favorites" ? "favorites" : source === "history" ? "history" : "library"}`} title={selectedPlaylist ? "Remove from this playlist" : source === "all" ? "Remove from library and all playlists" : "Remove from collection"} onClick={() => void removeTrack(t)}><TrashIcon size={14} /></button>}
             </div>)}
             {!shown.length && <div className="bm-empty-library"><span className="bm-empty-symbol"><MusicNotes size={34} weight="thin" /></span><h2>{library.status === "error" ? "Library unavailable" : results ? "No tracks found" : "Your next idea starts here."}</h2><p>{library.status === "error" ? "Check the local server, then retry." : "Search YouTube Music above, choose a track, and make it your own."}</p>{library.status === "error" ? <button onClick={() => void library.load()}>Retry library</button> : <div className="bm-suggestions">{["J Dilla", "Nujabes", "Jazz samples"].map(q => <button key={q} onClick={() => { setQuery(q); void search(q); }}>{q} ↗</button>)}</div>}</div>}
-          </div>
+          </div>}
           <button className="bm-browser-link" onClick={onBrowse}>Open full music library <ArrowSquareOut size={14} /></button>
         </aside>
 
@@ -246,9 +275,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
           const playlist = await library.createPlaylist(next);
           setCreatingPlaylist(false);
           if (playlist) {
-            setSource(playlist.id);
-            setResults(null);
-            setQuery("");
+            selectCollection(playlist.id);
           }
         }}
       />

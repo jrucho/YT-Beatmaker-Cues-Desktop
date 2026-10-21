@@ -24,6 +24,17 @@
 .bm-app .bm-icon-button { width:40px; min-width:40px; padding:0; }
 .bm-workspace { display:grid; grid-template-columns:minmax(310px,39%) minmax(0,1fr); gap:20px; flex:1; min-height:0; padding:22px 0 16px; }
 .bm-library { min-height:0; display:flex; flex-direction:column; gap:15px; }
+.bm-collections { display:flex; flex-direction:column; gap:4px; max-height:135px; overflow-y:auto; flex-shrink:0; scrollbar-width:thin; }
+.bm-collections:empty { display:none; }
+.bm-collection { display:flex; min-width:0; border:1px solid #252525; border-radius:9px; }
+.bm-collection.is-selected { border-color:#777; background:#181818; }
+.bm-app .bm-collection-open { flex:1; min-width:0; min-height:31px; padding:5px 9px; border:0; border-radius:9px; background:none; font-size:11px; justify-content:flex-start; }
+.bm-collection-open span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; text-align:left; }
+.bm-collection-open small { color:#777; }
+.bm-app .bm-collection-delete { width:30px; padding:0; min-height:31px; border:0; border-radius:8px; background:none; color:#888; }
+.bm-app .bm-collection-delete:hover,.bm-app .bm-track-remove:hover { color:#efb4b4; background:#281515; }
+.bm-search-type { min-width:0; max-width:110px; background:#0b0b0b; color:#aaa; border:1px solid #303030; border-radius:10px; font-size:10px!important; padding:0 5px; }
+.bm-playlist-search { min-height:0; flex:1; overflow-y:auto; }
 .bm-library-heading { display:flex; gap:10px; }
 .bm-app .bm-tab { font:600 11px "Geist Mono Variable",monospace; flex:1; color:#888; }
 .bm-app .bm-tab.is-active { color:#111; background:#fafafa; border-color:white; flex:1.4; }
@@ -56,6 +67,9 @@
 .bm-app .bm-favorite.is-saved { font-size:12px; color:#c0d7c7; }
 .bm-app .bm-track-playlist { position:absolute; bottom:10px; right:28px; padding:0; border:0; background:none; min-height:24px; width:20px; color:#858585; }
 .bm-app .bm-track-playlist:hover { color:#eee; }
+.bm-app .bm-track-remove { position:absolute; top:5px; right:5px; width:27px; min-height:27px; padding:0; border:1px solid #333; background:#080808dc; color:#aaa; border-radius:8px; }
+.bm-list .bm-track-remove { top:14px; right:54px; }
+.bm-list .bm-track-info { padding-right:84px; }
 .bm-list { grid-template-columns:1fr; gap:7px; }
 .bm-list .bm-track-main { display:flex; align-items:center; }
 .bm-list .bm-cover-art { width:58px; height:58px; flex-shrink:0; }

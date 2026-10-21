@@ -1,4 +1,6 @@
 import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, Library, Playlist, Track } from "./types";
+export type { CatalogPlaylist, CatalogPlaylistPage } from "../../../server/src/playlists";
+import type { CatalogPlaylist, CatalogPlaylistPage } from "../../../server/src/playlists";
 
 /**
  * What the app needs from a backend. The web app and the desktop app talk to the Musike server over HTTP
@@ -66,6 +68,9 @@ export interface SystemMedia {
 }
 
 export interface MusikeApi {
+  searchPlaylists(q: string, signal?: AbortSignal): Promise<CatalogPlaylist[]>;
+  youtubePlaylist(id: string, signal?: AbortSignal): Promise<CatalogPlaylistPage>;
+  removeLibraryTrack(id: string, scope?: "all" | "history"): Promise<Library>;
   search(q: string, type: "song" | "video", signal?: AbortSignal): Promise<Track[]>;
   suggest(q: string, signal?: AbortSignal): Promise<string[]>;
   radio(id: string): Promise<Track[]>;

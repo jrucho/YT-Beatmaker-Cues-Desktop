@@ -70,6 +70,22 @@ export async function getLibrary(): Promise<Library> {
   return load();
 }
 
+export async function removeTrack(id: string, scope: "all" | "history" = "all"): Promise<Library> {
+  const lib = await load();
+  lib.history = lib.history.filter(t => t.id !== id);
+  if (scope === "all") {
+    lib.favorites = lib.favorites.filter(t => t.id !== id);
+    for (const playlist of lib.playlists) {
+      if (playlist.tracks.some(t => t.id === id)) {
+        playlist.tracks = playlist.tracks.filter(t => t.id !== id);
+        playlist.updatedAt = Date.now();
+      }
+    }
+  }
+  await persist();
+  return lib;
+}
+
 export async function addFavorite(track: Track): Promise<Track[]> {
   const lib = await load();
   lib.favorites = [track, ...lib.favorites.filter((t) => t.id !== track.id)];

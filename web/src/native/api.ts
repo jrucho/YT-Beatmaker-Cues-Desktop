@@ -14,6 +14,7 @@ import {
 import { msg, tr, type MsgKey } from "../../../server/src/i18n";
 import * as library from "../../../server/src/library";
 import { findVideoFor, radio, search, suggestions } from "../../../server/src/search";
+import { getPlaylist, searchPlaylists } from "../../../server/src/playlists";
 import { HttpError, VIDEO_ID } from "../../../server/src/types";
 import { getLang, getT } from "../i18n";
 import { ApiError, type MusikeApi, type SystemInfo } from "../lib/apiTypes";
@@ -56,6 +57,9 @@ const SYSTEM: SystemInfo = {
 };
 
 export const api: MusikeApi = {
+  searchPlaylists: (q, signal) => call(() => searchPlaylists(q.trim().slice(0, 200), getLang()), signal),
+  youtubePlaylist: (id, signal) => call(() => getPlaylist(id, getLang()), signal),
+  removeLibraryTrack: (id, scope) => call(() => library.removeTrack(id, scope)),
   search: (q, type, signal) =>
     call(async () => {
       if (!q.trim()) throw fail(400, "emptyQuery");
