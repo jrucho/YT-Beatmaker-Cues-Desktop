@@ -39,7 +39,7 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
             videoId: id,
             lang: body["lang"] as? String ?? "en",
             region: body["region"] as? String ?? "US"
-        ) { payload in
+        ) { [weak self] payload in
             DispatchQueue.main.async { [weak self] in
                 guard let json = try? JSONSerialization.data(withJSONObject: payload),
                       let text = String(data: json, encoding: .utf8)
@@ -53,6 +53,9 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
 
     /// The player, with a visitor id YouTube accepts.
     func resolve(videoId: String, lang: String, region: String, done: @escaping ([String: Any]) -> Void) {
+        #if DEBUG
+        NSLog("Musike resolve: %@", videoId)
+        #endif
         visitor(lang: lang, region: region) { [weak self] visitorData in
             guard let self else { return }
             self.tryClient(videoId: videoId, visitorData: visitorData, lang: lang, region: region, at: 0, done: done)
@@ -73,6 +76,9 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
         post(Self.playerURL, body, client: client) { [weak self] result in
             guard let self else { return }
             let status = (result?["playabilityStatus"] as? [String: Any])?["status"] as? String ?? "no answer"
+            #if DEBUG
+            NSLog("Musike resolve client: %@ status: %@", client.name, status)
+            #endif
             guard status == "OK" else {
                 self.tryClient(videoId: videoId, visitorData: visitorData, lang: lang, region: region, at: index + 1, done: done)
                 return
@@ -82,7 +88,11 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
                 .filter { ($0["mimeType"] as? String)?.hasPrefix("audio/mp4") == true && $0["url"] != nil }
                 .sorted { Self.int($0["bitrate"]) > Self.int($1["bitrate"]) }
             guard let best = formats.first, let url = best["url"] as? String else {
-                done(["error": "No audio format available for this video.", "code": "no_audio"])
+                if index + 1 < Self.clients.count {
+                    self.tryClient(videoId: videoId, visitorData: visitorData, lang: lang, region: region, at: index + 1, done: done)
+                } else {
+                    done(["error": "No audio format available for this video.", "code": "no_audio"])
+                }
                 return
             }
             MusikeAudio.remember(url: url, duration: Double(Self.int(details["lengthSeconds"])))

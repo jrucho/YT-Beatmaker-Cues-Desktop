@@ -13,7 +13,7 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
     private let varispeed = AVAudioUnitVarispeed()
     private let timePitch = AVAudioUnitTimePitch()
     private var file: AVAudioFile?
-    private var download: URLSessionDownloadTask?
+    private var download: AudioFileDownload?
     private var ticker: Timer?
     private var observers: [NSObjectProtocol] = []
     private var sourceID = 0
@@ -103,6 +103,9 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
             return
         }
         let id = (body["sourceId"] as? NSNumber)?.intValue ?? sourceID
+        #if DEBUG
+        if !["position", "snapshot"].contains(command) { NSLog("Musike audio command: %@ source=%d", command, id) }
+        #endif
         if ["position", "seek", "cue", "loop"].contains(command), id != sourceID {
             replyHandler(nil, "Audio source changed")
             return
@@ -183,19 +186,7 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
             open(cached, original: link)
             return
         }
-        var request = URLRequest(url: url, timeoutInterval: 60)
-        request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
-        download = URLSession.shared.downloadTask(with: request) { [weak self] temporary, response, error in
-            // URLSession removes its temporary file when this callback returns. Move it before dispatching.
-            var result: Result<URL, Error>
-            do {
-                if let error { throw error }
-                guard let temporary, let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
-                    throw NSError(domain: "BeatmakerCuesAudio", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not load this audio stream"])
-                }
-                if !FileManager.default.fileExists(atPath: cached.path) { try FileManager.default.moveItem(at: temporary, to: cached) }
-                result = .success(cached)
-            } catch { result = .failure(error) }
+        download = AudioFileDownload(source: url, destination: cached) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self, self.sourceID == id, self.loadGeneration == generation else { return }
                 self.download = nil
@@ -241,6 +232,7 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
         let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey]
         guard let files = try? FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: Array(keys)) else { return }
         let entries = files.compactMap { url -> (URL, Int, Date)? in
+            guard url.pathExtension == "m4a" else { return nil }
             guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
             return (url, values.fileSize ?? 0, values.contentModificationDate ?? .distantPast)
         }.sorted { $0.2 < $1.2 }
@@ -450,18 +442,8 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
                     self.finishPreparation(id, .success(PreparedTrack(remote: link, local: local, duration: duration)))
                     return
                 }
-                var request = URLRequest(url: url, timeoutInterval: 60)
-                request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
-                URLSession.shared.downloadTask(with: request) { [weak self] temporary, response, error in
-                    var result: Result<PreparedTrack, Error>
-                    do {
-                        if let error { throw error }
-                        guard let temporary, let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
-                            throw NSError(domain: "BeatmakerCuesAudio", code: 4, userInfo: [NSLocalizedDescriptionKey: "Could not cache the next song"])
-                        }
-                        if !FileManager.default.fileExists(atPath: local.path) { try FileManager.default.moveItem(at: temporary, to: local) }
-                        result = .success(PreparedTrack(remote: link, local: local, duration: duration))
-                    } catch { result = .failure(error) }
+                AudioFileDownload(source: url, destination: local) { [weak self] downloaded in
+                    let result = downloaded.map { PreparedTrack(remote: link, local: $0, duration: duration) }
                     DispatchQueue.main.async { self?.finishPreparation(id, result) }
                 }.resume()
             }
@@ -491,6 +473,9 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
     }
 
     private func emit(_ event: String, _ payload: [String: Any] = [:]) {
+        #if DEBUG
+        if event != "time" { NSLog("Musike audio event: %@ %@", event, String(describing: payload)) }
+        #endif
         var data = payload
         data["sourceId"] = sourceID
         guard let encoded = try? JSONSerialization.data(withJSONObject: data), let json = String(data: encoded, encoding: .utf8) else { return }

@@ -52,12 +52,14 @@ if (mode === "prepare") {
   const section = `${start}\n### iOS IPA and Xcode project\n\n` +
     `- **${ipa}**: unsigned arm64 iOS installer, built automatically on GitHub with Xcode 26+. Sign it with your Apple account using a sideloading tool, or build/install through Xcode.\n` +
     `- **${xcode}**: portable Xcode project with the built interface and native/plugin sources. Open App.xcodeproj, select the App scheme and your development team.\n` +
+    `- Fixed songs stuck loading: validated 1 MB byte-range downloads with bounded retries now serve selected songs and next-track preparation. Only complete files enter the cache.\n` +
+    `- If app.musike.ios is unavailable to your team, select your own unique bundle identifier. No personal signing credentials are included.\n` +
     `- Native playlist advancement and next-track preparation continue with the screen off; returning to the app reconciles its current song and playhead.\n` +
     `- Android/iOS parity includes sequential cue marking, IN/OUT loops, 1% faders, independent semitone tuning and MIDI inputs.\n` +
     `- Checksums: **${checksum}**. Build/source details: **${metadata}**.\n` +
     `- Source commit: [${build.sourceCommit.slice(0, 8)}](https://github.com/${repo}/commit/${build.sourceCommit})` +
     (build.runURL ? ` · [GitHub build](${build.runURL})` : "") + `.\n\n` +
-    `Native archive and automated control/queue checks passed. Audible timing and physical-device screen-off/MIDI behavior still need hardware testing.\n${end}`;
+    `Native archive, automated control/queue checks and six downloader regression checks passed. The playback fix was verified on an iPhone 17 Pro; the reproduced song reached playback in about 1.7 seconds. Audible cue timing and physical-device screen-off/MIDI behavior still need further testing. Cue smoothing is not part of this update. Version 1.0.2 remains the recommended stable baseline; the next update is 1.0.3.\n${end}`;
   const notes = old.body.includes(start)
     ? old.body.replace(/<!-- ios-release:start -->[\s\S]*?<!-- ios-release:end -->/, section)
     : old.body.replace(`## ${version}\n`, `## ${version}\n\n${section}\n`);

@@ -36,6 +36,7 @@ for (const directory of ["App", "App.xcodeproj", "CapApp-SPM"]) {
   cpSync(join(mobile, "ios/App", directory), join(output, directory), { recursive: true, filter });
 }
 copyFileSync(join(mobile, "ios/debug.xcconfig"), join(output, "debug.xcconfig"));
+cpSync(join(mobile, "ios/Tests"), join(output, "Tests"), { recursive: true, filter });
 const project = join(output, "App.xcodeproj/project.pbxproj");
 writeFileSync(project, readFileSync(project, "utf8").replace("path = ../debug.xcconfig;", "path = debug.xcconfig;"));
 const plugins = { CapacitorApp: "app", CapacitorFilesystem: "filesystem", CapacitorKeyboard: "keyboard", CapacitorShare: "share" };

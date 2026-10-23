@@ -14,6 +14,7 @@ const run = (command, args, input) => {
   process.stdout.write(result.stdout);
 };
 try {
+  run("python3", ["mobile/ios/Tests/test_audio_download.py"]);
   const harness = join(work, "PlaylistCheck.java");
   writeFileSync(harness, `package app.musike.android;
 import java.util.*;

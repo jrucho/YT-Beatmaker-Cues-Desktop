@@ -6,6 +6,8 @@ A standalone desktop music and beatmaking app combining [Musike](https://github.
 
 **[Download v1.0.2 — desktop, Android and iOS](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.2)** · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
 
+**Recommended stable baseline: 1.0.2**, including the iOS playback-download fix. The next update will be **1.0.3**, with subsequent updates advancing by one patch version (1.0.4, 1.0.5, …).
+
 <p align="center">
   <a href="docs/screenshots/discover-samples.png"><img src="docs/screenshots/discover-samples.png" alt="Discover Samples opening page with live search and the global player bar" width="100%"></a>
 </p>
@@ -76,6 +78,8 @@ For AppImage, enable **Allow executing as a program** in the file's properties, 
 - [Portable Xcode project ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.2/Beatmaker-Cues-Xcode-1.0.2.zip) — Xcode 26+, iPhone/iPad on iOS 15+.
 
 Both mobile apps share twelve cue pads, ten saved banks, sequential **Mark**, IN/OUT loops, **1% speed faders**, independent semitone tuning and native MIDI inputs. The native players own the playlist and prepare the next track so screen-off track changes do not depend on WebView JavaScript.
+
+The updated iOS 1.0.2 assets fix songs remaining stuck loading: audio is fetched in validated 1 MB ranges with bounded retries. Playback was verified on an iPhone 17 Pro. To run the Xcode ZIP, select your own development team and a unique bundle identifier, then build for your connected iPhone.
 
 Source projects: [`mobile/android/`](mobile/android/) and [`mobile/ios/App/App.xcodeproj`](mobile/ios/App/App.xcodeproj). See [iOS setup](docs/ios-xcode.md) and [local Android backups](docs/android-local-builds.md).
 
