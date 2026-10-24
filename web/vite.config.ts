@@ -23,6 +23,7 @@ function beatmakerAssets(): Plugin {
       }
       cpSync(path.join(here, "node_modules/signalsmith-stretch"), path.join(output, "node_modules/signalsmith-stretch"), { recursive: true, dereference: true });
       let content = readFileSync(path.join(source, "content.js"), "utf8");
+      content = content.replace("function handleMIDIMessage(e) {", "function handleMIDIMessage(e) { if (window.musikeBeatmakerHost?.midi?.(e.data)) return;");
       content = content.replaceAll("function getVideoElement() {", "function getVideoElement() { if (window.musikeBeatmakerHost) return window.musikeBeatmakerHost.media();");
       content = content.replace("function getCurrentVideoID() {", "function getCurrentVideoID() { if (window.musikeBeatmakerHost) return window.musikeBeatmakerHost.cueId();");
       content = content.replace("function getStemVideoId() {", "function getStemVideoId() { if (window.musikeBeatmakerHost) return window.musikeBeatmakerHost.trackId();");

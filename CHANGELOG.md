@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.3
+
+- Expanded the mobile and desktop studio to sixteen pads in a 4×4 layout, preserving existing cue numbers and bank storage.
+- Selecting Legacy 12-pad changes the visible grid and sequential Mark limit to twelve on every platform; switching back restores sixteen. The chosen preset is remembered after reopening, and hidden extended cues are preserved.
+- Mark now fills empty pads and continues through banks A–J, switching the visible bank when marking begins there. Existing cues are never overwritten by sequential Mark.
+- Added shared SP-404MKII Mode A and Mode B controller presets, using Roland's physical pad layout. Mode A uses channels 1–10 for A–J; Mode B uses the default channels 1/2 and bank-specific note ranges. Kept the Legacy 12-pad preset; removed the redundant Standard preset from the selector.
+- MIDI hits mark empty pads and trigger assigned cues. Overwrite mode replaces cues. Note Off and velocity-zero Note On release pad highlighting without stopping one-shot playback. Unmapped desktop MIDI messages continue through the original engine.
+- Fixed first Play after reopening on native platforms: an empty native snapshot no longer makes an unloaded song appear ready or resets its saved position. The shared player saves progress every second and on transport changes. iOS also persists the native playhead during background playback.
+- Reduced iOS cue discontinuities with a sample-level 3 ms incoming ramp/outgoing tail, without a fade timer delaying cue execution. The already-running audio engine no longer reactivates the session on each pad hit. Validated on the user's iPhone; this is not a measured end-to-end latency guarantee. Desktop retains its existing cue micro-fade; Android retains native cached seeking.
+- Added mapping checks for all 320 Mode A/B pad/bank combinations, native reopen regression checks, and desktop sixteen-pad/Mark/MIDI checks.
+- Future measured latency improvements are planned for 1.0.4. The previous 1.0.2 release remains available as a fallback.
+
+### Installation
+
+- The Android APK is a development-key-signed test build. Its certificate may differ from a previous test APK; export your library before uninstalling an older test build if Android rejects an in-place update.
+- The iOS IPA is unsigned and must be signed with the installer's own Apple account. The portable Xcode ZIP contains no personal signing team or certificates.
+
 ## 1.0.2
 
 - Fixed iOS songs staying on loading and eventually failing with “The network connection was lost”: selected songs and playlist preloads now use validated 1 MB byte-range downloads, bounded retries and complete-file cache publication.

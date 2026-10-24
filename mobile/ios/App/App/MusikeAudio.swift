@@ -10,6 +10,8 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
     private static var knownDurations: [String: Double] = [:]
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
+    private let cueTail = AVAudioPlayerNode()
+    private let cueMixer = AVAudioMixerNode()
     private let varispeed = AVAudioUnitVarispeed()
     private let timePitch = AVAudioUnitTimePitch()
     private var file: AVAudioFile?
@@ -49,6 +51,8 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
     private var sourceURL = ""
     private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     private var failedTracks = 0
+    private var lastResumeSave = Date.distantPast
+    private let resumeKey = "musike:audio:resume"
 
     private let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("BeatmakerCuesAudio", isDirectory: true)
@@ -56,6 +60,8 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
     override init() {
         super.init()
         engine.attach(node)
+        engine.attach(cueTail)
+        engine.attach(cueMixer)
         engine.attach(varispeed)
         engine.attach(timePitch)
         try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
@@ -121,7 +127,7 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
         case "play": play()
         case "pause": pause()
         case "seek": schedule(at: number(body["to"]), playing: wantedPlaying)
-        case "cue": schedule(at: number(body["to"]), playing: true)
+        case "cue": schedule(at: number(body["to"]), playing: true, smoothCue: true)
         case "position":
             replyHandler(["position": position()], nil)
             return
@@ -160,6 +166,7 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
         download?.cancel()
         download = nil
         node.stop()
+        cueTail.stop()
         engine.stop()
         file = nil
         ticker?.invalidate()
@@ -208,9 +215,13 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
             endFrame = min(audio.length, AVAudioFramePosition(duration * audio.processingFormat.sampleRate))
             file = audio
             engine.disconnectNodeOutput(node)
+            engine.disconnectNodeOutput(cueTail)
+            engine.disconnectNodeOutput(cueMixer)
             engine.disconnectNodeOutput(varispeed)
             engine.disconnectNodeOutput(timePitch)
-            engine.connect(node, to: varispeed, format: audio.processingFormat)
+            engine.connect(node, to: cueMixer, fromBus: 0, toBus: 0, format: audio.processingFormat)
+            engine.connect(cueTail, to: cueMixer, fromBus: 0, toBus: 1, format: audio.processingFormat)
+            engine.connect(cueMixer, to: varispeed, format: audio.processingFormat)
             engine.connect(varispeed, to: timePitch, format: audio.processingFormat)
             engine.connect(timePitch, to: engine.mainMixerNode, format: audio.processingFormat)
             applyRate()
@@ -245,6 +256,7 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
     // MARK: - Native cue, loop, varispeed and independent tuning
 
     private func activate() throws {
+        if engine.isRunning { return }
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default)
         try session.setPreferredIOBufferDuration(0.005)
@@ -252,30 +264,69 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
         if !engine.isRunning { engine.prepare(); try engine.start() }
     }
 
-    private func schedule(at seconds: Double, playing: Bool) {
+    private func schedule(at seconds: Double, playing: Bool, smoothCue: Bool = false) {
+        let outgoingPosition = position()
+        let wasPlaying = node.isPlaying
         pendingPosition = max(0, seconds.isFinite ? seconds : 0)
         wantedPlaying = playing
         guard let file else { return }
         scheduleID += 1
         let serial = scheduleID
         node.stop()
+        cueTail.stop()
         let sampleRate = file.processingFormat.sampleRate
         anchor = min(max(0, AVAudioFramePosition(pendingPosition * sampleRate)), max(0, endFrame - 1))
         loopStartFrame = min(max(0, AVAudioFramePosition(loopFrom * sampleRate)), max(0, endFrame - 1))
         loopEndFrame = min(endFrame, AVAudioFramePosition(loopTo * sampleRate))
         scheduledLoop = loopOn && loopEndFrame > loopStartFrame
+        if smoothCue && scheduledLoop && (anchor < loopStartFrame || anchor >= loopEndFrame) {
+            loopOn = false
+            scheduledLoop = false
+        }
         if scheduledLoop {
             if anchor < loopStartFrame || anchor >= loopEndFrame { anchor = loopStartFrame }
             // Queue ahead. Refill when consumed, rather than waiting for a timer after OUT has passed.
-            enqueue(start: anchor, end: loopEndFrame, serial: serial, looping: true)
+            enqueueCueStart(start: anchor, end: loopEndFrame, serial: serial, looping: true, smooth: smoothCue)
             enqueue(start: loopStartFrame, end: loopEndFrame, serial: serial, looping: true)
         } else {
-            enqueue(start: anchor, end: endFrame, serial: serial, looping: false)
+            enqueueCueStart(start: anchor, end: endFrame, serial: serial, looping: false, smooth: smoothCue)
+        }
+        if smoothCue && wasPlaying,
+           let tail = cueBuffer(start: AVAudioFramePosition(outgoingPosition * sampleRate), end: endFrame, fadeIn: false) {
+            cueTail.scheduleBuffer(tail)
         }
         pendingPosition = Double(anchor) / sampleRate
         emit("seeked", ["position": pendingPosition])
-        if playing { play() }
+        if playing { play(); if smoothCue && wasPlaying && engine.isRunning { cueTail.play() } }
         else { publishState() }
+    }
+
+    /// A sample-domain 3 ms transition starts immediately, without waiting for a fade timer.
+    /// Both voices share the speed/pitch chain so the transition follows the selected mode.
+    private func cueBuffer(start: AVAudioFramePosition, end: AVAudioFramePosition, fadeIn: Bool) -> AVAudioPCMBuffer? {
+        guard let file, start >= 0, end > start else { return nil }
+        let count = AVAudioFrameCount(min(end - start, AVAudioFramePosition(file.processingFormat.sampleRate * 0.003)))
+        guard count > 1, let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: count) else { return nil }
+        do {
+            file.framePosition = start
+            try file.read(into: buffer, frameCount: count)
+            guard let channels = buffer.floatChannelData, buffer.frameLength > 1 else { return nil }
+            for channel in 0..<Int(buffer.format.channelCount) {
+                for frame in 0..<Int(buffer.frameLength) {
+                    let gain = Float(frame) / Float(buffer.frameLength - 1)
+                    channels[channel][frame] *= fadeIn ? gain : 1 - gain
+                }
+            }
+            return buffer
+        } catch { return nil }
+    }
+
+    private func enqueueCueStart(start: AVAudioFramePosition, end: AVAudioFramePosition, serial: Int, looping: Bool, smooth: Bool) {
+        // Leave at least one frame for the segment completion that owns queue advancement.
+        if smooth, let buffer = cueBuffer(start: start, end: end - 1, fadeIn: true) {
+            node.scheduleBuffer(buffer)
+            enqueue(start: start + AVAudioFramePosition(buffer.frameLength), end: end, serial: serial, looping: looping)
+        } else { enqueue(start: start, end: end, serial: serial, looping: looping) }
     }
 
     private func enqueue(start: AVAudioFramePosition, end: AVAudioFramePosition, serial: Int, looping: Bool) {
@@ -328,6 +379,7 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
     private func pause() {
         let at = position()
         node.pause()
+        cueTail.stop()
         pendingPosition = at
         wantedPlaying = false
         emit("pause")
@@ -341,7 +393,7 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
         timePitch.bypass = !preservePitch || (rate == 1 && semitones == 0)
     }
 
-    private func applyVolume() { node.volume = muted ? 0 : volume }
+    private func applyVolume() { cueMixer.outputVolume = muted ? 0 : volume }
 
     /// Handle core transport even while WKWebView is suspended in the background.
     func handleRemote(_ action: String, position: Double?) -> Bool {
@@ -374,7 +426,13 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
     private func currentTrack() -> [String: Any] { tracks.indices.contains(queue.index) ? tracks[queue.index] : [:] }
 
     private func snapshot() -> [String: Any] {
-        ["sourceId": sourceID, "queueIndex": queue.index, "trackId": queue.current, "url": sourceURL,
+        if file == nil && sourceURL.isEmpty,
+           let saved = UserDefaults.standard.dictionary(forKey: resumeKey),
+           let id = saved["trackId"] as? String, let index = queue.ids.firstIndex(of: id) {
+            return ["sourceId": sourceID, "queueIndex": index, "trackId": id,
+                    "position": number(saved["position"]), "playing": false, "ready": false, "resume": true]
+        }
+        return ["sourceId": sourceID, "queueIndex": queue.index, "trackId": queue.current, "url": sourceURL,
          "position": advancing ? 0 : position(), "duration": duration, "buffered": file == nil ? 0 : duration,
          "playing": wantedPlaying, "ready": file != nil && !advancing,
          "loop": ["from": loopFrom, "to": loopTo, "on": loopOn]]
@@ -463,6 +521,10 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
     private func emitTime() {
         let at = position()
         pendingPosition = at
+        if file != nil && !queue.current.isEmpty && Date().timeIntervalSince(lastResumeSave) >= 1 {
+            UserDefaults.standard.set(["trackId": queue.current, "position": at], forKey: resumeKey)
+            lastResumeSave = Date()
+        }
         emit("time", ["position": at, "duration": duration, "buffered": file == nil ? 0 : duration])
         publishState()
     }

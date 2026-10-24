@@ -13,6 +13,7 @@ import { SettingsDialog } from "../components/SettingsDialog";
 import { Toasts } from "../components/Toasts";
 import { YouTubePlaylists } from "../components/YouTubePlaylists";
 import { loadBeatmaker, setEngineBank, type Engine } from "./runtime";
+import { CONTROLLER_PRESETS, readControllerPreset, saveControllerPreset } from "../native/controllerMapping";
 import "./beatmaker.css";
 
 const BANKS = "ABCDEFGHIJ".split("");
@@ -44,6 +45,9 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
   const [pitch, setPitch] = useState(0);
   const [rateLabel, setRateLabel] = useState("PITCH");
   const [cuesSaved, setCuesSaved] = useState(true);
+  const [midiPreset, setMidiPreset] = useState(() => readControllerPreset().id);
+  const padCount = CONTROLLER_PRESETS.find(preset => preset.id === midiPreset)!.padToNote.length;
+  const [midiOverwrite, setMidiOverwrite] = useState(false);
   const [rateLimits, setRateLimits] = useState([-50, 100]);
   const input = useRef<HTMLInputElement>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -56,6 +60,13 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
     setEngineBank(bank);
     const onEngineError = (event: Event) => toast((event as CustomEvent<string>).detail, "error");
     window.addEventListener("beatmaker-error", onEngineError);
+    const onBank = (event: Event) => { setBank((event as CustomEvent<string>).detail); setActive(null); };
+    const onMidiPad = (event: Event) => {
+      const data = (event as CustomEvent<{ pad: number; pressed: boolean }>).detail;
+      setActive(data.pressed ? cueKey(data.pad - 1) : null);
+    };
+    window.addEventListener("beatmaker-bank", onBank);
+    window.addEventListener("beatmaker-midi-pad", onMidiPad);
     void loadBeatmaker().then(() => setEngineStatus("Ready"), err => setEngineStatus((err as Error).message));
     const timer = setInterval(() => {
       const snapshot = window.musikeBeatmakerEngine?.snapshot();
@@ -63,10 +74,32 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
     }, 150);
     return () => {
       clearInterval(timer); controller.current?.abort(); window.removeEventListener("beatmaker-error", onEngineError);
+      window.removeEventListener("beatmaker-bank", onBank);
+      window.removeEventListener("beatmaker-midi-pad", onMidiPad);
       if (window.musikeBeatmakerHost) window.musikeBeatmakerHost.active = false;
       document.querySelectorAll<HTMLElement>(".looper-panel-container, .looper-midimap-container, #ytbm-mini-bar").forEach(el => { el.style.display = "none"; });
     };
   }, []);
+
+  useEffect(() => {
+    if (window.musikeBeatmakerHost) window.musikeBeatmakerHost.midiOverwrite = midiOverwrite;
+  }, [midiOverwrite, engineReady]);
+
+  function markNext() {
+    if (!track || !engineReady || !mediaReady) return;
+    for (const candidate of BANKS.slice(BANKS.indexOf(bank))) {
+      const stored = candidate === bank ? window.musikeBeatmakerEngine!.snapshot().cues
+        : JSON.parse(localStorage.getItem(`ytbm_cues_${track.id}:bank:${candidate}`) ?? "{}");
+      for (let i = 0; i < padCount; i++) {
+        const key = cueKey(i);
+        if (stored[key] != null) continue;
+        if (candidate !== bank) { setEngineBank(candidate); setBank(candidate); }
+        trigger(key, true);
+        return;
+      }
+    }
+    toast("All remaining cue banks are full.");
+  }
 
   useEffect(() => {
     localStorage.setItem("musike:studio:name", name);
@@ -225,8 +258,8 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
         <main className="bm-deck">
           <nav className="bm-banks" aria-label="Cue banks">{BANKS.map(b => <button key={b} className={bank === b ? "is-active" : ""} aria-pressed={bank === b} onClick={() => { setBank(b); setEngineBank(b); setActive(null); }}>{b}</button>)}<button className="bm-map" disabled={!engineReady} onClick={() => engineAction("mapping")} title="Open MIDI mappings"><GridFour size={17} /> MAP</button></nav>
           <section className="bm-pad-shell">
-            <div className="bm-section-label"><span>BANK {bank}</span><span>12 PADS</span></div>
-            <div className="bm-pads">{Array.from({ length: 12 }, (_, i) => {
+            <div className="bm-section-label"><span>BANK {bank}</span><button disabled={!mediaReady || !engineReady} onPointerDown={e => { if (e.button === 0) { e.preventDefault(); markNext(); } }} onClick={e => { if (e.detail === 0) markNext(); }}>MARK</button><span>{padCount} PADS</span></div>
+            <div className="bm-pads">{Array.from({ length: padCount }, (_, i) => {
               const key = cueKey(i), cue = cues[key];
               const assigned = track && cue !== undefined;
               return <div key={key} className={`bm-pad ${assigned ? "is-assigned" : ""} ${active === key ? "is-triggered" : ""}`}>
@@ -248,6 +281,10 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
             <span className="bm-time">{time(p.position)}</span><input className="bm-seek" type="range" aria-label="Playback position" min="0" max={p.duration || 1} step="0.01" value={Math.min(p.position, p.duration || 1)} disabled={!track} onChange={e => p.seek(Number(e.target.value))} /><span className="bm-time">{time(p.duration)}</span>
           </section>
           <div className="bm-tools">
+            <label>MIDI <select aria-label="MIDI controller preset" value={midiPreset} onChange={e => { saveControllerPreset(e.target.value); setMidiPreset(e.target.value); }}>
+              {CONTROLLER_PRESETS.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+            </select></label>
+            <label><input type="checkbox" checked={midiOverwrite} onChange={e => setMidiOverwrite(e.target.checked)} /> MIDI overwrite</label>
             <div className="bm-tool-label">PERFORMANCE</div>
             <button disabled={!engineReady} onClick={() => engineAction("mini")}>CUES / LOOP</button>
             <button disabled={!engineReady} onClick={() => engineAction("sequencer")}>SEQUENCER</button>
@@ -264,7 +301,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
           </div>
         </main>
       </div>
-      <footer className="bm-footer"><span><i className={`bm-dot ${engineReady ? "" : "is-loading"}`} /> {engineReady ? "Ready" : engineStatus}</span><span className="bm-footer-center">{cuesSaved ? "Cues saved" : "Unsaved cues"}</span><span>Bank {bank} · <b>{Object.keys(cues).length}/12</b></span></footer>
+      <footer className="bm-footer"><span><i className={`bm-dot ${engineReady ? "" : "is-loading"}`} /> {engineReady ? "Ready" : engineStatus}</span><span className="bm-footer-center">{cuesSaved ? "Cues saved" : "Unsaved cues"}</span><span>Bank {bank} · <b>{Array.from({ length: padCount }, (_, i) => cueKey(i)).filter(key => cues[key] != null).length}/{padCount}</b></span></footer>
       {guide && <div className="bm-modal-backdrop" onClick={() => setGuide(false)}><section className="bm-guide" role="dialog" aria-modal="true" aria-label="Beatmaker guide" onClick={e => e.stopPropagation()}><button className="bm-guide-close" aria-label="Close guide" autoFocus onClick={() => setGuide(false)}><X size={20} /></button><span className="bm-eyebrow">GUIDE</span><h2>Studio basics</h2><p>Choose a track, then use its cue pads to jump to a moment. Loops, effects and MIDI are available from the toolbars.</p><dl><dt>1–9 / 0</dt><dd>Trigger the first ten cues</dd><dt>Click an empty pad</dt><dd>Mark the current playback position</dd><dt>Shift + click</dt><dd>Replace a cue with the current position</dd><dt>I / O</dt><dd>Set region loop IN / OUT</dd><dt>Space</dt><dd>Play / pause</dd><dt>A–J bank buttons</dt><dd>Switch cue banks for this track</dd><dt>CUES / LOOP</dt><dd>Open or hide the compact performance bar</dd><dt>MAP</dt><dd>Open MIDI mappings</dd><dt>Advanced</dt><dd>Original MIDI, stems, routing, loopers and effects controls</dd><dt>Settings</dt><dd>Catalog language, yt-dlp and library backup</dd><dt>Save / Load</dt><dd>Export or restore a session with its cue banks</dd></dl><button className="bm-primary" onClick={() => setGuide(false)}>Close</button></section></div>}
       <NamePlaylistDialog
         open={creatingPlaylist}

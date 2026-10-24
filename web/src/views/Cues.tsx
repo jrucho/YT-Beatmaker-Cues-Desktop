@@ -6,11 +6,9 @@ import { formatTime } from "../lib/format";
 import { cn } from "../lib/format";
 import { useT } from "../i18n";
 import { cuePosition, independentTuningAvailable, selectCurrent, usePlayer } from "../player/player";
-import { CUE_BANKS, CUE_PAD_COUNT, useCueStore } from "../mobile/cueStore";
+import { CUE_BANKS, useCueStore } from "../mobile/cueStore";
 import { midi, midiAvailable, type MidiDevice, type MidiMessage } from "../native/midi";
-
-const PAD_SHORTCUT = 35;
-const CC_SHORTCUT = 19;
+import { CONTROLLER_PRESETS, mapControllerMessage, readControllerPreset, saveControllerPreset } from "../native/controllerMapping";
 
 const formatSemitones = (st: number) => `${st > 0 ? "+" : ""}${st} st`;
 
@@ -35,7 +33,10 @@ export default function Cues() {
   const tuning = usePlayer((s) => s.tuning);
   const cues = useCueStore((s) => s.cues);
   const bank = useCueStore((s) => s.bank);
-  const nextPad = Array.from({ length: CUE_PAD_COUNT }, (_, i) => i + 1).find((pad) => cues[pad] == null);
+  const nextSlot = useCueStore.getState().nextSlot();
+  const nextPad = nextSlot?.pad;
+  const [mapping, setMapping] = useState(readControllerPreset);
+  const [heldPads, setHeldPads] = useState<Record<string, number>>({});
   const [overwrite, setOverwrite] = useState(false);
   const [devices, setDevices] = useState<MidiDevice[]>([]);
   /** What the finger on a pad is doing: a long press marks the cue instead of playing it. */
@@ -69,26 +70,40 @@ export default function Cues() {
     let disposed = false;
     let handle: { remove: () => Promise<void> } | undefined;
     const onMessage = (message: MidiMessage) => {
-      if (message.type === "noteon" && (message.velocity ?? 0) > 0 && message.note != null) {
-        const pad = message.note - PAD_SHORTCUT;
-        if (pad >= 1 && pad <= CUE_PAD_COUNT) trigger(pad);
-      } else if (message.type === "cc" && message.controller != null) {
-        const pad = message.controller - CC_SHORTCUT;
-        if (pad >= 1 && pad <= CUE_PAD_COUNT) trigger(pad);
-      }
+      const target = mapControllerMessage(message, mapping, useCueStore.getState().bank);
+      if (!target) return;
+      const key = `${target.bank}:${target.pad}`;
+      setHeldPads(previous => {
+        const next = { ...previous };
+        if (target.pressed) next[key] = target.velocity;
+        else delete next[key];
+        return next;
+      });
+      if (!target.pressed) return;
+      const store = useCueStore.getState();
+      store.setBank(target.bank);
+      const time = useCueStore.getState().cues[target.pad];
+      if (time != null && !overwrite) { trigger(target.pad); return; }
+      const trackId = store.trackId;
+      void cuePosition().then(position => {
+        if (useCueStore.getState().trackId === trackId) {
+          useCueStore.getState().setCue(target.pad, position, target.bank);
+        }
+      }).catch(() => {});
     };
     const connect = async () => {
       const result = await midi.list().catch(() => ({ devices: [] }));
       if (disposed) return;
       setDevices(result.devices);
       handle = await midi.addListener("message", onMessage).catch(() => undefined);
+      if (disposed) void handle?.remove();
     };
     void connect();
     return () => {
       disposed = true;
       void handle?.remove();
     };
-  }, [trigger]);
+  }, [trigger, mapping, overwrite]);
 
   const refreshMidi = () => {
     void midi.refresh().then(() => midi.list()).then((result) => setDevices(result.devices)).catch(() => setDevices([]));
@@ -165,7 +180,7 @@ export default function Cues() {
                 onClick={(e) => { if (e.detail === 0) mark(null); }}
                 className="h-9 shrink-0 touch-manipulation rounded-full bg-accent px-3 text-xs font-semibold text-accent-ink active:scale-95 disabled:opacity-40"
               >
-                {nextPad == null ? t.cues.bankFull : `${t.cues.mark} ${nextPad}`}
+                {nextPad == null ? t.cues.bankFull : `${t.cues.mark} ${nextSlot?.bank}${nextPad}`}
               </button>
             </div>
 
@@ -210,8 +225,8 @@ export default function Cues() {
               </button>
             </div>
 
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {Array.from({ length: CUE_PAD_COUNT }, (_, i) => i + 1).map((pad) => {
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {Array.from({ length: mapping.padToNote.length }, (_, i) => i + 1).map((pad) => {
                 const time = cues[pad];
                 return (
                   <div key={pad} className="relative">
@@ -233,6 +248,7 @@ export default function Cues() {
                         time == null
                           ? "bg-surface-2 ring-1 ring-line active:bg-surface-3"
                           : "bg-accent-soft text-accent-text ring-1 ring-accent/30",
+                        heldPads[`${bank}:${pad}`] ? "brightness-150 ring-2 ring-accent" : "",
                       )}
                     >
                       <span className={cn("text-xs font-semibold", time == null ? "text-fg-3" : "text-accent-text")}>
@@ -429,6 +445,15 @@ export default function Cues() {
                 </div>
               </div>
               <p className="mt-1 text-xs text-fg-3">{t.cues.midiHint}</p>
+              <select aria-label="MIDI controller preset" value={mapping.id}
+                className="mt-3 w-full rounded-md bg-surface-3 p-2 text-xs"
+                onChange={event => {
+                  const preset = CONTROLLER_PRESETS.find(p => p.id === event.target.value)!;
+                  saveControllerPreset(preset.id); setMapping(preset); setHeldPads({});
+                }}>
+                {CONTROLLER_PRESETS.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+              </select>
+              <p className="mt-2 text-xs text-fg-3">{mapping.description ?? "Notes 36–47 · current bank"}</p>
               {devices.length > 0 && (
                 <ul className="mt-2 flex flex-col gap-1">
                   {devices.map((device) => (

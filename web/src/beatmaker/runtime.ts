@@ -1,4 +1,5 @@
 import { beatmakerMedia, selectCurrent, usePlayer } from "../player/player";
+import { mapControllerMessage, readControllerPreset } from "../native/controllerMapping";
 
 export interface Engine {
   snapshot(): { cues: Record<string, number>; pitch: number; ready: boolean; mediaReady: boolean; rateMode: string; rateTarget: string; rateMin: number; rateMax: number; saved: boolean };
@@ -18,7 +19,7 @@ export interface Engine {
 declare global {
   interface Window {
     musikeBeatmakerEngine?: Engine;
-    musikeBeatmakerHost?: { active: boolean; media: typeof beatmakerMedia; trackId(): string; cueId(): string };
+    musikeBeatmakerHost?: { active: boolean; media: typeof beatmakerMedia; trackId(): string; cueId(): string; midi?(data: ArrayLike<number>): boolean; midiOverwrite?: boolean };
   }
 }
 
@@ -64,6 +65,25 @@ export function loadBeatmaker() {
         return id ? `youtube:${id}` : "none";
       },
       cueId: () => `${selectCurrent(usePlayer.getState())?.id ?? "none"}:bank:${currentBank}`,
+      midi: data => {
+        if (!window.musikeBeatmakerHost?.active || data.length < 3) return false;
+        const kind = data[0] & 0xf0;
+        if (![0x80, 0x90, 0xb0].includes(kind)) return false;
+        const target = mapControllerMessage({ type: kind === 0xb0 ? "cc" : kind === 0x80 ? "noteoff" : "noteon",
+          channel: data[0] & 15, note: data[1], controller: data[1], velocity: data[2], value: data[2] }, readControllerPreset(), currentBank);
+        if (!target) return false;
+        if (target.pressed) {
+          if (target.bank !== currentBank) {
+            setEngineBank(target.bank);
+            window.dispatchEvent(new CustomEvent("beatmaker-bank", { detail: target.bank }));
+          }
+          const key = target.pad === 10 ? "0" : String(target.pad);
+          try { window.musikeBeatmakerEngine?.cue(key, window.musikeBeatmakerHost.midiOverwrite); }
+          catch (error) { window.dispatchEvent(new CustomEvent("beatmaker-error", { detail: (error as Error).message })); }
+        }
+        window.dispatchEvent(new CustomEvent("beatmaker-midi-pad", { detail: target }));
+        return true;
+      },
     };
     const onChanged = event<(changes: Message, area: string) => void>();
     function storage(prefix: string) {

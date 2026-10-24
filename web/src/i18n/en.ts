@@ -202,7 +202,7 @@ export const en = {
     midi: "MIDI",
     midiNone: "No MIDI devices",
     midiDevices: (n: number) => `${n} MIDI ${n === 1 ? "device" : "devices"}`,
-    midiHint: "USB MIDI notes 36–47 trigger pads 1–12.",
+    midiHint: "MIDI: empty pads mark cues; saved pads play. Overwrite replaces cues. Channels select banks in SP-404MKII Mode A.",
   },
 
   nowPlaying: {

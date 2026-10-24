@@ -1,7 +1,8 @@
 import { create } from "zustand";
+import { readControllerPreset } from "../native/controllerMapping";
 
 export const CUE_BANKS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"] as const;
-export const CUE_PAD_COUNT = 12;
+export const CUE_PAD_COUNT = 16;
 
 type BankCues = Record<number, number>;
 type TrackCues = Record<string, BankCues>;
@@ -37,8 +38,9 @@ interface CueState {
   cues: BankCues;
   setTrack: (trackId: string | null) => void;
   setBank: (bank: string) => void;
-  setCue: (pad: number, seconds: number) => void;
+  setCue: (pad: number, seconds: number, targetBank?: string) => void;
   setNextCue: (seconds: number) => void;
+  nextSlot: () => { bank: string; pad: number } | null;
   clearCue: (pad: number) => void;
   clearBank: () => void;
 }
@@ -55,25 +57,37 @@ export const useCueStore = create<CueState>((set, get) => ({
 
   setBank: (bank) => set({ bank, cues: bankCues(get().trackId, bank) }),
 
-  setCue: (pad, seconds) => {
-    const { trackId, bank, cues } = get();
-    if (!trackId || pad < 1 || pad > CUE_PAD_COUNT) return;
+  setCue: (pad, seconds, targetBank) => {
+    const { trackId } = get();
+    const bank = targetBank ?? get().bank;
+    const cues = bank === get().bank ? get().cues : bankCues(trackId, bank);
+    if (!trackId || !Number.isFinite(seconds) || !Number.isInteger(pad) || pad < 1 || pad > CUE_PAD_COUNT) return;
     const next = { ...cues, [pad]: Math.max(0, seconds) };
     const all = readAll();
     all[trackId] = { ...all[trackId], [bank]: next };
     writeAll(all);
-    set({ cues: next });
+    if (bank === get().bank) set({ cues: next });
+  },
+
+  nextSlot: () => {
+    const { trackId, bank } = get();
+    if (!trackId) return null;
+    const all = readAll()[trackId] ?? {};
+    for (const candidate of CUE_BANKS.slice(Math.max(0, CUE_BANKS.indexOf(bank as typeof CUE_BANKS[number])))) {
+      const cues = candidate === bank ? get().cues : all[candidate] ?? {};
+      for (let pad = 1; pad <= readControllerPreset().padToNote.length; pad++) {
+        if (cues[pad] == null) return { bank: candidate, pad };
+      }
+    }
+    return null;
   },
 
   setNextCue: (seconds) => {
     if (!Number.isFinite(seconds)) return;
-    const { cues } = get();
-    for (let pad = 1; pad <= CUE_PAD_COUNT; pad++) {
-      if (cues[pad] == null) {
-        get().setCue(pad, seconds);
-        return;
-      }
-    }
+    const slot = get().nextSlot();
+    if (!slot) return;
+    if (slot.bank !== get().bank) get().setBank(slot.bank);
+    get().setCue(slot.pad, seconds);
   },
 
   clearCue: (pad) => {

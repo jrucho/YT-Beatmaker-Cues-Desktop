@@ -6,7 +6,7 @@ on:
       release_tag:
         description: Existing release to update (must match mobile/package.json)
         required: true
-        default: v1.0.2
+        default: v1.0.3
         type: string
       publish_release:
         description: Replace the iOS assets in this release
@@ -42,6 +42,7 @@ jobs:
       - run: pnpm exec playwright install chromium
       - name: Verify mobile controls and native playlist policies
         run: |
+          node scripts/check-controller-mapping.mjs
           node scripts/check-android-cues.mjs
           MUSIKE_TEST_PLATFORM=ios node scripts/check-android-cues.mjs
           node scripts/check-ios-midi.mjs

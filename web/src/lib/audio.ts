@@ -44,6 +44,7 @@ interface NativePayload {
   url?: string;
   playing?: boolean;
   ready?: boolean;
+  resume?: boolean;
   loop?: AudioLoop;
 }
 

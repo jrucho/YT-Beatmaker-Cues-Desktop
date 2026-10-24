@@ -205,7 +205,7 @@ export const es: Messages = {
     midi: "MIDI",
     midiNone: "Sin dispositivos MIDI",
     midiDevices: (n: number) => `${n} ${n === 1 ? "dispositivo MIDI" : "dispositivos MIDI"}`,
-    midiHint: "Las notas MIDI USB 36–47 activan los pads 1–12.",
+    midiHint: "MIDI: los pads vacíos marcan cues; los guardados los reproducen. Sobrescribir reemplaza el cue. Los canales seleccionan bancos en el modo A del SP-404MKII.",
   },
 
   nowPlaying: {

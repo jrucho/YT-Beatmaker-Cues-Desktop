@@ -55,11 +55,13 @@ if (mode === "prepare") {
     `- Fixed songs stuck loading: validated 1 MB byte-range downloads with bounded retries now serve selected songs and next-track preparation. Only complete files enter the cache.\n` +
     `- If app.musike.ios is unavailable to your team, select your own unique bundle identifier. No personal signing credentials are included.\n` +
     `- Native playlist advancement and next-track preparation continue with the screen off; returning to the app reconciles its current song and playhead.\n` +
-    `- Android/iOS parity includes sequential cue marking, IN/OUT loops, 1% faders, independent semitone tuning and MIDI inputs.\n` +
+    `- Sixteen pads per bank, sequential Mark across banks A–J with visible switching, and SP-404MKII Mode A/Mode B plus Legacy 12-pad presets. The redundant Standard preset is removed.\n` +
+    `- MIDI marks empty pads and plays saved cues; Overwrite replaces cues. Note Off preserves one-shot playback. Native resume now reloads the saved song/playhead correctly on first Play after reopening.\n` +
+    `- iOS cue jumps use a sample-level 3 ms transition through the shared speed/pitch chain. Further latency optimization is deferred to 1.0.4.\n` +
     `- Checksums: **${checksum}**. Build/source details: **${metadata}**.\n` +
     `- Source commit: [${build.sourceCommit.slice(0, 8)}](https://github.com/${repo}/commit/${build.sourceCommit})` +
     (build.runURL ? ` · [GitHub build](${build.runURL})` : "") + `.\n\n` +
-    `Native archive, automated control/queue checks and six downloader regression checks passed. The playback fix was verified on an iPhone 17 Pro; the reproduced song reached playback in about 1.7 seconds. Audible cue timing and physical-device screen-off/MIDI behavior still need further testing. Cue smoothing is not part of this update. Version 1.0.2 remains the recommended stable baseline; the next update is 1.0.3.\n${end}`;
+    `Native archive, mobile control/resume/queue checks, 320 Mode A/B mapping cases and six downloader regression checks passed. The iOS test build was installed and approved by the user on an iPhone 17 Pro. Physical MIDI compatibility, output-device-dependent cue latency and background edge cases still need broader hardware testing. Version 1.0.2 remains available as a fallback.\n${end}`;
   const notes = old.body.includes(start)
     ? old.body.replace(/<!-- ios-release:start -->[\s\S]*?<!-- ios-release:end -->/, section)
     : old.body.replace(`## ${version}\n`, `## ${version}\n\n${section}\n`);

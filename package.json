@@ -1,7 +1,7 @@
 {
   "name": "yt-beatmaker-cues-desktop",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A desktop music and beatmaking studio powered by Musike and YT Beatmaker Cues.",
   "license": "MIT",
   "repository": "github:jrucho/YT-Beatmaker-Cues-Desktop",

@@ -407,9 +407,16 @@ export const usePlayer = create<PlayerState>((set, get) => {
   function wire(media: HTMLMediaElement) {
     const isActive = () => activeMedia() === media;
     media.addEventListener("nativetrackchange", (event) => {
-      const data = (event as CustomEvent<{ queueIndex: number; trackId: string; position?: number; duration?: number; buffered?: number; playing?: boolean; ready?: boolean; loop?: CueLoop }>).detail;
+      const data = (event as CustomEvent<{ queueIndex: number; trackId: string; position?: number; duration?: number; buffered?: number; playing?: boolean; ready?: boolean; resume?: boolean; loop?: CueLoop }>).detail;
       const track = get().queue[data.queueIndex];
       if (!track || track.id !== data.trackId || media !== audio) return;
+      if (data.resume && !loaded) {
+        set({ index: data.queueIndex, position: data.position ?? get().position, duration: track.duration, status: "paused", statusText: null });
+        return;
+      }
+      // A cold native player can know the queue without having loaded any audio.
+      // Do not let that empty snapshot replace the saved position or mark it loaded.
+      if (!data.ready && !data.playing) return;
       const changed = loaded?.id !== track.id || get().index !== data.queueIndex;
       if (changed) token++;
       loaded = { id: track.id, kind: "audio", quality: get().quality };
@@ -826,7 +833,10 @@ function persist() {
     /* storage full or blocked */
   }
 }
-setInterval(persist, 4000);
+setInterval(persist, 1000);
+usePlayer.subscribe((state, previous) => {
+  if (state.status !== previous.status || state.index !== previous.index || state.queue !== previous.queue) persist();
+});
 addEventListener("pagehide", persist);
 document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && persist());
 

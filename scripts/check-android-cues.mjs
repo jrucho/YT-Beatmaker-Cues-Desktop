@@ -48,6 +48,7 @@ try {
   await page.addInitScript((platform) => {
     if (platform === "android") window.androidBridge = {};
     const listeners = {};
+    window.emitMidi = message => listeners.MusikeMidi?.(message);
     window.nativeFixture = { calls: [], position: 0, sourceId: 0, queue: { tracks: [], index: 0, repeat: "off" }, eventsEnabled: true };
     window.emitAudio = (event, data = {}) => {
       if (!window.nativeFixture.eventsEnabled) return;
@@ -59,7 +60,7 @@ try {
       const state = window.nativeFixture;
       const track = state.queue.tracks[state.queue.index];
       return { sourceId: state.sourceId, queueIndex: state.queue.index, trackId: track?.id, url: state.url,
-        position: state.position, duration: 60, buffered: 60, playing: true, ready: true,
+        position: state.position, duration: 60, buffered: state.url ? 60 : 0, playing: !!state.url, ready: !!state.url,
         loop: track?.loop ?? { from: null, to: null, on: false } };
     };
     window.nativeEnd = () => {
@@ -77,7 +78,7 @@ try {
     window.Capacitor = {
       PluginHeaders: [
         { name: "MusikeAudio", methods: [...audioMethods.map(name => ({ name, rtype: "promise" })), { name: "addListener", rtype: "callback" }] },
-        { name: "MusikeMidi", methods: [{ name: "list", rtype: "promise" }, { name: "addListener", rtype: "callback" }] },
+        { name: "MusikeMidi", methods: [{ name: "list", rtype: "promise" }, { name: "addListener", rtype: "callback" }, { name: "removeListener", rtype: "promise" }] },
       ],
       nativeCallback(plugin, method, _options, callback) {
         if (method === "addListener") listeners[plugin] = callback;
@@ -183,19 +184,31 @@ try {
   await page.getByRole("button", { name: "Mark pad 2", exact: true }).tap();
   await page.waitForFunction(() => window.fixture.cues.getState().cues[2] === 6.75);
   assert.equal(await page.evaluate(() => window.fixture.cues.getState().cues[1]), 0, "Mark fills a cleared pad without replacing pad 1");
-  for (let padNumber = 4; padNumber <= 12; padNumber++) {
+  for (let padNumber = 4; padNumber <= 16; padNumber++) {
     await position(padNumber * 2);
     await page.getByRole("button", { name: `Mark pad ${padNumber}`, exact: true }).tap();
   }
-  assert(await page.getByRole("button", { name: "Bank full", exact: true }).isDisabled(), "A full bank stops marking instead of overwriting saved cues");
+  await position(33.5);
+  await page.getByRole("button", { name: "Mark pad 1", exact: true }).tap();
+  await page.waitForFunction(() => window.fixture.cues.getState().bank === "C" && window.fixture.cues.getState().cues[1] === 33.5);
   assert.equal(await page.evaluate(() => window.fixture.player.getState().status), "playing", "Sequential marking does not interrupt playback");
   assert.equal(await page.evaluate(() => window.nativeFixture.calls.filter(c => c.method === "setSource").length), loadCount, "Sequential marking never reloads the source");
   await page.getByRole("button", { name: "C", exact: true }).tap();
+  await page.getByRole("button", { name: "Clear bank", exact: true }).tap();
   await position(11.125);
   await page.getByRole("button", { name: "Mark pad 1", exact: true }).tap();
   await page.waitForFunction(() => window.fixture.cues.getState().cues[1] === 11.125);
   await page.getByRole("button", { name: "A", exact: true }).tap();
   assert.equal(await page.evaluate(() => window.fixture.cues.getState().cues[1]), 18.625, "Sequential marking stays within the selected bank");
+
+  await position(14.25);
+  await page.evaluate(() => window.emitMidi({ type: "noteon", channel: 3, note: 48, velocity: 101 }));
+  await page.waitForFunction(() => window.fixture.cues.getState().bank === "D" && window.fixture.cues.getState().cues[1] === 14.25);
+  await position(25);
+  await page.evaluate(() => window.emitMidi({ type: "noteon", channel: 3, note: 48, velocity: 77 }));
+  await page.waitForFunction(() => window.nativeFixture.position === 14.25);
+  await page.evaluate(() => window.emitMidi({ type: "noteoff", channel: 3, note: 48, velocity: 0 }));
+  assert.equal(await page.evaluate(() => window.fixture.player.getState().status), "playing", "Note Off preserves one-shot cue playback");
 
   const fader = page.getByRole("slider");
   await page.evaluate(() => window.fixture.player.getState().setSpeed(0));
@@ -259,6 +272,37 @@ try {
     window.emitAudio("seeked", { sourceId: oldSource, position: 49 });
   });
   assert.notEqual(await page.evaluate(() => window.__musikeAudioEl.currentTime), 49, "Late events from the previous source are ignored");
+
+  await page.evaluate(() => {
+    window.fixture.player.setState({ position: 23.75, status: "paused" });
+    window.dispatchEvent(new Event("pagehide"));
+  });
+  await page.reload();
+  await page.waitForFunction(() => window.fixture);
+  await page.evaluate(() => window.dispatchEvent(new Event("pageshow")));
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => window.fixture.player.getState().position), 23.75, "Cold native snapshot preserves saved resume position");
+  await page.evaluate(() => window.fixture.player.getState().toggle());
+  await page.waitForFunction(() => window.fixture.player.getState().status === "playing");
+  assert.equal(await page.evaluate(() => window.nativeFixture.calls.find(c => c.method === "setSource")?.startAt), 23.75, "First Play after reopen loads the song at its saved position");
+  await page.getByLabel("MIDI controller preset", { exact: true }).selectOption("legacy12");
+  assert.equal(await page.getByRole("button", { name: /^Pad \d+: (?:Empty|\d)/ }).count(), 12, "Legacy preset displays twelve pads");
+  await page.evaluate(() => {
+    const store = window.fixture.cues.getState();
+    store.setBank("H"); store.setCue(13, 44);
+    for (let pad = 1; pad <= 12; pad++) store.setCue(pad, pad);
+  });
+  await position(31.25);
+  await page.getByRole("button", { name: "Mark pad 1", exact: true }).tap();
+  await page.waitForFunction(() => window.fixture.cues.getState().bank === "I" && window.fixture.cues.getState().cues[1] === 31.25);
+  await page.reload();
+  await page.waitForFunction(() => window.fixture);
+  assert.equal(await page.getByLabel("MIDI controller preset", { exact: true }).inputValue(), "legacy12", "Controller preset survives reopening");
+  assert.equal(await page.getByRole("button", { name: /^Pad \d+: (?:Empty|\d)/ }).count(), 12, "Reopened legacy grid still has twelve pads");
+  await page.getByLabel("MIDI controller preset", { exact: true }).selectOption("sp404mkii-a");
+  await page.evaluate(() => window.fixture.cues.getState().setBank("H"));
+  assert.equal(await page.getByRole("button", { name: /^Pad \d+: (?:Empty|\d)/ }).count(), 16);
+  assert.equal(await page.evaluate(() => window.fixture.cues.getState().cues[13]), 44, "Hidden extended cues survive legacy mode");
   assert.deepEqual(errors, []);
   console.log(`PASS (${platform} bridge): cue marking/jumps, IN/OUT, 1% faders/tuning/reset, native playlist changes without JS reloads, suspended-event recovery, and stale-source events.`);
 } finally {

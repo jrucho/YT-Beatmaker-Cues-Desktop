@@ -1,7 +1,7 @@
 {
   "name": "@musike/mobile",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Beatmaker Cues for Android and iOS, with the backend running on the phone (Capacitor).",
   "type": "module",
   "scripts": {
