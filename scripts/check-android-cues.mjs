@@ -287,6 +287,8 @@ try {
   assert.equal(await page.evaluate(() => window.nativeFixture.calls.find(c => c.method === "setSource")?.startAt), 23.75, "First Play after reopen loads the song at its saved position");
   await page.getByLabel("MIDI controller preset", { exact: true }).selectOption("legacy12");
   assert.equal(await page.getByRole("button", { name: /^Pad \d+: (?:Empty|\d)/ }).count(), 12, "Legacy preset displays twelve pads");
+  assert(await pad(1).evaluate(button => button.parentElement.parentElement.classList.contains("grid-cols-3")), "Legacy mobile grid selects three-column layout");
+  assert.deepEqual(await page.getByRole("button", { name: /^Pad \d+: (?:Empty|\d)/ }).evaluateAll(pads => pads.map(pad => Number(pad.getAttribute("aria-label").match(/^Pad (\d+)/)[1]))), Array.from({ length: 12 }, (_, i) => i + 1), "Legacy pads follow row-major order 1–3, 4–6, 7–9, 10–12");
   await page.evaluate(() => {
     const store = window.fixture.cues.getState();
     store.setBank("H"); store.setCue(13, 44);

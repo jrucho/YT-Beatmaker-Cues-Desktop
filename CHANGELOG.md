@@ -4,6 +4,7 @@
 
 - Expanded the mobile and desktop studio to sixteen pads in a 4×4 layout, preserving existing cue numbers and bank storage.
 - Selecting Legacy 12-pad changes the visible grid and sequential Mark limit to twelve on every platform; switching back restores sixteen. The chosen preset is remembered after reopening, and hidden extended cues are preserved.
+- Android/iOS Legacy uses a 3-column × 4-row grid (1–3, 4–6, 7–9, 10–12). Mode A/B retain 4×4; desktop retains its four-column layout.
 - Mark now fills empty pads and continues through banks A–J, switching the visible bank when marking begins there. Existing cues are never overwritten by sequential Mark.
 - Added shared SP-404MKII Mode A and Mode B controller presets, using Roland's physical pad layout. Mode A uses channels 1–10 for A–J; Mode B uses the default channels 1/2 and bank-specific note ranges. Kept the Legacy 12-pad preset; removed the redundant Standard preset from the selector.
 - MIDI hits mark empty pads and trigger assigned cues. Overwrite mode replaces cues. Note Off and velocity-zero Note On release pad highlighting without stopping one-shot playback. Unmapped desktop MIDI messages continue through the original engine.

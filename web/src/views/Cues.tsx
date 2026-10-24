@@ -225,7 +225,7 @@ export default function Cues() {
               </button>
             </div>
 
-            <div className="mt-3 grid grid-cols-4 gap-2">
+            <div className={cn("mt-3 grid gap-2", mapping.padToNote.length === 12 ? "grid-cols-3" : "grid-cols-4")}>
               {Array.from({ length: mapping.padToNote.length }, (_, i) => i + 1).map((pad) => {
                 const time = cues[pad];
                 return (
