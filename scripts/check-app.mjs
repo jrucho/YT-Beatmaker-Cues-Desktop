@@ -145,7 +145,9 @@ try {
   assert(await page.getByRole("button", { name: "Load Midnight Tapes into studio", exact: true }).first().isVisible(), "Track cards keep their direct studio action");
   const markCues = globalPlayer.getByRole("button", { name: "Open the studio to mark cues for Midnight Tapes", exact: true });
   assert(await markCues.isVisible(), "Global player offers cue marking");
+  const favoriteSaved = page.waitForResponse(response => response.url().endsWith("/api/favorites/testaudio00") && response.request().method() === "PUT");
   await page.getByRole("button", { name: "Save Midnight Tapes", exact: true }).click();
+  assert((await favoriteSaved).ok(), "Favorite write succeeds before checking persistence");
   await page.getByRole("button", { name: "Unsave Midnight Tapes", exact: true }).waitFor();
   assert((await (await fetch(`${origin}/api/library`)).json()).favorites.some(t => t.id === tracks[0].id), "Favorite button persists to the real library API");
   await markCues.click();
