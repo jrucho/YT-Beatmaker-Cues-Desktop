@@ -2,8 +2,8 @@
 .ds-header { min-height:80px; padding-bottom:16px; }
 .ds-header-caption { color:#5f5f5f; font:9px "Geist Mono Variable",monospace; letter-spacing:.1em; margin-left:18px; }
 .ds-navigation { display:flex; gap:9px; align-items:center; margin-left:auto; }
-.ds-current-page { font:10px "Geist Mono Variable",monospace; padding:11px 17px; border:1px solid #f0f0f0; border-radius:11px; color:#111; background:#eee; }
-.ds-navigation button { font:10px "Geist Mono Variable",monospace; }
+.ds-current-page { font:500 12px "Geist Variable",sans-serif; padding:11px 17px; border:1px solid transparent; border-radius:999px; color:#111; background:#eee; }
+.ds-navigation button { font:500 12px "Geist Variable",sans-serif; }
 .ds-scroll { overflow-y:auto; min-height:0; flex:1; scrollbar-width:thin; scrollbar-color:#303030 transparent; padding:0 0 30px; }
 .ds-hero { display:grid; grid-template-columns:1fr 1fr; gap:50px; align-items:center; padding:40px 0 34px; }
 .ds-hero h1 { font-size:clamp(32px,3.5vw,55px); line-height:1.12; font-weight:500; letter-spacing:-2.5px; margin:17px 0 14px; }
@@ -16,7 +16,7 @@
 .ds-search-form .bm-primary { align-self:flex-end; min-height:42px; padding:0 19px; }
 .ds-search-note { font:8px "Geist Mono Variable",monospace; color:#606060; letter-spacing:.05em; align-self:flex-end; }
 .ds-crates { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; padding-bottom:30px; border-bottom:1px solid #202020; }
-.bm-app .ds-crate { display:flex; position:relative; flex-direction:column; align-items:flex-start; justify-content:flex-end; gap:7px; height:135px; overflow:hidden; padding:17px; background:linear-gradient(145deg,color-mix(in srgb,var(--crate-color) 30%,#090909),#080808); border-color:#2b2b2b; }
+.bm-app .ds-crate { display:flex; position:relative; flex-direction:column; align-items:flex-start; justify-content:flex-end; gap:7px; height:135px; overflow:hidden; padding:17px; border-radius:12px; background:color-mix(in srgb,var(--crate-color) 18%,#111); border-color:transparent; }
 .ds-crate.is-selected { border-color:#aaa; }
 .ds-crate strong { font-size:13px; font-weight:500; z-index:1; }
 .ds-crate>span:not(.ds-crate-texture) { font:7px "Geist Mono Variable",monospace; color:#8a8a8a; z-index:1; }

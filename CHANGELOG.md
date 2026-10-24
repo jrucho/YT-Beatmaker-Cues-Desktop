@@ -2,7 +2,10 @@
 
 ## 1.0.3
 
-- Desktop playback refresh: fetch audio through validated 1 MB upstream ranges with retries and backpressure, fixing full-file/open-ended requests that stall even with an up-to-date yt-dlp. Browser seeking and suffix ranges are retained.
+- Desktop compatibility refresh: restored the 1.0.2 direct proxy audio path. When yt-dlp resolves a URL that is refused with HTTP 403/410, audio now bypasses that rejected resolver result using the existing direct-audio fallback rather than repeating the same rejection.
+- Verified real YouTube playback and switching song 1 → song 2 → song 1 in Electron. Added an opt-in live desktop test, distinct from deterministic fixture checks.
+- Simplified desktop Discovery/studio surfaces to match the library's flat dark styling and pill controls; removed the Ready/Cues saved footer and technical studio badge. Visible headings now use Beatmaker Cues, and both desktop Play buttons show an animated loading indicator.
+- The earlier desktop bounded-range proxy experiment has been rolled back from the playback path in favor of 1.0.2 compatibility. Native mobile downloaders are unaffected.
 - Desktop layout refresh: explicitly size all four pad rows equally; Legacy uses three equal rows in its four-column desktop grid. The fourth sixteen-pad row no longer falls into an implicit grid track.
 - Expanded the mobile and desktop studio to sixteen pads in a 4×4 layout, preserving existing cue numbers and bank storage.
 - Selecting Legacy 12-pad changes the visible grid and sequential Mark limit to twelve on every platform; switching back restores sixteen. The chosen preset is remembered after reopening, and hidden extended cues are preserved.

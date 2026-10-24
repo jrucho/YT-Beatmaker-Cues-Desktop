@@ -210,6 +210,18 @@ export function invalidate(id: string) {
   resolvedAt.delete(id);
 }
 
+/** A resolver can succeed while returning a URL the media server refuses.
+ * On that failure, bypass yt-dlp instead of retrying the same rejected client.
+ */
+export async function resolveAudioFallback(id: string): Promise<Resolved> {
+  const direct = await directAudio(id, await clientsForDirect());
+  const result: Resolved = { id, title: direct.title, duration: direct.duration,
+    audio: { formatId: "direct", url: direct.url, headers: {}, mime: direct.mime },
+    expiresAt: direct.expiresAt - 60_000 };
+  resolvedAt.set(id, result);
+  return result;
+}
+
 const downloads = new Map<string, Promise<string>>();
 
 /** Keeps the video cache under `config.cacheMaxBytes`, evicting least recently played files first. */

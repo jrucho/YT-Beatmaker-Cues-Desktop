@@ -151,7 +151,7 @@ try {
   await page.getByRole("button", { name: "Unsave Midnight Tapes", exact: true }).waitFor();
   assert((await (await fetch(`${origin}/api/library`)).json()).favorites.some(t => t.id === tracks[0].id), "Favorite button persists to the real library API");
   await markCues.click();
-  await page.locator(".bm-footer").getByText("Ready", { exact: true }).waitFor({ timeout: 30000 });
+  await page.locator('.bm-app[data-engine-ready="true"]').waitFor({ timeout: 30000 });
   await page.getByRole("button", { name: "Set cue 1", exact: true }).waitFor();
   await page.getByRole("button", { name: "Set cue 1", exact: true }).click();
   const firstCue = await page.evaluate(() => window.musikeBeatmakerEngine.snapshot().cues["1"]);
@@ -176,6 +176,8 @@ try {
   await page.getByRole("button", { name: "A", exact: true }).click();
   assert.equal(await page.evaluate(() => window.musikeBeatmakerEngine.snapshot().cues["1"]), firstCue);
   assert.equal(await page.locator(".bm-pad-hit").count(), 16, "Desktop has sixteen physical pads");
+  assert.equal(await page.locator(".bm-footer").count(), 0, "Studio omits technical readiness/save banners");
+  assert(!(await page.locator(".bm-brand").innerText()).includes("MUSIKE"), "Studio uses Beatmaker Cues branding");
   const padGeometry = await page.locator(".bm-pad").evaluateAll(pads => pads.map(p => ({ y: p.getBoundingClientRect().y, h: p.getBoundingClientRect().height })));
   assert.equal(new Set(padGeometry.map(p => Math.round(p.y))).size, 4, "Desktop pad grid has four explicit rows");
   assert(Math.max(...padGeometry.map(p => p.h)) - Math.min(...padGeometry.map(p => p.h)) < 2, "All four pad rows have equal heights");
@@ -365,7 +367,7 @@ try {
   await page.getByRole("button", { name: "START DIGGING" }).click();
   await page.getByRole("button", { name: "Open YouTube playlist YouTube sample crate", exact: true }).waitFor();
   await page.getByRole("button", { name: "STUDIO", exact: false }).first().click();
-  await page.locator(".bm-footer").getByText("Ready", { exact: true }).waitFor();
+  await page.locator('.bm-app[data-engine-ready="true"]').waitFor();
   assert.equal(await page.evaluate(() => window.musikeBeatmakerEngine.snapshot().cues["1"]), 7, "Navigation preserves cue banks");
   await page.getByRole("button", { name: "Discover", exact: true }).click();
   await page.getByRole("heading", { name: "Find a sound. Make it yours." }).waitFor();
@@ -392,13 +394,13 @@ try {
   await playlistLink.click();
   assert(page.url().includes(`/playlist/${organized.id}`), "Playlist search opens the saved collection");
   await page.getByRole("button", { name: /Beatmaker workspace/ }).first().click();
-  await page.locator(".bm-footer").getByText("Ready", { exact: true }).waitFor();
+  await page.locator('.bm-app[data-engine-ready="true"]').waitFor();
   assert.equal(await page.evaluate(() => window.musikeBeatmakerEngine.snapshot().cues["1"]), 7, "Beatmaker workspace returns to the studio from the library");
   await page.getByLabel("MIDI controller preset", { exact: true }).selectOption("legacy12");
   await page.goto(`${origin}/?workspace=beatmaker`);
   await page.getByRole("heading", { name: "Find a sound. Make it yours." }).waitFor();
   await page.getByRole("button", { name: "STUDIO", exact: false }).first().click();
-  await page.locator(".bm-footer").getByText("Ready", { exact: true }).waitFor();
+  await page.locator('.bm-app[data-engine-ready="true"]').waitFor();
   await page.getByRole("button", { name: "Play Midnight Tapes", exact: true }).click();
   assert.equal(await page.getByLabel("MIDI controller preset", { exact: true }).inputValue(), "legacy12", "Desktop restores selected preset after reopening");
   assert.equal(await page.locator(".bm-pad-hit").count(), 12);

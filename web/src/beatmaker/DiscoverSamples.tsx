@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowRight, DownloadSimple, GearSix, Heart, MagnifyingGlass, MusicNotes, Pause, Play, PlaylistIcon, Plus, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, SpeakerHigh, SpeakerX, Waveform, X } from "@phosphor-icons/react";
+import { ArrowRight, CircleNotch, DownloadSimple, GearSix, Heart, MagnifyingGlass, MusicNotes, Pause, Play, PlaylistIcon, Plus, Repeat, RepeatOnce, Shuffle, SkipBack, SkipForward, SpeakerHigh, SpeakerX, Waveform, X } from "@phosphor-icons/react";
 import { api } from "../lib/api";
 import { desktop } from "../lib/desktop";
 import { formatTime } from "../lib/format";
@@ -71,7 +71,7 @@ function DiscoverPlayer({ sample, onStopSample, onOpenStudio, onMarkCues }: { sa
       <div className="ds-player-transport">
         <button aria-label="Shuffle discovery queue" className={shuffle ? "is-active" : ""} disabled={!hasQueue || !!sample} onClick={toggleShuffle}><Shuffle size={16} /></button>
         <button aria-label="Previous track" disabled={!hasQueue || !!sample} onClick={prev}><SkipBack size={18} weight="fill" /></button>
-        <button className="ds-player-play" aria-label={sample ? "Pause sample preview" : playing ? "Pause" : "Play"} disabled={!sample && !hasQueue} onClick={sample ? onStopSample : toggle}>{sample || playing ? <Pause size={18} weight="fill" /> : <Play size={18} weight="fill" />}</button>
+        <button className="ds-player-play" aria-busy={!sample && status === "loading"} aria-label={sample ? "Pause sample preview" : playing ? "Pause" : "Play"} disabled={!sample && !hasQueue} onClick={sample ? onStopSample : toggle}>{!sample && status === "loading" ? <CircleNotch className="animate-spin" size={18} /> : sample || playing ? <Pause size={18} weight="fill" /> : <Play size={18} weight="fill" />}</button>
         <button aria-label="Next track" disabled={!hasQueue || !!sample} onClick={next}><SkipForward size={18} weight="fill" /></button>
         <button aria-label="Repeat discovery queue" className={repeat !== "off" ? "is-active" : ""} disabled={!hasQueue || !!sample} onClick={cycleRepeat}><RepeatIcon size={16} /></button>
       </div>
@@ -186,9 +186,9 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
   </section>;
 
   return <div className={`bm-app ds-app ${submittedQuery ? "ds-has-search" : ""}`}>
-    {desktop && <div className="bm-titlebar app-drag"><span>MUSIKE</span><span>v{__APP_VERSION__}</span></div>}
+    {desktop && <div className="bm-titlebar app-drag"><span>BEATMAKER CUES</span><span>v{__APP_VERSION__}</span></div>}
     <header className="bm-header ds-header">
-      <div className="bm-brand"><span className="bm-brand-icon"><LogoMark className="bm-brand-mark" /></span><strong>MUSIKE</strong></div>
+      <div className="bm-brand"><span className="bm-brand-icon"><LogoMark className="bm-brand-mark" /></span><strong>BEATMAKER CUES</strong></div>
       <div className="ds-navigation"><span className="ds-current-page">DISCOVER</span><button onClick={() => openStudio()}>STUDIO <ArrowRight size={16} /></button><button onClick={onBrowse}>MUSIC LIBRARY</button><button className="bm-icon-button" aria-label="Settings" onClick={openSettings}><GearSix size={19} /></button></div>
     </header>
     <main className="ds-scroll">
