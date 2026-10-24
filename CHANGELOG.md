@@ -2,6 +2,8 @@
 
 ## 1.0.3
 
+- Desktop playback refresh: fetch audio through validated 1 MB upstream ranges with retries and backpressure, fixing full-file/open-ended requests that stall even with an up-to-date yt-dlp. Browser seeking and suffix ranges are retained.
+- Desktop layout refresh: explicitly size all four pad rows equally; Legacy uses three equal rows in its four-column desktop grid. The fourth sixteen-pad row no longer falls into an implicit grid track.
 - Expanded the mobile and desktop studio to sixteen pads in a 4×4 layout, preserving existing cue numbers and bank storage.
 - Selecting Legacy 12-pad changes the visible grid and sequential Mark limit to twelve on every platform; switching back restores sixteen. The chosen preset is remembered after reopening, and hidden extended cues are preserved.
 - Android/iOS Legacy uses a 3-column × 4-row grid (1–3, 4–6, 7–9, 10–12). Mode A/B retain 4×4; desktop retains its four-column layout.

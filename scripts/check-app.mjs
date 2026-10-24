@@ -176,6 +176,9 @@ try {
   await page.getByRole("button", { name: "A", exact: true }).click();
   assert.equal(await page.evaluate(() => window.musikeBeatmakerEngine.snapshot().cues["1"]), firstCue);
   assert.equal(await page.locator(".bm-pad-hit").count(), 16, "Desktop has sixteen physical pads");
+  const padGeometry = await page.locator(".bm-pad").evaluateAll(pads => pads.map(p => ({ y: p.getBoundingClientRect().y, h: p.getBoundingClientRect().height })));
+  assert.equal(new Set(padGeometry.map(p => Math.round(p.y))).size, 4, "Desktop pad grid has four explicit rows");
+  assert(Math.max(...padGeometry.map(p => p.h)) - Math.min(...padGeometry.map(p => p.h)) < 2, "All four pad rows have equal heights");
   await page.getByRole("button", { name: "D", exact: true }).click();
   for (let i = 0; i < 17; i++) await page.getByRole("button", { name: "MARK", exact: true }).click();
   await page.waitForFunction(() => window.musikeBeatmakerHost.cueId().endsWith(":bank:E"));

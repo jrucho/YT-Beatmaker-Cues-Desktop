@@ -5,6 +5,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { msg } from "./i18n.js";
 import { HttpError } from "./types.js";
 import { invalidate, resolveStreams, type StreamFormat } from "./ytdlp.js";
+import { rangedAudio } from "./audioRanges.js";
 
 const PASS_HEADERS = ["content-length", "content-range", "accept-ranges", "last-modified"];
 
@@ -34,6 +35,20 @@ export async function proxyStream(req: FastifyRequest, reply: FastifyReply, id: 
   };
 
   let fmt = await pick(false);
+  if (kind === "audio") {
+    let audio;
+    try { audio = await rangedAudio(fmt, typeof req.headers.range === "string" ? req.headers.range : undefined, controller.signal); }
+    catch (error) {
+      controller.signal.throwIfAborted();
+      fmt = await pick(true);
+      audio = await rangedAudio(fmt, typeof req.headers.range === "string" ? req.headers.range : undefined, controller.signal);
+    }
+    reply.code(audio.partial ? 206 : 200).header("content-type", fmt.mime)
+      .header("accept-ranges", "bytes").header("cache-control", "no-store")
+      .header("content-length", audio.end - audio.start + 1);
+    if (audio.partial) reply.header("content-range", `bytes ${audio.start}-${audio.end}/${audio.total}`);
+    return reply.send(audio.body);
+  }
   let upstream = await request(fmt);
   // Expired or rejected URL: resolve again once.
   if (upstream.status === 403 || upstream.status === 410) {

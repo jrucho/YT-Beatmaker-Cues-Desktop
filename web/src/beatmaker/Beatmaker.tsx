@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowCounterClockwise, ArrowSquareOut, DownloadSimple, FolderOpen, GearSix, GridFour, Info, List, MagnifyingGlass, MusicNotes, Pause, Play, PlaylistIcon, Plus, Shuffle, SlidersHorizontal, SpeakerHigh, TrashIcon, X } from "@phosphor-icons/react";
 import { api, saveFile } from "../lib/api";
 import { desktop } from "../lib/desktop";
@@ -259,7 +259,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
           <nav className="bm-banks" aria-label="Cue banks">{BANKS.map(b => <button key={b} className={bank === b ? "is-active" : ""} aria-pressed={bank === b} onClick={() => { setBank(b); setEngineBank(b); setActive(null); }}>{b}</button>)}<button className="bm-map" disabled={!engineReady} onClick={() => engineAction("mapping")} title="Open MIDI mappings"><GridFour size={17} /> MAP</button></nav>
           <section className="bm-pad-shell">
             <div className="bm-section-label"><span>BANK {bank}</span><button disabled={!mediaReady || !engineReady} onPointerDown={e => { if (e.button === 0) { e.preventDefault(); markNext(); } }} onClick={e => { if (e.detail === 0) markNext(); }}>MARK</button><span>{padCount} PADS</span></div>
-            <div className="bm-pads">{Array.from({ length: padCount }, (_, i) => {
+            <div className="bm-pads" style={{ "--bm-pad-rows": padCount / 4 } as CSSProperties}>{Array.from({ length: padCount }, (_, i) => {
               const key = cueKey(i), cue = cues[key];
               const assigned = track && cue !== undefined;
               return <div key={key} className={`bm-pad ${assigned ? "is-assigned" : ""} ${active === key ? "is-triggered" : ""}`}>

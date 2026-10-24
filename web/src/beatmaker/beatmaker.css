@@ -90,7 +90,7 @@
 .bm-banks>.bm-map { flex:1.6; margin-left:9px; font-size:10px; background:#080808; border:1px solid #252525; color:#ddd; }
 .bm-pad-shell { min-height:0; flex:1; display:flex; flex-direction:column; border:1px solid #202020; border-radius:20px; padding:13px; gap:15px; }
 .bm-section-label { display:flex; justify-content:space-between; font:10px "Geist Mono Variable",monospace; color:#828282; gap:10px; }
-.bm-pads { display:grid; flex:1; min-height:0; grid-template-columns:repeat(4,minmax(0,1fr)); grid-template-rows:repeat(3,minmax(110px,1fr)); gap:10px; }
+.bm-pads { display:grid; flex:1; min-height:0; grid-template-columns:repeat(4,minmax(0,1fr)); grid-template-rows:repeat(var(--bm-pad-rows,4),minmax(0,1fr)); gap:10px; }
 .bm-pad { position:relative; border-radius:17px; border:1px solid #292929; overflow:hidden; background:radial-gradient(ellipse at 40% 15%,#111,#080808 75%); transition:border-color .15s,box-shadow .15s; min-height:0; }
 .bm-pad:hover { border-color:#686868; }
 .bm-pad.is-triggered { border-color:#ddd; box-shadow:0 0 0 1px #ffffff38,0 0 20px #ffffff06; }
