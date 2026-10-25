@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source(".");
 
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 /* The wide (labelled) rail, from 1280px up unless the user chose a compact sidebar in Settings (always compact on TV). */
