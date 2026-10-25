@@ -6,7 +6,9 @@ A standalone desktop music and beatmaking app combining [Musike](https://github.
 
 **[Download v1.0.3 — desktop, Android and iOS](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.3)** · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
 
-**1.0.3** adds sixteen pads, cross-bank Mark, SP-404MKII Mode A/B MIDI presets and playback restoration, plus iOS cue smoothing. [1.0.2 remains available as a fallback](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.2). Further latency improvements are planned for **1.0.4**.
+**1.0.3** adds sixteen pads, cross-bank Mark, SP-404MKII Mode A/B MIDI presets and playback restoration, plus iOS cue smoothing. [1.0.2 remains available as a fallback](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.2).
+
+**1.0.4 is in development:** durable automatic library saves, native cache/feedback improvements, local audio import and integrated [AU/VST3/AUv3/standalone plug-in sources](plugin/README.md). Main-app and plug-in libraries are separate; automatic iOS sharing/App Groups are deferred. Download links below still point to the published 1.0.3 release until 1.0.4 artifacts are verified and published.
 
 <p align="center">
   <a href="docs/screenshots/discover-samples.png"><img src="docs/screenshots/discover-samples.png" alt="Discover Samples opening page with live search and the global player bar" width="100%"></a>

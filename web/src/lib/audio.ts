@@ -45,6 +45,8 @@ interface NativePayload {
   playing?: boolean;
   ready?: boolean;
   resume?: boolean;
+  bank?: string;
+  pad?: number;
   loop?: AudioLoop;
 }
 
@@ -145,12 +147,12 @@ class NativeAudio extends EventTarget {
     this.bridge.postMessage({ cmd: "seek", to: value, sourceId: this._sourceId });
   }
 
-  cue(value: number) {
+  cue(value: number, pad?: { bank: string; pad: number }) {
     this._position = value;
     this._seekTarget = value;
     this._paused = false;
     this._ended = false;
-    this.bridge.postMessage({ cmd: "cue", to: value, sourceId: this._sourceId });
+    this.bridge.postMessage({ cmd: "cue", to: value, sourceId: this._sourceId, ...pad });
   }
 
   position(): Promise<number> {
@@ -278,6 +280,9 @@ class NativeAudio extends EventTarget {
   private fromNative(event: string, data: NativePayload) {
     if (data.sourceId != null && data.sourceId !== this._sourceId) return;
     switch (event) {
+      case "pad":
+        if (data.bank && data.pad) window.dispatchEvent(new CustomEvent("beatmaker-pad", { detail: { bank: data.bank, pad: data.pad, phase: "triggered" } }));
+        break;
       case "track":
       case "snapshot": {
         if (data.trackId == null || data.queueIndex == null) break;
@@ -361,7 +366,7 @@ interface AndroidAudioPlugin {
   play(): Promise<void>;
   pause(): Promise<void>;
   seek(options: { to: number; sourceId: number }): Promise<void>;
-  cue(options: { to: number; sourceId: number }): Promise<void>;
+  cue(options: { to: number; sourceId: number; bank?: string; pad?: number }): Promise<void>;
   position(options: { sourceId: number }): Promise<{ position: number }>;
   loop(options: AudioLoop & { sourceId: number }): Promise<void>;
   volume(options: { value: number }): Promise<void>;
@@ -395,7 +400,7 @@ function androidBridge(plugin: AndroidAudioPlugin): Bridge {
           run(plugin.seek({ to: Number(args.to ?? 0), sourceId: Number(args.sourceId) }));
           break;
         case "cue":
-          run(plugin.cue({ to: Number(args.to ?? 0), sourceId: Number(args.sourceId) }));
+          run(plugin.cue({ to: Number(args.to ?? 0), sourceId: Number(args.sourceId), bank: args.bank as string | undefined, pad: args.pad as number | undefined }));
           break;
         case "loop":
           run(plugin.loop({ from: Number(args.from ?? 0), to: Number(args.to ?? 0), on: Boolean(args.on), sourceId: Number(args.sourceId) }));
@@ -455,9 +460,9 @@ export function setAudioTuning(media: HTMLMediaElement, semitones: number) {
 }
 
 /** Returns true when the native engine handled seeking and playback atomically. */
-export function cueAudio(media: HTMLMediaElement, seconds: number): boolean {
+export function cueAudio(media: HTMLMediaElement, seconds: number, pad?: { bank: string; pad: number }): boolean {
   if (!(media instanceof NativeAudio) || !media.independentPitch) return false;
-  media.cue(seconds);
+  media.cue(seconds, pad);
   return true;
 }
 

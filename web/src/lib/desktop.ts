@@ -4,6 +4,7 @@ interface DesktopBridge {
   setTheme: (theme: "dark" | "light") => void;
   /** Missing in desktop builds older than 1.2. */
   setLanguage?: (lang: string) => void;
+  importAudio?: () => Promise<import('./types').Track | null>;
 }
 
 export const desktop = (window as Window & { musikeDesktop?: DesktopBridge }).musikeDesktop;

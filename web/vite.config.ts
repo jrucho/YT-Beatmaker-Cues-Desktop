@@ -23,6 +23,7 @@ function beatmakerAssets(): Plugin {
       }
       cpSync(path.join(here, "node_modules/signalsmith-stretch"), path.join(output, "node_modules/signalsmith-stretch"), { recursive: true, dereference: true });
       let content = readFileSync(path.join(source, "content.js"), "utf8");
+      content = content.replace("  jumpToCue(cueTime);", "  if (jumpToCue(cueTime) && window.musikeBeatmakerHost) window.dispatchEvent(new CustomEvent('beatmaker-pad', { detail: { bank: window.musikeBeatmakerHost.bankName(), pad: cueKey === '0' ? 10 : Number(cueKey), phase: 'triggered' } }));");
       content = content.replace("function handleMIDIMessage(e) {", "function handleMIDIMessage(e) { if (window.musikeBeatmakerHost?.midi?.(e.data)) return;");
       content = content.replaceAll("function getVideoElement() {", "function getVideoElement() { if (window.musikeBeatmakerHost) return window.musikeBeatmakerHost.media();");
       content = content.replace("function getCurrentVideoID() {", "function getCurrentVideoID() { if (window.musikeBeatmakerHost) return window.musikeBeatmakerHost.cueId();");

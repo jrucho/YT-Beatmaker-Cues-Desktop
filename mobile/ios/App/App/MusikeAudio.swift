@@ -92,6 +92,15 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
 
     func attach(_ webView: WKWebView?) { self.webView = webView }
 
+    static func cachedTrack(_ id: String) -> [String: Any]? {
+        guard id.range(of: "^[A-Za-z0-9_-]{11}$", options: .regularExpression) != nil else { return nil }
+        let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("BeatmakerCuesAudio/song-\(id).m4a")
+        guard FileManager.default.fileExists(atPath: file.path), let audio = try? AVAudioFile(forReading: file), audio.length > 0 else { return nil }
+        return ["url": file.absoluteString, "mime": "audio/mp4", "title": id,
+                "duration": Double(audio.length) / audio.processingFormat.sampleRate]
+    }
+
     static func remember(url: String, duration: Double) {
         guard duration.isFinite, duration > 0 else { return }
         let save = {
@@ -127,7 +136,11 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
         case "play": play()
         case "pause": pause()
         case "seek": schedule(at: number(body["to"]), playing: wantedPlaying)
-        case "cue": schedule(at: number(body["to"]), playing: true, smoothCue: true)
+        case "cue":
+            schedule(at: number(body["to"]), playing: true, smoothCue: true)
+            if file != nil, let pad = body["pad"] as? Int, let bank = body["bank"] as? String {
+                emit("pad", ["bank": bank, "pad": pad])
+            }
         case "position":
             replyHandler(["position": position()], nil)
             return
@@ -185,7 +198,9 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
             emit("error", ["message": "Invalid audio URL"])
             return
         }
-        let name = SHA256.hash(data: Data(link.utf8)).map { String(format: "%02x", $0) }.joined() + ".m4a"
+        let name = queue.current.range(of: "^[A-Za-z0-9_-]{11}$", options: .regularExpression) != nil
+            ? "song-\(queue.current).m4a"
+            : SHA256.hash(data: Data(link.utf8)).map { String(format: "%02x", $0) }.joined() + ".m4a"
         let cached = cacheDirectory.appendingPathComponent(name)
         if url.isFileURL { open(url, original: link); return }
         if FileManager.default.fileExists(atPath: cached.path) {
@@ -494,8 +509,7 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
                     return
                 }
                 let duration = self.number(payload["duration"])
-                let hash = SHA256.hash(data: Data(link.utf8)).map { String(format: "%02x", $0) }.joined()
-                let local = self.cacheDirectory.appendingPathComponent(hash + ".m4a")
+                let local = self.cacheDirectory.appendingPathComponent("song-\(id).m4a")
                 if FileManager.default.fileExists(atPath: local.path) {
                     self.finishPreparation(id, .success(PreparedTrack(remote: link, local: local, duration: duration)))
                     return

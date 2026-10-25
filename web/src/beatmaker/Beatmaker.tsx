@@ -14,6 +14,7 @@ import { Toasts } from "../components/Toasts";
 import { YouTubePlaylists } from "../components/YouTubePlaylists";
 import { loadBeatmaker, setEngineBank, type Engine } from "./runtime";
 import { CONTROLLER_PRESETS, readControllerPreset, saveControllerPreset } from "../native/controllerMapping";
+import { padFeedback, usePadFeedback } from "../mobile/padFeedback";
 import "./beatmaker.css";
 
 const BANKS = "ABCDEFGHIJ".split("");
@@ -41,6 +42,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
   const [mediaReady, setMediaReady] = useState(false);
   const [cues, setCues] = useState<Record<string, number>>({});
   const [active, setActive] = useState<string | null>(null);
+  const feedback = usePadFeedback();
   const [pitch, setPitch] = useState(0);
   const [rateLabel, setRateLabel] = useState("PITCH");
   const [midiPreset, setMidiPreset] = useState(() => readControllerPreset().id);
@@ -60,8 +62,9 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
     window.addEventListener("beatmaker-error", onEngineError);
     const onBank = (event: Event) => { setBank((event as CustomEvent<string>).detail); setActive(null); };
     const onMidiPad = (event: Event) => {
-      const data = (event as CustomEvent<{ pad: number; pressed: boolean }>).detail;
+      const data = (event as CustomEvent<{ bank: string; pad: number; pressed: boolean }>).detail;
       setActive(data.pressed ? cueKey(data.pad - 1) : null);
+      padFeedback({ bank: data.bank, pad: data.pad, phase: data.pressed ? "pressed" : "released" });
     };
     window.addEventListener("beatmaker-bank", onBank);
     window.addEventListener("beatmaker-midi-pad", onMidiPad);
@@ -259,8 +262,10 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
             <div className="bm-pads" style={{ "--bm-pad-rows": padCount / 4 } as CSSProperties}>{Array.from({ length: padCount }, (_, i) => {
               const key = cueKey(i), cue = cues[key];
               const assigned = track && cue !== undefined;
-              return <div key={key} className={`bm-pad ${assigned ? "is-assigned" : ""} ${active === key ? "is-triggered" : ""}`}>
-                <button className="bm-pad-hit" disabled={!!track && (!engineReady || !mediaReady)} onClick={e => { if (e.detail === 0) trigger(key, e.shiftKey); }} onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); trigger(key, e.shiftKey); }} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); trigger(key, e.shiftKey); } }} aria-label={`${assigned ? "Trigger" : "Set"} cue ${i + 1}${assigned ? ` at ${time(cue)}` : ""}`}>
+              const padId = `${bank}:${i + 1}`;
+              const padState = feedback.pressed.has(padId) ? "pressed" : feedback.flashing.has(padId) ? "triggered" : feedback.active === padId ? "active" : "idle";
+              return <div key={key} data-pad-state={padState} className={`bm-pad ${assigned ? "is-assigned" : ""} ${padState === "triggered" || padState === "pressed" ? "is-triggered" : ""} ${padState === "active" ? "is-active" : ""}`}>
+                <button className="bm-pad-hit" disabled={!!track && (!engineReady || !mediaReady)} onClick={e => { if (e.detail === 0) trigger(key, e.shiftKey); }} onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); padFeedback({ bank, pad: i + 1, phase: "pressed" }); trigger(key, e.shiftKey); }} onPointerUp={() => padFeedback({ bank, pad: i + 1, phase: "released" })} onPointerCancel={() => padFeedback({ bank, pad: i + 1, phase: "released" })} onPointerLeave={() => padFeedback({ bank, pad: i + 1, phase: "released" })} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); trigger(key, e.shiftKey); } }} aria-label={`${assigned ? "Trigger" : "Set"} cue ${i + 1}${assigned ? ` at ${time(cue)}` : ""}`}>
                   <span className="bm-pad-number">{i + 1}</span>
                   {assigned ? <><img className="bm-pad-art" src={track.art || track.thumb} alt="" style={{ objectPosition: `${30 + i % 4 * 15}% center` }} /><div className="bm-pad-shade" /><div className="bm-pad-info"><strong>{track.title}</strong><span>CUE {String(i + 1).padStart(2, "0")} <b>•</b> {time(cue)} <b>•</b> {cue.toFixed(2)}s</span></div></> : <span className="bm-pad-empty"><Plus size={22} weight="thin" /><strong>EMPTY</strong><span>{track ? "Click to mark cue" : "Select a track"}</span></span>}
                 </button>

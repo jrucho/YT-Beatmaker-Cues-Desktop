@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, ipcMain, Menu, screen, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, screen, shell, dialog } from "electron";
 import type { RunningServer } from "../../server/src/app.js";
 import { backupLibraryOnUpdate } from "./backup.js";
 
@@ -34,6 +34,15 @@ const loadServer = async () => ({
   ...(await import("../../server/src/tools.js")),
   ...(await import("../../server/src/i18n.js")),
   HttpError: (await import("../../server/src/types.js")).HttpError,
+});
+
+ipcMain.handle("beatmaker:import-audio",async event=>{
+  const sender=event.sender.getURL();
+  if(!/^http:\/\/127\.0\.0\.1:\d+\//.test(sender))throw new Error("Unsupported import origin");
+  const result=await dialog.showOpenDialog({title:"Import audio",properties:["openFile"],filters:[{name:"Audio",extensions:["wav","aif","aiff","flac","mp3","m4a","aac","ogg"]}]});
+  if(result.canceled||!result.filePaths[0])return null;
+  const {importLocalAudio}=await import("../../server/src/localAudio.js");
+  return importLocalAudio(result.filePaths[0]);
 });
 
 const THEME = {

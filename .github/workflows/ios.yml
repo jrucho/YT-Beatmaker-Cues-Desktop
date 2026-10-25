@@ -2,24 +2,17 @@ name: iOS IPA and Xcode project
 
 on:
   workflow_dispatch:
+  workflow_call:
     inputs:
-      release_tag:
-        description: Existing release to update (must match mobile/package.json)
+      source_sha:
         required: true
-        default: v1.0.3
         type: string
-      publish_release:
-        description: Replace the iOS assets in this release
-        default: true
-        type: boolean
-  release:
-    types: [published]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-release-${{ inputs.release_tag || github.event.release.tag_name }}
+  group: ios-build-${{ inputs.source_sha || github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -28,6 +21,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
@@ -43,6 +38,8 @@ jobs:
       - name: Verify mobile controls and native playlist policies
         run: |
           node scripts/check-controller-mapping.mjs
+          node scripts/check-library-persistence.mjs
+          node scripts/check-backup-state.mjs
           node scripts/check-android-cues.mjs
           MUSIKE_TEST_PLATFORM=ios node scripts/check-android-cues.mjs
           node scripts/check-ios-midi.mjs
@@ -55,7 +52,7 @@ jobs:
         run: node mobile/scripts/ios-release-assets.mjs prepare
       - uses: actions/upload-artifact@v7
         with:
-          name: beatmaker-cues-ios-${{ github.sha }}
+          name: beatmaker-cues-ios
           path: |
             release/Beatmaker-Cues-Test-*-iOS.ipa
             release/Beatmaker-Cues-Xcode-*.zip
@@ -63,25 +60,3 @@ jobs:
             release/iOS-Build-*.json
           if-no-files-found: error
           retention-days: 30
-
-  publish:
-    needs: build
-    if: github.event_name == 'release' || inputs.publish_release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - uses: actions/download-artifact@v4
-        with:
-          name: beatmaker-cues-ios-${{ github.sha }}
-          path: release
-      - name: Update existing release assets and notes
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
-        run: node mobile/scripts/ios-release-assets.mjs publish "$RELEASE_TAG"

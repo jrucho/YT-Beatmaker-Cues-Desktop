@@ -66,7 +66,7 @@ interface PlayerState {
   prev: () => void;
   seek: (seconds: number) => void;
   /** Jumps to a cue point as fast as possible: the loaded stream is only re-seeked, never reloaded. */
-  cue: (seconds: number) => void;
+  cue: (seconds: number, pad?: { bank: string; pad: number }) => void;
   setVolume: (v: number) => void;
   toggleMute: () => void;
   toggleShuffle: () => void;
@@ -644,7 +644,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
 
     // Cue pads are an instrument: a hit must be heard now, so this only re-seeks the stream that is already
     // loaded. `seek` alone is not enough (it leaves a paused track paused) and `toggle` may reload the track.
-    cue: (seconds) => {
+    cue: (seconds, pad) => {
       const s = get();
       const track = s.queue[s.index];
       if (!track) return;
@@ -659,9 +659,10 @@ export const usePlayer = create<PlayerState>((set, get) => {
         !!loaded && loaded.id === track.id && loaded.kind === kind && media.readyState > 0 && !needsClipLookup(track, s.preferVideo);
       if (!ready) return load(s.index, { startAt: seconds });
       set({ position: t });
-      if (cueAudio(media, t)) return;
+      if (cueAudio(media, t, pad)) return;
       media.currentTime = t;
       if (media.paused) play(media);
+      if (pad) window.dispatchEvent(new CustomEvent("beatmaker-pad", { detail: { ...pad, phase: "triggered" } }));
     },
 
     setVolume: (v) => {

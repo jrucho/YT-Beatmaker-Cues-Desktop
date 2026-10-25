@@ -53,6 +53,14 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
 
     /// The player, with a visitor id YouTube accepts.
     func resolve(videoId: String, lang: String, region: String, done: @escaping ([String: Any]) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            if let cached = MusikeAudio.cachedTrack(videoId) { done(cached); return }
+            self.resolveUncached(videoId: videoId, lang: lang, region: region, done: done)
+        }
+    }
+
+    private func resolveUncached(videoId: String, lang: String, region: String, done: @escaping ([String: Any]) -> Void) {
         #if DEBUG
         NSLog("Musike resolve: %@", videoId)
         #endif

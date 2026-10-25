@@ -112,6 +112,7 @@ try {
             state.position = args.to;
             window.emitAudio("seeked", { position: args.to });
             if (method === "cue") window.emitAudio("playing");
+            if (method === "cue" && args.pad) window.emitAudio("pad", { bank: args.bank, pad: args.pad });
             break;
           case "position": return { position: state.position };
         }
@@ -146,8 +147,10 @@ try {
   const padBox = await pad(1).boundingBox();
   await page.mouse.move(padBox.x + padBox.width / 2, padBox.y + padBox.height / 2);
   await page.mouse.down();
+  assert.equal(await pad(1).getAttribute("data-pad-state"), "pressed", "Touch/mouse pad reacts before release");
   await page.waitForFunction(() => window.nativeFixture.calls.some(c => c.method === "cue" && c.to === 5.125));
   await page.mouse.up();
+  await page.waitForFunction(() => document.querySelector('[aria-label^="Pad 1:"]')?.dataset.padState !== "pressed");
   assert.equal(await page.evaluate(() => window.nativeFixture.position), 5.125, "Cue lands on its saved fractional timestamp");
   assert.equal(await page.evaluate(() => window.nativeFixture.calls.filter(c => c.method === "setSource").length), loadCount, "Cue does not reload the track");
 
@@ -208,6 +211,7 @@ try {
   await page.evaluate(() => window.emitMidi({ type: "noteon", channel: 3, note: 48, velocity: 77 }));
   await page.waitForFunction(() => window.nativeFixture.position === 14.25);
   await page.evaluate(() => window.emitMidi({ type: "noteoff", channel: 3, note: 48, velocity: 0 }));
+  await page.waitForFunction(() => document.querySelector('[aria-label^="Pad 1:"]')?.dataset.padState !== "pressed");
   assert.equal(await page.evaluate(() => window.fixture.player.getState().status), "playing", "Note Off preserves one-shot cue playback");
 
   const fader = page.getByRole("slider");

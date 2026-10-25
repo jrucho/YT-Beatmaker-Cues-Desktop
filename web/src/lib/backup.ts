@@ -5,6 +5,8 @@ import { useLibrary } from "../stores/library";
 import { useUi } from "../stores/ui";
 import { api, saveFile, type ImportResult } from "./api";
 import type { Library } from "./types";
+import {captureBackupState, cleanBackupState, restoreBackupState, type BackupState} from './backupState';
+import {useCueStore} from '../mobile/cueStore';
 
 /**
  * Portable backup of a Musike instance: the library plus a few preferences.
@@ -16,6 +18,7 @@ export interface Backup {
   exportedAt: string;
   app: string;
   library: Library;
+  localState?: BackupState;
   settings?: {
     theme?: "dark" | "light";
     lang?: string;
@@ -36,6 +39,7 @@ export async function createBackup(): Promise<Backup> {
     exportedAt: new Date().toISOString(),
     app: `Musike ${__APP_VERSION__}`,
     library: { favorites: library.favorites, playlists: library.playlists, history: library.history },
+    localState: captureBackupState(),
     settings: {
       theme: useUi.getState().theme,
       lang: getLang(),
@@ -64,6 +68,7 @@ export async function readBackup(file: File): Promise<Backup> {
   if (typeof data.version !== "number" || data.version > 1) {
     throw new Error(getT().backup.newer);
   }
+  if (data.localState !== undefined) data.localState = cleanBackupState(data.localState);
   return data as Backup;
 }
 
@@ -80,7 +85,13 @@ export function summarize(backup: Backup) {
 }
 
 export async function restoreBackup(backup: Backup, mode: "merge" | "replace", applySettings: boolean): Promise<ImportResult> {
+  const localState = backup.localState === undefined ? undefined : cleanBackupState(backup.localState);
   const result = await api.importLibrary(backup, mode);
+  if (localState) {
+    const state = applySettings ? localState : Object.fromEntries(Object.entries(localState).filter(([key]) => key === 'musike:cues:v1' || key === 'musike:loops' || key.startsWith('ytbm_cues_')));
+    restoreBackupState(state, mode);
+    useCueStore.getState().setBank(localStorage.getItem('musike:cue-bank') || useCueStore.getState().bank);
+  }
   const s = backup.settings;
   if (applySettings && s) {
     const player = usePlayer.getState();

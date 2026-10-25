@@ -9,6 +9,7 @@ import { cuePosition, independentTuningAvailable, selectCurrent, usePlayer } fro
 import { CUE_BANKS, useCueStore } from "../mobile/cueStore";
 import { midi, midiAvailable, type MidiDevice, type MidiMessage } from "../native/midi";
 import { CONTROLLER_PRESETS, mapControllerMessage, readControllerPreset, saveControllerPreset } from "../native/controllerMapping";
+import { padFeedback, usePadFeedback } from "../mobile/padFeedback";
 
 const formatSemitones = (st: number) => `${st > 0 ? "+" : ""}${st} st`;
 
@@ -37,6 +38,7 @@ export default function Cues() {
   const nextPad = nextSlot?.pad;
   const [mapping, setMapping] = useState(readControllerPreset);
   const [heldPads, setHeldPads] = useState<Record<string, number>>({});
+  const feedback = usePadFeedback();
   const [overwrite, setOverwrite] = useState(false);
   const [devices, setDevices] = useState<MidiDevice[]>([]);
   /** What the finger on a pad is doing: a long press marks the cue instead of playing it. */
@@ -50,7 +52,7 @@ export default function Cues() {
   const trigger = useCallback((pad: number) => {
     const time = useCueStore.getState().cues[pad];
     if (time == null) return;
-    usePlayer.getState().cue(time);
+    usePlayer.getState().cue(time, { bank: useCueStore.getState().bank, pad });
   }, []);
 
   const mark = useCallback((pad: number | null, at = cuePosition().catch(() => null)) => {
@@ -72,6 +74,7 @@ export default function Cues() {
     const onMessage = (message: MidiMessage) => {
       const target = mapControllerMessage(message, mapping, useCueStore.getState().bank);
       if (!target) return;
+      padFeedback({ ...target, phase: target.pressed ? "pressed" : "released" });
       const key = `${target.bank}:${target.pad}`;
       setHeldPads(previous => {
         const next = { ...previous };
@@ -121,6 +124,7 @@ export default function Cues() {
   };
 
   const down = (pad: number) => {
+    padFeedback({ bank: useCueStore.getState().bank, pad, phase: "pressed" });
     press.current.marked = false;
     press.current.played = false;
     if (press.current.timer) window.clearTimeout(press.current.timer);
@@ -139,7 +143,8 @@ export default function Cues() {
     playPad(pad);
   };
 
-  const up = () => {
+  const up = (pad?: number) => {
+    if (pad) padFeedback({ bank: useCueStore.getState().bank, pad, phase: "released" });
     if (press.current.timer) window.clearTimeout(press.current.timer);
     press.current.timer = null;
   };
@@ -237,9 +242,10 @@ export default function Cues() {
                         e.currentTarget.setPointerCapture(e.pointerId);
                         down(pad);
                       }}
-                      onPointerUp={up}
-                      onPointerLeave={up}
-                      onPointerCancel={up}
+                      onPointerUp={() => up(pad)}
+                      onPointerLeave={() => up(pad)}
+                      onPointerCancel={() => up(pad)}
+                      data-pad-state={feedback.pressed.has(`${bank}:${pad}`) ? "pressed" : feedback.flashing.has(`${bank}:${pad}`) ? "triggered" : feedback.active === `${bank}:${pad}` ? "active" : "idle"}
                       onContextMenu={(e) => e.preventDefault()}
                       onClick={() => hit(pad)}
                       aria-label={time == null ? `${t.cues.pad(pad)}: ${t.cues.empty}` : `${t.cues.pad(pad)}: ${formatTime(time)}`}
@@ -249,6 +255,7 @@ export default function Cues() {
                           ? "bg-surface-2 ring-1 ring-line active:bg-surface-3"
                           : "bg-accent-soft text-accent-text ring-1 ring-accent/30",
                         heldPads[`${bank}:${pad}`] ? "brightness-150 ring-2 ring-accent" : "",
+                        feedback.pressed.has(`${bank}:${pad}`) || feedback.flashing.has(`${bank}:${pad}`) ? "brightness-150 ring-2 ring-accent scale-[0.97]" : "",
                       )}
                     >
                       <span className={cn("text-xs font-semibold", time == null ? "text-fg-3" : "text-accent-text")}>

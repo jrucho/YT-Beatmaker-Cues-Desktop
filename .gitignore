@@ -1,11 +1,18 @@
 # Dependencies and builds
 node_modules/
+__pycache__/
+*.pyc
 dist/
 dist-native/
 dev-dist/
 desktop/dist/
 release/
+/release-final/
+/release-staging/
+/SOURCE-INFO.json
 desktop/out/
+mobile/.build-tools/
+mobile/ios/build-*/
 
 # Local data (library, HD video cache)
 server/data/

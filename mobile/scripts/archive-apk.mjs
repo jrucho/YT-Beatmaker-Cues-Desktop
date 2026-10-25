@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {sourceInfo} from '../../scripts/source-info.mjs';
 
 const workspace = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const backups = join(workspace, "release", "backups");
@@ -28,8 +29,10 @@ export function archiveApk(apk, note, { snapshotSource = false } = {}) {
   if (existsSync(`${apk}.idsig`)) copyFileSync(`${apk}.idsig`, join(directory, `${name}.idsig`));
   writeFileSync(join(directory, "SHA256SUMS.txt"), `${sha256}  ${name}\n`);
   const git = (...args) => spawnSync("git", args, { cwd: workspace, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
-  const base = snapshotSource ? git("rev-parse", "HEAD") : null;
-  if (snapshotSource) {
+  const provenance=sourceInfo(workspace);
+  const gitSnapshot=snapshotSource&&existsSync(join(workspace,'.git'));
+  const base = gitSnapshot ? git("rev-parse", "HEAD") : null;
+  if (gitSnapshot) {
     const diff = git("diff", "--binary", "HEAD");
     const untracked = git("ls-files", "--others", "--exclude-standard", "-z");
     if (base.status !== 0 || diff.status !== 0 || untracked.status !== 0) throw new Error("Could not snapshot source changes");
@@ -43,8 +46,9 @@ export function archiveApk(apk, note, { snapshotSource = false } = {}) {
   }
   writeFileSync(join(directory, "build.json"), JSON.stringify({
     createdAt, apk: name, sha256, note,
-    sourceBaseCommit: base?.stdout.trim() ?? null,
-    sourceSnapshot: snapshotSource,
+    sourceBaseCommit: provenance.sourceCommit,
+    sourceSnapshot: gitSnapshot,
+    sourceArchiveBaseline: provenance.sourceArchiveBaseline ?? false,
   }, null, 2) + "\n");
   console.log(`Archived APK: ${directory}`);
   return directory;

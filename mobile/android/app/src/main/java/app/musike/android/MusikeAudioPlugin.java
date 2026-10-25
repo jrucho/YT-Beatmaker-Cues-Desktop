@@ -174,6 +174,13 @@ public class MusikeAudioPlugin extends Plugin {
                 wantPlay = true;
                 seekTo(to);
                 player.play();
+                int pad = call.getInt("pad", 0);
+                if (pad >= 1 && pad <= 16) {
+                    JSObject feedback = new JSObject();
+                    feedback.put("bank", call.getString("bank", "A"));
+                    feedback.put("pad", pad);
+                    emit("pad", feedback);
+                }
             }
             call.resolve();
         });
@@ -511,7 +518,8 @@ public class MusikeAudioPlugin extends Plugin {
         player.stop();
         player.clearMediaItems();
         if (url.isEmpty()) return;
-        player.setMediaItem(MediaItem.fromUri(url), Double.isFinite(startAt) ? Math.max(0, Math.round(startAt * 1000)) : 0);
+        MediaItem item = new MediaItem.Builder().setUri(url).setCustomCacheKey(queue.current().isEmpty() ? url : queue.current()).build();
+        player.setMediaItem(item, Double.isFinite(startAt) ? Math.max(0, Math.round(startAt * 1000)) : 0);
         applyRate();
         player.prepare();
         player.setPlayWhenReady(wantPlay);
@@ -536,7 +544,7 @@ public class MusikeAudioPlugin extends Plugin {
         if (cacheFactory == null || source.isEmpty()) return;
         prefetched = true;
         final String url = source;
-        final CacheWriter writer = new CacheWriter(cacheFactory.createDataSource(), new DataSpec(Uri.parse(url)), null, null);
+        final CacheWriter writer = new CacheWriter(cacheFactory.createDataSource(), new DataSpec.Builder().setUri(Uri.parse(url)).setKey(queue.current().isEmpty() ? url : queue.current()).build(), null, null);
         prefetcher = writer;
         Thread thread = new Thread(() -> {
             try {

@@ -1,0 +1,109 @@
+name: Complete release candidate
+
+on:
+  push:
+    branches: [release/1.0.4]
+  workflow_dispatch:
+    inputs:
+      create_draft:
+        description: Create a new draft GitHub release after every required build passes
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: complete-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  main-apps:
+    uses: ./.github/workflows/release.yml
+    with:
+      source_sha: ${{ github.sha }}
+      require_android_signing: true
+    secrets: inherit
+  main-ios:
+    uses: ./.github/workflows/ios.yml
+    with:
+      source_sha: ${{ github.sha }}
+  plugins:
+    uses: ./.github/workflows/plugins.yml
+    with:
+      source_sha: ${{ github.sha }}
+  source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python3 scripts/export-release-sources.py
+      - name: Verify source ZIP can install, typecheck and regenerate its UI
+        run: |
+          VERSION=$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')
+          unzip -q "release/Beatmaker-Cues-Source-$VERSION.zip" -d "$RUNNER_TEMP/source-check"
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Clean source build
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          pnpm --dir "$RUNNER_TEMP/source-check/Beatmaker-Cues-Source-$VERSION" install --frozen-lockfile
+          pnpm --dir "$RUNNER_TEMP/source-check/Beatmaker-Cues-Source-$VERSION" typecheck
+          pnpm --dir "$RUNNER_TEMP/source-check/Beatmaker-Cues-Source-$VERSION" build
+      - run: node scripts/check-release-assembly.mjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: complete-source
+          path: |
+            release/Beatmaker-Cues-Source-*
+            release/Beatmaker-Cues-Plugin-Source-*
+            release/Source-Build-*.json
+            release/SHA256SUMS-Source-*.txt
+          if-no-files-found: error
+  assemble:
+    needs: [main-apps, main-ios, plugins, source]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-staging
+          merge-multiple: true
+      - run: node scripts/assemble-release.mjs release-staging
+      - uses: actions/upload-artifact@v7
+        with:
+          name: verified-complete-release
+          path: release-final/*
+          if-no-files-found: error
+  draft:
+    if: github.event_name == 'workflow_dispatch' && inputs.create_draft
+    needs: assemble
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-complete-release
+          path: release-final
+      - name: Create and verify draft; never publish automatically
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/create-release-draft.mjs release-final

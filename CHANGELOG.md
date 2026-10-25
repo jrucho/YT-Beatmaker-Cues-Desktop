@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.4 — unreleased
+
+- Added cue/MIDI-aware portable backups and an explicit Android signing migration route. Created a persistent release-signing setup for future APK updates; published 1.0.3 test APKs have a different certificate and cannot update in place.
+- Added a coordinated, same-commit candidate workflow, clean-source exports and verified draft-only assembly with a complete target inventory. Individual build workflows no longer publish partial releases.
+- Added a separate experimental desktop-layout plug-in/standalone with distinct IDs and data storage. It routes core studio controls through native host audio; stems/browser FX/sequencer/sidechain/VJ are not yet host-routed.
+- Added durable automatic library saves with valid backups and corrupt-file recovery. Initial reads are single-flight, and failed writes no longer prevent later saves.
+- Integrated the native AU, VST3, AUv3 and plug-in standalone sources under `plugin/`, preserving legacy internal IDs. Added native build/package workflows and portable AUv3 Xcode export.
+- Plug-in libraries use revisioned atomic writes, interprocess locking and keyed concurrent-edit merging; session snapshots are stored separately from the library. Legacy DAW library data is archived during migration.
+- Added desktop/plug-in local audio imports and retained missing-media references.
+- Prefer stable track-ID caches before remote resolution; reuse native Apple HTTP connections and keep decode/download work away from the render thread.
+- Added native MIDI/touch pad feedback and editor-closed plug-in playlist preparation/advancement. Plug-in cues use an atomic command with a 3 ms transition continuous across rapid/pitch-processed retriggers.
+- Fixed FFmpeg discovery selecting an executable-named directory instead of the binary inside it.
+- Added persistence/concurrency/recovery checks, real AAC decode verification, render-allocation checks and live plug-in WebView restoration checks.
+- No App Groups or automatic main-app/AUv3 library sharing. Signing, platform-native CI and hardware verification status are documented in `plugin/README.md`; 1.0.4 is not yet published.
+
 ## 1.0.3
 
 - Desktop compatibility refresh: restored the 1.0.2 direct proxy audio path. When yt-dlp resolves a URL that is refused with HTTP 403/410, audio now bypasses that rejected resolver result using the existing direct-audio fallback rather than repeating the same rejection.

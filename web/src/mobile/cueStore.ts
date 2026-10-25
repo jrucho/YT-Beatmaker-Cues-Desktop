@@ -32,6 +32,11 @@ function bankCues(trackId: string | null, bank: string): BankCues {
   return readAll()[trackId]?.[bank] ?? {};
 }
 
+function initialBank(): string {
+  try { const bank = localStorage.getItem("musike:cue-bank"); return bank && CUE_BANKS.includes(bank as typeof CUE_BANKS[number]) ? bank : "A"; }
+  catch { return "A"; }
+}
+
 interface CueState {
   trackId: string | null;
   bank: string;
@@ -47,7 +52,7 @@ interface CueState {
 
 export const useCueStore = create<CueState>((set, get) => ({
   trackId: null,
-  bank: "A",
+  bank: initialBank(),
   cues: {},
 
   setTrack: (trackId) => {
@@ -55,7 +60,11 @@ export const useCueStore = create<CueState>((set, get) => ({
     set({ trackId, cues: bankCues(trackId, get().bank) });
   },
 
-  setBank: (bank) => set({ bank, cues: bankCues(get().trackId, bank) }),
+  setBank: (bank) => {
+    if (!CUE_BANKS.includes(bank as typeof CUE_BANKS[number])) return;
+    try { localStorage.setItem("musike:cue-bank", bank); } catch {}
+    set({ bank, cues: bankCues(get().trackId, bank) });
+  },
 
   setCue: (pad, seconds, targetBank) => {
     const { trackId } = get();

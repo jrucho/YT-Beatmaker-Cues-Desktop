@@ -9,32 +9,39 @@ const HISTORY_LIMIT = 60;
 export interface LibraryStorage {
   read(): Promise<string | null>;
   write(json: string): Promise<void>;
+  reloadBeforeRead?: boolean;
 }
 
 let storage: LibraryStorage | null = null;
 let state: Library | null = null;
 let writeChain: Promise<void> = Promise.resolve();
+let loading: Promise<Library> | null = null;
 
 /** Set once at startup, before any request. */
 export function useLibraryStorage(s: LibraryStorage) {
   storage = s;
   state = null;
+  loading = null;
 }
 
 const randomUUID = () => globalThis.crypto.randomUUID();
 
 async function load(): Promise<Library> {
-  if (state) return state;
+  if (state && !storage?.reloadBeforeRead) return state;
+  if (loading) return loading;
   if (!storage) throw new Error("Library storage not configured");
-  const json = await storage.read();
-  state = json ? (JSON.parse(json) as Library) : { favorites: [], playlists: [], history: [] };
-  return state;
+  loading = (async () => {
+    const json = await storage!.read();
+    state = json ? cleanLibrary(JSON.parse(json)) : { favorites: [], playlists: [], history: [] };
+    return state;
+  })().finally(() => { loading = null; });
+  return loading;
 }
 
 /** Serialized writes so concurrent requests never interleave. */
 function persist(): Promise<void> {
   const snapshot = JSON.stringify(state, null, 2);
-  writeChain = writeChain.then(() => storage!.write(snapshot));
+  writeChain = writeChain.catch(() => {}).then(() => storage!.write(snapshot));
   return writeChain;
 }
 

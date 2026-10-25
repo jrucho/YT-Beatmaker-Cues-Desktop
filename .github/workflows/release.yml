@@ -1,15 +1,16 @@
-name: Desktop builds
+name: Main desktop and Android builds
 
 on:
   workflow_dispatch:
+  workflow_call:
     inputs:
-      release_tag:
-        description: Existing release for a desktop-only refresh (blank builds artifacts only)
-        required: false
-        default: ''
+      source_sha:
+        required: true
         type: string
-  push:
-    tags: ["v*"]
+      require_android_signing:
+        required: false
+        default: false
+        type: boolean
   pull_request:
     branches: [main]
 
@@ -21,6 +22,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v5
         with:
@@ -28,6 +31,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: node scripts/check-library-persistence.mjs
+      - run: node scripts/check-backup-state.mjs
+      - run: node scripts/check-tool-discovery.mjs
       - run: node scripts/check-controller-mapping.mjs
       - run: node scripts/check-audio-ranges.mjs
       - run: pnpm installer:mac
@@ -41,16 +47,23 @@ jobs:
           codesign --verify --deep --strict "desktop/out/mac/YT Beatmaker Cues Desktop.app"
           hdiutil verify release/*-macOS-arm64.dmg
           hdiutil verify release/*-macOS-x64.dmg
+      - run: node scripts/record-build.mjs macOS
+        env:
+          RELEASE_CHECKS: typecheck,persistence,tool-discovery,midi-mappings,audio-ranges,desktop-regression,codesign,dmg-integrity
       - uses: actions/upload-artifact@v7
         with:
           name: yt-beatmaker-cues-desktop-macos
-          path: release/YT-Beatmaker-Cues-Desktop-*-macOS-*.dmg
+          path: |
+            release/YT-Beatmaker-Cues-Desktop-*-macOS-*.dmg
+            release/Main-Build-macOS-*.json
           if-no-files-found: error
 
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v5
         with:
@@ -61,16 +74,23 @@ jobs:
       - run: pnpm installer:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - run: node scripts/record-build.mjs Windows
+        env:
+          RELEASE_CHECKS: typecheck,native-packaging
       - uses: actions/upload-artifact@v7
         with:
           name: yt-beatmaker-cues-desktop-windows
-          path: release/YT-Beatmaker-Cues-Desktop-*-Windows*.exe
+          path: |
+            release/YT-Beatmaker-Cues-Desktop-*-Windows*.exe
+            release/Main-Build-Windows-*.json
           if-no-files-found: error
 
   linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v5
         with:
@@ -79,18 +99,24 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm installer:linux
+      - run: node scripts/record-build.mjs Linux
+        env:
+          RELEASE_CHECKS: typecheck,native-packaging
       - uses: actions/upload-artifact@v7
         with:
           name: yt-beatmaker-cues-desktop-linux
           path: |
             release/YT-Beatmaker-Cues-Desktop-*-Linux*.AppImage
             release/YT-Beatmaker-Cues-Desktop-*-Linux*.deb
+            release/Main-Build-Linux-*.json
           if-no-files-found: error
 
   android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v5
         with:
@@ -108,51 +134,52 @@ jobs:
       - run: node scripts/check-controller-mapping.mjs
       - run: pnpm exec playwright install --with-deps chromium
       - run: node scripts/check-android-cues.mjs
+      - name: Optional production keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MUSIKE_KEYSTORE_BASE64 }}
+          REQUIRE_SIGNING: ${{ inputs.require_android_signing }}
+        run: |
+          if [ "$REQUIRE_SIGNING" = true ] && [ -z "$KEYSTORE_BASE64" ]; then
+            echo 'A persistent Android release key is required for the coordinated candidate.' >&2
+            exit 1
+          fi
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/beatmaker-release.jks"
+            echo "MUSIKE_KEYSTORE=$RUNNER_TEMP/beatmaker-release.jks" >> "$GITHUB_ENV"
+          fi
       - name: Build Android test APK
+        env:
+          MUSIKE_KEYSTORE_PASSWORD: ${{ secrets.MUSIKE_KEYSTORE_PASSWORD }}
+          MUSIKE_KEY_ALIAS: ${{ secrets.MUSIKE_KEY_ALIAS }}
+          MUSIKE_KEY_PASSWORD: ${{ secrets.MUSIKE_KEY_PASSWORD }}
         run: |
           pnpm --filter @musike/mobile build
-          sh mobile/android/gradlew -p mobile/android assembleDebug --console=plain
+          sh mobile/android/gradlew -p mobile/android assembleDebug assembleRelease bundleRelease --console=plain
           mkdir -p release
           VERSION=$(node -p 'require("./mobile/package.json").version')
           cp mobile/android/app/build/outputs/apk/debug/app-debug.apk "release/Beatmaker-Cues-Test-${VERSION}-Android.apk"
+          if [ -f mobile/android/app/build/outputs/apk/release/app-release.apk ]; then
+            cp mobile/android/app/build/outputs/apk/release/app-release.apk "release/Beatmaker-Cues-Setup-${VERSION}-Android.apk"
+            cp mobile/android/app/build/outputs/bundle/release/app-release.aab "release/Beatmaker-Cues-${VERSION}-Android.aab"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "release/Beatmaker-Cues-Setup-${VERSION}-Android.apk"
+            jarsigner -verify "release/Beatmaker-Cues-${VERSION}-Android.aab"
+          else
+            cp mobile/android/app/build/outputs/apk/release/app-release-unsigned.apk "release/Beatmaker-Cues-${VERSION}-Android-unsigned.apk"
+            cp mobile/android/app/build/outputs/bundle/release/app-release.aab "release/Beatmaker-Cues-${VERSION}-Android-unsigned.aab"
+          fi
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "release/Beatmaker-Cues-Test-${VERSION}-Android.apk"
-          (cd release && sha256sum *.apk > "SHA256SUMS-Android-${VERSION}.txt")
+          (cd release && sha256sum *.apk *.aab > "SHA256SUMS-Android-${VERSION}.txt")
+      - run: node scripts/record-build.mjs Android
+        env:
+          RELEASE_CHECKS: native-build,apk-signatures,android-bridge,midi-mappings
       - uses: actions/upload-artifact@v7
         with:
           name: beatmaker-cues-android
           path: |
             release/*-Android.apk
+            release/*-Android-unsigned.apk
+            release/*-Android-unsigned.aab
+            release/*-Android.aab
             release/SHA256SUMS-Android-*.txt
+            release/Main-Build-Android-*.json
           if-no-files-found: error
-
-  publish:
-    needs: [mac, windows, linux, android]
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
-        with:
-          path: release
-          merge-multiple: true
-          pattern: ${{ inputs.release_tag != '' && 'yt-beatmaker-cues-desktop-*' || '*' }}
-      - name: Generate checksums
-        run: |
-          cd release
-          if [ -n "$REFRESH_TAG" ]; then
-            sha256sum YT-Beatmaker-Cues-Desktop-* > "SHA256SUMS-Desktop-${REFRESH_TAG#v}.txt"
-          else
-            sha256sum * > "SHA256SUMS-${GITHUB_REF_NAME#v}.txt"
-          fi
-        env:
-          REFRESH_TAG: ${{ inputs.release_tag }}
-      - name: Upload release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
-        run: |
-          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file CHANGELOG.md
-          gh release upload "$RELEASE_TAG" release/* --clobber
-          if [ -z "${{ inputs.release_tag }}" ]; then gh release edit "$RELEASE_TAG" --notes-file CHANGELOG.md; fi

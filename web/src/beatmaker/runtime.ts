@@ -19,7 +19,7 @@ export interface Engine {
 declare global {
   interface Window {
     musikeBeatmakerEngine?: Engine;
-    musikeBeatmakerHost?: { active: boolean; media: typeof beatmakerMedia; trackId(): string; cueId(): string; midi?(data: ArrayLike<number>): boolean; midiOverwrite?: boolean };
+    musikeBeatmakerHost?: { active: boolean; media: typeof beatmakerMedia; trackId(): string; cueId(): string; bankName(): string; midi?(data: ArrayLike<number>): boolean; midiOverwrite?: boolean };
   }
 }
 
@@ -65,6 +65,7 @@ export function loadBeatmaker() {
         return id ? `youtube:${id}` : "none";
       },
       cueId: () => `${selectCurrent(usePlayer.getState())?.id ?? "none"}:bank:${currentBank}`,
+      bankName: () => currentBank,
       midi: data => {
         if (!window.musikeBeatmakerHost?.active || data.length < 3) return false;
         const kind = data[0] & 0xf0;

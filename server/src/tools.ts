@@ -69,7 +69,8 @@ function find(name: string, dirs: string[]): string | null {
     for (const ext of exts) {
       const file = path.join(dir, name + ext);
       // lstat, not stat: winget.exe is an app execution alias (a reparse point stat can't follow).
-      if (lstatSync(file, { throwIfNoEntry: false })) return file;
+      const info = lstatSync(file, { throwIfNoEntry: false });
+      if (info && !info.isDirectory()) return file;
     }
   }
   return null;
