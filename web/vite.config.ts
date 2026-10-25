@@ -90,7 +90,7 @@ function nativeBackend(): Plugin {
       const id = resolved.id.split("?")[0]!;
       for (const [from, to] of swaps) {
         // The replacement may import the original (native/api.ts re-exports lib/apiTypes, not lib/api).
-        if (same(id, from) && !(importer && same(importer, to))) return to;
+        if (same(id, from) && !(importer && same(importer, to))) return to.split(path.sep).join('/');
       }
       return null;
     },

@@ -629,7 +629,7 @@ void CueProcessor::loadRemote(const juce::String& link, double startAt, juce::St
                     const auto from=parts[0].getLargeIntValue(), last=parts[1].getLargeIntValue(), length=parts[2].getLargeIntValue();
                     if(from!=offset||last<from||last>end||length<=last||length>64*1024*1024||(total>=0&&total!=length))continue;
                     juce::MemoryBlock block;
-                    stream->readIntoMemoryBlock(block,(ssize_t)(last-from+1));
+                    stream->readIntoMemoryBlock(block,static_cast<int>(last-from+1)); // Validated ranges are bounded to at most 64 MB.
                     if((juce::int64)block.getSize()!=last-from+1){juce::Logger::outputDebugString("Plugin range bytes "+juce::String((juce::int64)block.getSize())+" expected "+juce::String(last-from+1));continue;}
                     if(!output->write(block.getData(),block.getSize()))break;
                     total=length;offset=last+1;success=true;

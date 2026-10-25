@@ -54,6 +54,8 @@ juce_add_plugin(BeatmakerCues
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE
     NEEDS_WEBVIEW2 TRUE
+    NEEDS_WEB_BROWSER TRUE
+    NEEDS_CURL TRUE
     BACKGROUND_AUDIO_ENABLED TRUE
     IPAD_SCREEN_ORIENTATIONS UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
     FORMATS ${PLUGIN_FORMATS}
@@ -91,7 +93,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
 endif()
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    juce_add_console_app(CueTests PRODUCT_NAME "Beatmaker Cues Engine Tests")
+    juce_add_console_app(CueTests PRODUCT_NAME "Beatmaker Cues Engine Tests" NEEDS_WEBVIEW2 TRUE NEEDS_WEB_BROWSER TRUE NEEDS_CURL TRUE)
     target_sources(CueTests PRIVATE Tests/EngineTests.cpp)
     target_compile_definitions(CueTests PRIVATE BEATMAKER_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/Tests/fixtures")
     target_link_libraries(CueTests PRIVATE BeatmakerCues)
@@ -100,6 +102,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set_tests_properties(CueEngine PROPERTIES ENVIRONMENT "BEATMAKER_PLUGIN_DATA_DIR=${CMAKE_CURRENT_BINARY_DIR}/test-library-engine")
     juce_add_console_app(StoreTests PRODUCT_NAME "Beatmaker Library Tests")
     target_sources(StoreTests PRIVATE Source/LibraryStore.cpp Tests/StoreTests.cpp)
+    target_compile_definitions(StoreTests PRIVATE JUCE_USE_CURL=0)
     target_include_directories(StoreTests PRIVATE Source)
     target_link_libraries(StoreTests PRIVATE juce::juce_core)
     add_test(NAME PersistentLibrary COMMAND StoreTests)

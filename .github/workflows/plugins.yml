@@ -62,6 +62,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       PLUGIN_PRODUCT: ${{ matrix.product }}
+      PLUGIN_CODE: ${{ matrix.beta == 'ON' && 'BmDB' || 'BmCP' }}
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v5
@@ -109,6 +110,10 @@ jobs:
         run: |
           codesign --force --deep --sign - "plugin/build-release/BeatmakerCues_artefacts/Release/VST3/$PLUGIN_PRODUCT.vst3"
           plugin/build-release/PluginProbe_artefacts/Release/PluginProbe "plugin/build-release/BeatmakerCues_artefacts/Release/VST3/$PLUGIN_PRODUCT.vst3"
+          codesign --force --deep --sign - "plugin/build-release/BeatmakerCues_artefacts/Release/AU/$PLUGIN_PRODUCT.component"
+          mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
+          ditto "plugin/build-release/BeatmakerCues_artefacts/Release/AU/$PLUGIN_PRODUCT.component" "$HOME/Library/Audio/Plug-Ins/Components/$PLUGIN_PRODUCT.component"
+          auval -v aumu "$PLUGIN_CODE" Owga
       - name: Windows VST3 host check
         if: runner.os == 'Windows'
         shell: pwsh
@@ -117,7 +122,7 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a plugin/build-release/PluginProbe_artefacts/Release/PluginProbe "plugin/build-release/BeatmakerCues_artefacts/Release/VST3/$PLUGIN_PRODUCT.vst3"
       - name: Package verified native targets
-        run: python3 plugin/Scripts/package_release.py --build-dir plugin/build-release --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --checks engine,persistence,concurrency,vst3-host
+        run: python3 plugin/Scripts/package_release.py --build-dir plugin/build-release --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --checks engine,persistence,concurrency,vst3-host${{ runner.os == 'macOS' && ',auval' || '' }}
       - uses: actions/upload-artifact@v7
         with:
           name: native-plugins-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.edition }}
