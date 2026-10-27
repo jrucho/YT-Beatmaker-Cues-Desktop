@@ -13,13 +13,15 @@ CMake 3.31.6. Set `JAVA_HOME` and `ANDROID_HOME`, then from the repository root:
 ```sh
 pnpm install --frozen-lockfile
 python3 plugin/Scripts/build_mobile_ui.py .
-sh mobile/android/gradlew -p mobile/android :pluginStandalone:assembleDebug
+sh mobile/android/gradlew -p mobile/android :pluginStandalone:assembleDebug -PbeatmakerStandaloneOnly=true
 ```
 
 The Gradle preparation task downloads the pinned JUCE source into ignored
 `plugin/.android-deps/juce`. CMake fetches the pinned Signalsmith sources. An
 existing JUCE source directory can be supplied with `-PbeatmakerJuceDir=...`.
 Debug output: `plugin/Android/app/build/outputs/apk/debug/pluginStandalone-debug.apk`.
+The standalone-only property skips the main app's generated Capacitor modules,
+so a clean checkout does not require a Capacitor sync before building this port.
 
 For release signing, use the existing `MUSIKE_KEYSTORE`,
 `MUSIKE_KEYSTORE_PASSWORD`, `MUSIKE_KEY_ALIAS`, `MUSIKE_KEY_PASSWORD` environment

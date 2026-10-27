@@ -137,6 +137,9 @@ jobs:
           codesign --force --deep --sign - "plugin/build-release/BeatmakerCues_artefacts/Release/AU/$PLUGIN_PRODUCT.component"
           mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
           ditto "plugin/build-release/BeatmakerCues_artefacts/Release/AU/$PLUGIN_PRODUCT.component" "$HOME/Library/Audio/Plug-Ins/Components/$PLUGIN_PRODUCT.component"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 2
+          auval -a
           auval -v aumu "$PLUGIN_CODE" Owga
       - name: Windows VST3 host check
         if: runner.os == 'Windows'
@@ -194,7 +197,7 @@ jobs:
           MUSIKE_KEYSTORE_PASSWORD: ${{ secrets.MUSIKE_KEYSTORE_PASSWORD }}
           MUSIKE_KEY_ALIAS: ${{ secrets.MUSIKE_KEY_ALIAS }}
           MUSIKE_KEY_PASSWORD: ${{ secrets.MUSIKE_KEY_PASSWORD }}
-        run: sh mobile/android/gradlew -p mobile/android :pluginStandalone:assembleRelease --console=plain
+        run: sh mobile/android/gradlew -p mobile/android :pluginStandalone:assembleRelease -PbeatmakerStandaloneOnly=true --console=plain
       - name: Verify signed APK and record source identity
         run: python3 plugin/Scripts/package_android.py --apk plugin/Android/app/build/outputs/apk/release/pluginStandalone-release.apk
       - uses: actions/upload-artifact@v7
