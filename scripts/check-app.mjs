@@ -11,6 +11,7 @@ import { chromium } from "playwright";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const temporary = await mkdtemp(path.join(tmpdir(), "yt-beatmaker-check-"));
+const sharedLibrary=process.argv.includes('--shared-library');
 const probe = createServer();
 await new Promise(resolve => probe.listen(0, "127.0.0.1", resolve));
 const port = probe.address().port;
@@ -18,7 +19,9 @@ await new Promise(resolve => probe.close(resolve));
 const origin = `http://127.0.0.1:${port}`;
 const server = spawn(process.execPath, [path.join(root, "server/node_modules/tsx/dist/cli.mjs"), path.join(root, "server/src/index.ts")], {
   cwd: root,
-  env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", MUSIKE_DATA_DIR: temporary },
+  env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", MUSIKE_DATA_DIR: temporary,
+    BEATMAKER_SHARED_LIBRARY_DIR:sharedLibrary?path.join(temporary,'shared'):'',
+    BEATMAKER_LIBRARY_LOCK_HELPER:process.env.BEATMAKER_LIBRARY_LOCK_HELPER||path.join(root,'desktop/native-bin',process.arch,'beatmaker-library-lock'+(process.platform==='win32'?'.exe':'')) },
   stdio: ["ignore", "pipe", "pipe"],
 });
 let serverOutput = "";

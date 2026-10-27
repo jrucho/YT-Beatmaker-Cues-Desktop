@@ -30,11 +30,16 @@
     ],
     "extraResources": [
       {
+        "from": "native-bin/${arch}",
+        "to": "native"
+      },
+      {
         "from": "../web/dist",
         "to": "web"
       }
     ],
     "artifactBuildCompleted": "build/collect.cjs",
+    "beforePack": "scripts/build-native.mjs",
     "asar": true,
     "npmRebuild": false,
     "win": {
@@ -65,7 +70,8 @@
       "darkModeSupport": true,
       "identity": "-",
       "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "binaries": ["Contents/Resources/native/beatmaker-library-lock"]
     },
     "linux": {
       "target": [

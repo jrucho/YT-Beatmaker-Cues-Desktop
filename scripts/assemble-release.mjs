@@ -14,6 +14,7 @@ const expected = [
   `YT-Beatmaker-Cues-Desktop-${version}-Windows.exe`,
   ...['x64', 'arm64'].flatMap(arch => ['AppImage', 'deb'].map(ext => `YT-Beatmaker-Cues-Desktop-${version}-Linux-${arch}.${ext}`)),
   `Beatmaker-Cues-Test-${version}-Android.apk`, `Beatmaker-Cues-Setup-${version}-Android.apk`, `Beatmaker-Cues-${version}-Android.aab`,
+  `Beatmaker-Cues-Plugin-Standalone-${version}-Android-arm64.apk`, `Plugin-Build-${version}-Android-arm64.json`,
   `Beatmaker-Cues-Test-${version}-iOS.ipa`, `Beatmaker-Cues-Xcode-${version}.zip`,
   ...[['macOS', 'universal'], ['Windows', 'x64'], ['Linux', 'x64']].flatMap(([platform, arch]) => [
     `Beatmaker-Cues-Plug-ins-${version}-${platform}-${arch}.zip`, `Beatmaker-Cues-Plugin-Standalone-${version}-${platform}-${arch}.zip`,
@@ -50,6 +51,8 @@ for (const name of records) {
 }
 const android = JSON.parse(readFileSync(path.join(staging, `Main-Build-Android-${version}.json`), 'utf8'));
 assert.equal(android.certificateSha256, readFileSync('mobile/android/release-certificate.sha256', 'utf8').trim(), 'Unexpected Android signing key');
+const standaloneAndroid = JSON.parse(readFileSync(path.join(staging, `Plugin-Build-${version}-Android-arm64.json`), 'utf8'));
+assert.equal(standaloneAndroid.certificateSha256, android.certificateSha256, 'Unexpected standalone Android signing key');
 for (const name of available) {
   if (!name.startsWith('SHA256SUMS-') || !name.includes(version)) continue;
   for (const line of readFileSync(path.join(staging, name), 'utf8').trim().split('\n')) {

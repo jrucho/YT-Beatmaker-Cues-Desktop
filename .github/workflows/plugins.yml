@@ -79,7 +79,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Linux native dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libasound2-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev libfreetype6-dev libfontconfig1-dev libwebkit2gtk-4.1-dev libgtk-3-dev libcurl4-openssl-dev ffmpeg xvfb
+        run: sudo apt-get update && sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get install -y --no-install-recommends ninja-build libasound2-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev libfreetype6-dev libfontconfig1-dev libwebkit2gtk-4.1-dev libgtk-3-dev libcurl4-openssl-dev ffmpeg xvfb xauth
       - name: Windows WebView2 SDK
         if: runner.os == 'Windows'
         run: nuget install Microsoft.Web.WebView2 -Version 1.0.3485.44 -OutputDirectory plugin/build-deps -NonInteractive
@@ -99,12 +99,36 @@ jobs:
         if: runner.os == 'Linux'
         run: cmake -S plugin -B plugin/build-release -DCMAKE_BUILD_TYPE=Release -DBEATMAKER_DESKTOP_BETA=${{ matrix.beta }}
       - run: cmake --build plugin/build-release --config Release --parallel 3
+      - name: Build cross-process desktop library lock helper
+        run: node desktop/scripts/build-native.mjs
+      - name: Verify Electron/native shared-library interoperability
+        shell: bash
+        env:
+          BEATMAKER_STORE_TESTS: ${{ github.workspace }}/plugin/build-release/StoreTests_artefacts/Release/StoreTests${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: node --import ./server/node_modules/tsx/dist/loader.mjs scripts/check-shared-library.mjs
       - name: Native engine and durable/concurrent library tests
         if: runner.os != 'Linux'
         run: ctest --test-dir plugin/build-release -C Release --output-on-failure
       - name: Native engine/library tests in Linux display server
         if: runner.os == 'Linux'
         run: xvfb-run -a ctest --test-dir plugin/build-release -C Release --output-on-failure
+      - name: Install browser for original Web Audio reference comparisons
+        run: pnpm exec playwright install chromium
+      - name: Compare native FX with the original browser graph
+        shell: bash
+        env:
+          BEATMAKER_FX_PROBE: ${{ github.workspace }}/plugin/build-release/FxGraphTests_artefacts/Release/FxGraphTests${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: node scripts/check-native-fx-graph.mjs "$BEATMAKER_FX_PROBE" --all-rates
+      - name: Real offline Mac WebView and native audio smoke test
+        if: runner.os == 'macOS'
+        run: plugin/build-release/WebIntegration_artefacts/Release/WebIntegration --shared-offline
+      - name: Real offline Windows WebView and native audio smoke test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '& plugin/build-release/WebIntegration_artefacts/Release/WebIntegration.exe --shared-offline'
+      - name: Real offline Linux WebView and native audio smoke test
+        if: runner.os == 'Linux'
+        run: xvfb-run -a plugin/build-release/WebIntegration_artefacts/Release/WebIntegration --shared-offline
       - name: Mac plug-in signature and host checks
         if: runner.os == 'macOS'
         run: |
@@ -122,7 +146,7 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a plugin/build-release/PluginProbe_artefacts/Release/PluginProbe "plugin/build-release/BeatmakerCues_artefacts/Release/VST3/$PLUGIN_PRODUCT.vst3"
       - name: Package verified native targets
-        run: python3 plugin/Scripts/package_release.py --build-dir plugin/build-release --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --checks engine,persistence,concurrency,vst3-host${{ runner.os == 'macOS' && ',auval' || '' }}
+        run: python3 plugin/Scripts/package_release.py --build-dir plugin/build-release --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --checks engine,persistence,concurrency,vst3-host,webview-offline${{ runner.os == 'macOS' && ',auval' || '' }}
       - uses: actions/upload-artifact@v7
         with:
           name: native-plugins-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.edition }}
@@ -134,6 +158,52 @@ jobs:
             release/Beatmaker-Cues-Desktop-Beta-*
             release/Desktop-Beta-Build-*.json
             release/SHA256SUMS-Desktop-Beta-*.txt
+          if-no-files-found: error
+
+  android-standalone:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.1.13356709' 'cmake;3.31.6'
+      - run: pnpm install --frozen-lockfile
+      - run: python3 plugin/Scripts/build_mobile_ui.py .
+      - name: Configure persistent Android signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MUSIKE_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/beatmaker-release.jks"
+          echo "MUSIKE_KEYSTORE=$RUNNER_TEMP/beatmaker-release.jks" >> "$GITHUB_ENV"
+      - name: Build the JUCE native standalone
+        env:
+          MUSIKE_KEYSTORE_PASSWORD: ${{ secrets.MUSIKE_KEYSTORE_PASSWORD }}
+          MUSIKE_KEY_ALIAS: ${{ secrets.MUSIKE_KEY_ALIAS }}
+          MUSIKE_KEY_PASSWORD: ${{ secrets.MUSIKE_KEY_PASSWORD }}
+        run: sh mobile/android/gradlew -p mobile/android :pluginStandalone:assembleRelease --console=plain
+      - name: Verify signed APK and record source identity
+        run: python3 plugin/Scripts/package_android.py --apk plugin/Android/app/build/outputs/apk/release/pluginStandalone-release.apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-standalone-Android-arm64
+          path: |
+            release/Beatmaker-Cues-Plugin-Standalone-*-Android-arm64.apk
+            release/Plugin-Build-*-Android-arm64.json
+            release/SHA256SUMS-Plugins-*-Android-arm64.txt
           if-no-files-found: error
 
   ios-auv3:

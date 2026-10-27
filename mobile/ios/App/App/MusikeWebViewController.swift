@@ -17,6 +17,7 @@ final class MusikeWebViewController: CAPBridgeViewController {
         webView?.configuration.userContentController.add(youtube, name: "musikeResolve")
         webView?.configuration.userContentController.addScriptMessageHandler(audio, contentWorld: .page, name: "musikeAudio")
         bridge?.registerPluginInstance(MusikeMidiPlugin())
+        bridge?.registerPluginInstance(MusikeLibraryPlugin())
         playback.attach(webView)
         youtube.attach(webView)
         audio.attach(webView)

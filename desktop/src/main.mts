@@ -22,10 +22,12 @@ const userData = app.getPath("userData");
 process.env.MUSIKE_DATA_DIR = path.join(userData, "data");
 process.env.MUSIKE_CACHE_DIR = path.join(userData, "cache");
 process.env.MUSIKE_BIN_DIR = path.join(userData, "bin");
+process.env.BEATMAKER_SHARED_LIBRARY_DIR ||= path.join(app.getPath('appData'),'Beatmaker Cues','SharedLibrary');
+process.env.BEATMAKER_LIBRARY_LOCK_HELPER ||= path.join(app.isPackaged?path.join(process.resourcesPath,'native'):path.join(here,'..','native-bin',process.arch),'beatmaker-library-lock'+(process.platform==='win32'?'.exe':''));
 process.env.MUSIKE_WEB_DIST = app.isPackaged ? path.join(process.resourcesPath, "web") : path.resolve(here, "..", "..", "web", "dist");
 
 // A copy of the library from before each update, in userData/backups (the installer makes one too).
-backupLibraryOnUpdate(userData, app.getVersion());
+backupLibraryOnUpdate(userData, app.getVersion(),new Date(),path.join(process.env.BEATMAKER_SHARED_LIBRARY_DIR,'library-v1.json'));
 
 // The server reads its config when first imported, so load it only after the env above is set.
 const loadServer = async () => ({

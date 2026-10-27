@@ -12,6 +12,8 @@ export const config = {
   // Extra yt-dlp flags, e.g. YTDLP_EXTRA_ARGS="--cookies-from-browser firefox"
   ytdlpExtraArgs: (process.env.YTDLP_EXTRA_ARGS ?? "").split(" ").filter(Boolean),
   dataDir: process.env.MUSIKE_DATA_DIR ?? path.join(root, "data"),
+  sharedLibraryDir: process.env.BEATMAKER_SHARED_LIBRARY_DIR || null,
+  libraryLockHelper: process.env.BEATMAKER_LIBRARY_LOCK_HELPER || null,
   cacheDir: process.env.MUSIKE_CACHE_DIR ?? path.join(root, "cache"),
   /** HD video cache limit; least recently played videos are evicted first. */
   cacheMaxBytes: Number(process.env.MUSIKE_CACHE_MAX_MB ?? 2048) * 1024 * 1024,

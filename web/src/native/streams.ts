@@ -69,6 +69,7 @@ async function resolve(id: string): Promise<DirectAudio> {
     cache.set(id, native);
     return native;
   }
+  if(ios&&/^loc[0-9a-f]{8}$/.test(id))throw new ApiError(404,"Local audio is unavailable in this app's shared container. Its library entry was retained.");
   try {
     const resolved = await directAudio(id, clients, getLang());
     cache.set(id, resolved);

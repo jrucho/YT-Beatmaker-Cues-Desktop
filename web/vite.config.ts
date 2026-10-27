@@ -12,6 +12,20 @@ const src = (...p: string[]) => path.join(here, "src", ...p);
 const server = (...p: string[]) => path.join(here, "..", "server", "src", ...p);
 const same = (a: string, b: string) => path.normalize(a).toLowerCase() === path.normalize(b).toLowerCase();
 
+function licenseAssets(): Plugin {
+  let output: string;
+  return {
+    name: 'beatmaker-license-assets',
+    configResolved(config) { output = path.resolve(config.root, config.build.outDir); },
+    closeBundle() {
+      mkdirSync(output, {recursive: true});
+      cpSync(path.resolve(here, '../LICENSE'), path.join(output, 'LICENSE-APPLICATION.txt'));
+      cpSync(path.resolve(here, '../THIRD_PARTY_NOTICES.md'), path.join(output, 'THIRD_PARTY_NOTICES.md'));
+      for(const dependency of ['react-virtual','virtual-core'])cpSync(path.join(here,'node_modules/@tanstack',dependency,'LICENSE'),path.join(output,`LICENSE-TANSTACK-${dependency}.txt`));
+    },
+  };
+}
+
 // Ship the user's actual DSP, sample packs, MIDI and stems engines with the app.
 function beatmakerAssets(): Plugin {
   const source = path.resolve(here, "../YTbeatmakercues");
@@ -107,6 +121,7 @@ export default defineConfig(({ mode }) => {
     define: { __APP_VERSION__: JSON.stringify(version) },
     build: native ? { outDir: "dist-native", emptyOutDir: true } : undefined,
     plugins: [
+      licenseAssets(),
       react(),
       tailwindcss(),
       ...(!native ? [beatmakerAssets()] : []),

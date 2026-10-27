@@ -5,4 +5,6 @@ struct AppleHttpResult {
     juce::StringPairArray headers;
     juce::MemoryBlock data;
 };
+juce::File appleSharedLibraryDirectory();
+juce::String appleLibraryIdentity();
 AppleHttpResult appleHttp(const juce::String& url,const juce::String& method,const juce::String& headers,const juce::String& body,int timeoutSeconds,std::function<bool()> shouldCancel = {});

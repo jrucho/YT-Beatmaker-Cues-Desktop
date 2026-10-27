@@ -1,0 +1,54 @@
+apply plugin: 'com.android.application'
+def repository = rootProject.projectDir.toPath().resolve('../..').normalize().toFile()
+def juce = project.hasProperty('beatmakerJuceDir') ? file(project.property('beatmakerJuceDir')) : new File(repository, 'plugin/.android-deps/juce')
+def appVersion = new groovy.json.JsonSlurper().parse(new File(repository, 'package.json')).version
+def signing = { String name -> System.getenv(name) }
+
+android {
+    namespace 'app.musike.android'
+    compileSdk 36
+    ndkVersion '28.1.13356709'
+    defaultConfig {
+        applicationId 'app.owaega.beatmakercuesstandalone'
+        minSdk 24
+        targetSdk 36
+        versionName appVersion
+        versionCode 10004
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild { cmake {
+            targets 'BeatmakerCues_Standalone'
+            arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24', '-DANDROID_WEAK_API_DEFS=ON', '-DCMAKE_CXX_STANDARD=17', "-DFETCHCONTENT_SOURCE_DIR_JUCE=${juce.absolutePath}", '-DBEATMAKER_DESKTOP_BETA=OFF'
+        } }
+    }
+    buildFeatures { buildConfig true }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    signingConfigs {
+        if (signing('MUSIKE_KEYSTORE')) { release {
+            storeFile file(signing('MUSIKE_KEYSTORE'))
+            storePassword signing('MUSIKE_KEYSTORE_PASSWORD')
+            keyAlias signing('MUSIKE_KEY_ALIAS')
+            keyPassword signing('MUSIKE_KEY_PASSWORD')
+        } }
+    }
+    buildTypes {
+        release { minifyEnabled false; if (signing('MUSIKE_KEYSTORE')) signingConfig signingConfigs.release }
+        debug { debuggable true }
+    }
+    externalNativeBuild { cmake { path '../../CMakeLists.txt'; version '3.31.6' } }
+    sourceSets { main {
+        java.srcDirs += [new File(juce,'modules/juce_core/native/javacore/init'),new File(juce,'modules/juce_core/native/javacore/app'),new File(juce,'modules/juce_gui_basics/native/javaopt/app'),new File(juce,'modules/juce_audio_devices/native/javaopt/app'),layout.buildDirectory.dir('generated/standaloneJava')]
+        res.srcDirs += [layout.buildDirectory.dir('generated/standaloneRes')]
+        assets.srcDirs += [layout.buildDirectory.dir('generated/standaloneAssets')]
+    } }
+}
+def prepare = tasks.register('prepareStandaloneSources') {
+    doLast {
+        exec { workingDir repository; commandLine 'node','plugin/Scripts/prepare_android.mjs',juce.absolutePath }
+        copy { from new File(repository,'mobile/android/app/src/main/java'); include 'app/musike/android/PlaybackService.java'; into layout.buildDirectory.dir('generated/standaloneJava') }
+        copy { from new File(repository,'mobile/android/app/src/main/res'); include 'drawable/ic_media_*.xml','drawable/ic_stat_musike.xml'; into layout.buildDirectory.dir('generated/standaloneRes') }
+        copy { from new File(repository,'plugin/Assets/PluginIcon.png'); into layout.buildDirectory.dir('generated/standaloneRes/drawable'); rename { 'plugin_icon.png' } }
+        copy { from new File(repository,'LICENSE'),new File(repository,'THIRD_PARTY_NOTICES.md'),new File(repository,'plugin/AGPL-3.0.txt'),new File(repository,'plugin/Source/dsp/WebKit-LICENSE.txt'); into layout.buildDirectory.dir('generated/standaloneAssets/licenses') }
+        copy { from juce; include 'LICENSE*'; into layout.buildDirectory.dir('generated/standaloneAssets/licenses/JUCE') }
+    }
+}
+tasks.configureEach { if (name == 'preBuild' || name.startsWith('configureCMake') || name.startsWith('buildCMake')) dependsOn prepare }

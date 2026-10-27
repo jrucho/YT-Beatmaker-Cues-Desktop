@@ -6,7 +6,8 @@ The normal product keeps the mobile-style editor. A separate **Beatmaker Cues
 Desktop Beta** uses the desktop studio layout with native cue/loop/speed/pitch
 playback into the host bus. It has its own plug-in code `BmDB`, bundle ID
 `app.owaega.beatmakercues.desktopbeta` and `Beatmaker Cues/DesktopBetaLibrary`
-storage, so it can coexist with the normal product without replacing its data.
+session/preferences storage, so it can coexist with the normal product. Desktop
+libraries are shared through the common store described below.
 
 Build its interface with `python3 plugin/Scripts/build_mobile_ui.py .
 --desktop-beta`, then configure a fresh CMake directory with
@@ -63,17 +64,31 @@ keep only one installed binary with these IDs in each plug-in format's scan path
 - Legacy library data from DAW state is migrated and archived under
   `LegacyImports`. Missing imported files remain registered and report a missing
   file rather than silently deleting the saved reference.
-- The library lives under `Beatmaker Cues/PluginLibrary` in JUCE's platform
-  application-data directory (`LibraryStore::defaultDirectory`); imported media
-  copies use its `Media` folder. Remote downloads retain the legacy
-  `BeatmakerCuesPrototype/Media` cache. `BEATMAKER_PLUGIN_DATA_DIR` overrides
-  library/session/import storage for isolated tests.
-- **No App Groups or automatic main-app ↔ AUv3 library sharing are configured.**
-  Main desktop/mobile apps and the plug-in retain their own storage. On iOS,
-  sandbox boundaries also separate the container and extension's stores.
+- Desktop library/media data lives under `Beatmaker Cues/SharedLibrary` in the
+  platform application-data directory, shared with the main desktop app and the
+  other plug-in edition. Old product libraries are imported once, additively,
+  and retained. Product session/preferences folders keep their legacy paths.
+  Remote downloads retain the legacy `BeatmakerCuesPrototype/Media` cache.
+  `BEATMAKER_SHARED_LIBRARY_DIR` overrides the common location;
+  `BEATMAKER_PLUGIN_DATA_DIR` without that override keeps isolated private storage.
+- iOS uses private storage by default. Optional sharing with the main app and
+  container requires configuring `-DBEATMAKER_APP_GROUP=group.yourteam.identifier`
+  and signing all targets with profiles containing that same group entitlement.
+  Missing group access falls back to private storage. Physical entitlement and
+  container acceptance is pending. See `docs/shared-libraries.md` in the complete
+  repository for main-app settings, migration and verification details.
 
 Keep downloaded/imported media available: DAW state references local files,
 rather than embedding complete audio in the project.
+
+### iOS standalone background player
+
+Start a track in **Beatmaker Cues Plug-in**, then leave the app or lock the screen.
+The standalone provides native Now Playing metadata/artwork and play/pause,
+previous/next and seek controls in the system player. These commands work through
+the native engine while the WebView is suspended. The controller is linked only
+into the standalone app; AUv3 hosts keep their own audio-session/system controls.
+Physical Lock Screen/headset acceptance is a separate check from installation.
 
 ## Playback and controls
 

@@ -58,7 +58,7 @@ const SYSTEM: SystemInfo = {
 
 export const api: MusikeApi = {
   searchPlaylists: (q, signal) => call(() => searchPlaylists(q.trim().slice(0, 200), getLang()), signal),
-  youtubePlaylist: (id, signal) => call(() => getPlaylist(id, getLang()), signal),
+  youtubePlaylist: (id, signal, onProgress) => call(() => getPlaylist(id, getLang(),{signal,onProgress}), signal),
   removeLibraryTrack: (id, scope) => call(() => library.removeTrack(id, scope)),
   search: (q, type, signal) =>
     call(async () => {

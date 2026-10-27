@@ -4,10 +4,12 @@ import { copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import {buildNative} from './build-native.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const out = path.join(root, "dist");
 mkdirSync(out, { recursive: true });
+await buildNative();
 
 await build({
   entryPoints: [path.join(root, "src", "main.mts")],

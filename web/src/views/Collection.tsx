@@ -1,5 +1,5 @@
 import { DotsThreeIcon, MagnifyingGlassIcon, PauseIcon, PencilSimpleIcon, PlayIcon, ShuffleIcon, TrashIcon } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Cover, type CoverKind } from "../components/Cover";
 import { NamePlaylistDialog } from "../components/Dialogs";
@@ -36,6 +36,7 @@ export default function Collection({ kind }: Props) {
   const playlist = kind === "playlist" ? lib.playlists.find((p) => p.id === id) : undefined;
   const tracks: Track[] = kind === "favorites" ? lib.favorites : kind === "history" ? lib.history : playlist?.tracks ?? [];
   const name = kind === "favorites" ? t.nav.favorites : kind === "history" ? t.nav.recentlyPlayed : playlist?.name ?? "";
+  const trackIds=useMemo(()=>new Set(tracks.map(track=>track.id)),[tracks]);
   const label =
     kind === "playlist" ? t.collection.labelPlaylist : kind === "favorites" ? t.collection.labelFavorites : t.collection.labelHistory;
 
@@ -65,7 +66,7 @@ export default function Collection({ kind }: Props) {
 
   const total = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
   // The queue holds exactly these tracks, so this collection is the current playback context.
-  const isThisPlaying = tracks.length > 0 && queue.length === tracks.length && queue.every((t) => tracks.some((x) => x.id === t.id));
+  const isThisPlaying = tracks.length > 0 && queue.length === tracks.length && queue.every((t) => trackIds.has(t.id));
   const playing = isThisPlaying && (status === "playing" || status === "loading");
 
   return (

@@ -1,7 +1,8 @@
-# Beatmaker Cues 1.0.4 — release candidate
+# Beatmaker Cues 1.0.4 — public prerelease
 
-This is a coordinated candidate: validate the attached build manifest, source
-commit and platform acceptance results before publishing as stable.
+This is a prerelease. The attached build manifest identifies the source commit
+and exact download inventory. Automated checks and device acceptance are
+reported separately below.
 
 ## Downloads
 
@@ -12,10 +13,13 @@ commit and platform acceptance results before publishing as stable.
 - Native plug-ins: Mac universal AU/VST3, Windows/Linux x64 VST3, plus separate
   plug-in standalone ZIPs. The normal editor uses the mobile-style interface.
 - Separate `Desktop-Beta` archives use the desktop studio layout and distinct
-  IDs/library storage. They host-route core cue/transport/loop/speed controls;
+  IDs and independent sessions. They host-route core cue/transport/loop/speed controls;
   browser stems/FX, sequencer, sidechain and VJ are not yet host-routed.
 - AUv3: unsigned container IPA with embedded extension and portable plug-in Xcode
   export. Automatic sharing with the main iOS app is not configured.
+- Android plug-in standalone: a separate arm64 APK using the JUCE native engine,
+  mobile-style editor, cue banks and Android system media controls. It installs
+  alongside the main Android app, with its own sandboxed library and sessions.
 - Complete source ZIP/TAR.GZ and plug-in corresponding-source/dependency ZIP are
   attached. The repository tag, source and final binaries must identify one SHA.
 
@@ -25,6 +29,24 @@ Automatic library saves and backup recovery; concurrent plug-in library merging
 and separate sessions; stable track-ID caches; local audio import; native pad
 feedback; smoother atomic plug-in cue retriggers; native playlist handling;
 FFmpeg executable discovery; integrated native projects and clean-source exports.
+Large catalogs now load progressively and use windowed lists/grids. The native
+bridge avoids repeatedly escaping large catalog responses on the UI thread.
+Long tracks use a fixed 16 MiB stereo PCM page cache, background reads and
+cue/loop look-ahead rather than requiring the entire decoded track in memory.
+
+Desktop Discovery and Beatmaker styling now follow the library theme, including
+borderless controls. Desktop editions share a merge-safe library while retaining
+independent transport, cue banks and host/session state. iOS App Group sharing
+is opt-in and requires matching entitlements; the default keeps private storage.
+
+The iOS plug-in standalone now publishes Now Playing metadata and native remote
+transport for Lock Screen/Control Center. The AUv3 extension does not own these
+standalone media controls.
+
+Portable native FX kernels and a partial four-corner graph are implemented and
+compared against the original browser DSP. Full desktop native stems/FX,
+sequencer, sidechain and VJ parity is still in progress; these internal kernels
+do not switch the existing full desktop UI to a complete native graph.
 See CHANGELOG.md and the per-platform build records for detail.
 
 ## Installation and migration
@@ -45,3 +67,15 @@ Automated build/test success is recorded per platform, not a claim of universal
 host/device approval or zero physical latency. Record exact tested DAWs/devices
 before final publication. Desktop full-UI beta work is separate from the normal
 plug-in and must be identified as beta with its own compatibility/feature status.
+
+Local Android API 35 arm64 emulator checks passed launch, the 500-track SOUL
+SAMPLES catalog, native AAC playback of the 645-second Jean Carn track,
+mid-track cueing, and system play/pause with playback progressing while the app
+was backgrounded. Initial full-file AAC conversion took about 75–79 seconds on
+that emulator; its disk PCM cache avoids repeating conversion on warm loads.
+Physical Android listening, Bluetooth and device-specific latency remain unverified.
+
+The iOS main app and plug-in standalone/AUv3 were built and updated in place on
+an iPhone 17 Pro. Physical Lock Screen/headset acceptance and entitled App Group
+sharing still require device validation. No claim of complete native routing
+parity or universal DAW/device approval is made by this prerelease.

@@ -94,6 +94,10 @@ final class MusikeAudio: NSObject, WKScriptMessageHandlerWithReply {
 
     static func cachedTrack(_ id: String) -> [String: Any]? {
         guard id.range(of: "^[A-Za-z0-9_-]{11}$", options: .regularExpression) != nil else { return nil }
+        if id.range(of: "^loc[0-9a-f]{8}$", options: .regularExpression) != nil {
+            guard let store = SharedLibraryStore.configured(), let file = try? store.media(id), let audio = try? AVAudioFile(forReading: file), audio.length > 0 else { return nil }
+            return ["url": file.absoluteString, "mime": "audio/wav", "title": id, "duration": Double(audio.length) / audio.processingFormat.sampleRate]
+        }
         let file = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BeatmakerCuesAudio/song-\(id).m4a")
         guard FileManager.default.fileExists(atPath: file.path), let audio = try? AVAudioFile(forReading: file), audio.length > 0 else { return nil }

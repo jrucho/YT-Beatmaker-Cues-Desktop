@@ -1,4 +1,4 @@
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL,fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {readFileSync} from 'node:fs';
 const root = process.env.BEATMAKER_APP_SOURCE;
@@ -13,7 +13,8 @@ export default async (environment) => {
   config.build = { ...config.build, outDir: process.env.BEATMAKER_PLUGIN_WEB_OUTPUT, emptyOutDir: true };
   config.plugins.push({
     name: 'beatmaker-plugin-adapter',
-    enforce: 'pre',
+     enforce: 'pre',
+     transformIndexHtml(html){return html.replace('<html ',`<html data-plugin-editor="${desktopBeta?'desktop':'vanilla'}" `);},
      transform(code, id) {
        if(desktopBeta && id.endsWith('/web/src/beatmaker/runtime.ts'))return readFileSync(new URL('./desktopRuntime.ts',import.meta.url),'utf8');
        if(desktopBeta && id.endsWith('/web/src/App.tsx'))return code
@@ -27,9 +28,12 @@ export default async (environment) => {
          .replace('const timer = setInterval(() => {', 'const updateNativeDesktop = () => {')
          .replace('}, 150);', '}; window.addEventListener("plugin-desktop-state", updateNativeDesktop); updateNativeDesktop();')
          .replace('clearInterval(timer);', 'window.removeEventListener("plugin-desktop-state", updateNativeDesktop);')
+         .replace('for (const [key, value] of entries) localStorage.setItem(key, JSON.stringify(value));', '(window as any).__pluginImportDesktopCues(Object.fromEntries(entries)); for (const [key, value] of entries) localStorage.setItem(key, JSON.stringify(value));')
+         .replace('disabled={!track} aria-label="Toggle music video"', 'disabled title="Video is not host-routed in this beta" aria-label="Toggle music video"')
+         .replace('<dt>Advanced</dt><dd>Original MIDI, stems, routing, loopers and effects controls</dd>', '<dt>Native controls</dt><dd>Host-routed cue, loop and speed controls. Browser stems/FX, sequencer, sidechain and VJ are not yet host-routed in this beta.</dd>')
          .replace('ADVANCED</button>','NATIVE CONTROLS</button>');
       if(id.endsWith('/web/src/player/player.ts'))return code.replaceAll('Math.max(-50','Math.max(-75');
-      if(id.endsWith('/web/src/native/storage.ts'))return code.replace('export const nativeStorage: LibraryStorage = {','export const nativeStorage: LibraryStorage = { reloadBeforeRead: true,').replace('const previous = await readText(FILE);','const previous: string | null = null; // Native store owns atomic backup and three-way merge.');
+       if(id.endsWith('/web/src/native/storage.ts'))return code.replace('const previous = await readText(FILE);','const previous: string | null = null; // Native store owns atomic backup and three-way merge.');
       if(id.endsWith('/web/src/views/Library.tsx'))return code.replace('<IconButton label={t.library.backup}',`<button type="button" className="rounded-full bg-surface-2 px-3 py-2 text-sm" onClick={async()=>{
         try{const track=await (window as any).__pluginInvoke('importAudio');if(track){await (window as any).__pluginStores.api.addFavorite(track);await useLibrary.getState().load();}}
         catch(error){(window as any).__pluginStores.ui.getState().toast((error as Error).message,'error');}
@@ -44,11 +48,13 @@ export default async (environment) => {
       if (id.endsWith('/web/src/views/Cues.tsx')) return code.replace('min={-50}','min={-75}').replace('const [overwrite, setOverwrite] = useState(false);', `const [overwrite, setOverwrite] = useState(false);
         useEffect(() => { void (window as any).__pluginInvoke('midiOptions', { overwrite }); }, [overwrite]);`);
       if (!id.endsWith('/web/src/main.tsx')) return;
-      return code + `\nimport {usePlayer as pluginPlayer} from './player/player';
+       return code + `\nimport ${JSON.stringify(fileURLToPath(new URL('./responsive.css',import.meta.url)).split(path.sep).join('/'))};
+import {usePlayer as pluginPlayer} from './player/player';
 import {useCueStore as pluginCues} from './mobile/cueStore';
 import {api as pluginApi} from './lib/api';
 import {useUi as pluginUi} from './stores/ui';
-window.__pluginStores = {player:pluginPlayer,cues:pluginCues,api:pluginApi,ui:pluginUi};
+import {useLibrary as pluginLibrary} from './stores/library';
+window.__pluginStores = {player:pluginPlayer,cues:pluginCues,api:pluginApi,ui:pluginUi,library:pluginLibrary};
 pluginPlayer.subscribe(state => pluginCues.getState().setTrack(state.queue[state.index]?.id ?? null));
 pluginCues.getState().setTrack(pluginPlayer.getState().queue[pluginPlayer.getState().index]?.id ?? null);
 window.dispatchEvent(new Event('plugin-stores-ready'));

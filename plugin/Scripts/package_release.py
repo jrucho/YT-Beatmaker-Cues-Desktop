@@ -74,7 +74,9 @@ with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as archive:
     for kind in formats:add_tree(archive,artifacts/kind,name+'/'+kind)
     archive.write(root/'README.md',name+'/README.md')
     archive.write(root/'AGPL-3.0.txt',name+'/Licenses/AGPL-3.0.txt')
+    archive.write(root.parent/'LICENSE',name+'/Licenses/MIT-Application.txt')
     archive.write(root.parent/'THIRD_PARTY_NOTICES.md',name+'/Licenses/THIRD_PARTY_NOTICES.md')
+    archive.write(root/'Source/dsp/WebKit-LICENSE.txt',name+'/Licenses/WebKit-LICENSE.txt')
     archive.write(root/'Scripts/install_release.py',name+'/install.py')
     archive.writestr(name+'/BuildInfo.json',json.dumps(info,indent=2)+'\n')
     for dependency,licenses in dependencies.items():
@@ -84,7 +86,9 @@ with zipfile.ZipFile(standalone,'w',zipfile.ZIP_DEFLATED) as archive:
     add_tree(archive,artifacts/'Standalone','Beatmaker-Cues-Standalone')
     archive.write(root/'README.md','Beatmaker-Cues-Standalone/README.md')
     archive.write(root/'AGPL-3.0.txt','Beatmaker-Cues-Standalone/Licenses/AGPL-3.0.txt')
+    archive.write(root.parent/'LICENSE','Beatmaker-Cues-Standalone/Licenses/MIT-Application.txt')
     archive.write(root.parent/'THIRD_PARTY_NOTICES.md','Beatmaker-Cues-Standalone/Licenses/THIRD_PARTY_NOTICES.md')
+    archive.write(root/'Source/dsp/WebKit-LICENSE.txt','Beatmaker-Cues-Standalone/Licenses/WebKit-LICENSE.txt')
     archive.writestr('Beatmaker-Cues-Standalone/BuildInfo.json',json.dumps(info,indent=2)+'\n')
     for dependency,licenses in dependencies.items():
         for file in licenses:archive.write(file,'Beatmaker-Cues-Standalone/Licenses/'+dependency+'-'+file.name)
@@ -100,6 +104,10 @@ if args.platform=='Linux':
         shutil.copytree(artifacts/'VST3',stage/'usr/lib/vst3',dirs_exist_ok=True)
         linux_name='beatmaker-cues-desktop-beta' if desktop_beta else 'beatmaker-cues-plugin'
         shutil.copytree(artifacts/'Standalone',stage/'opt'/linux_name,dirs_exist_ok=True)
+        licenses=stage/'usr/share/doc'/linux_name;licenses.mkdir(parents=True)
+        for notice,filename in [(root/'AGPL-3.0.txt','AGPL-3.0.txt'),(root.parent/'LICENSE','MIT-Application.txt'),(root.parent/'THIRD_PARTY_NOTICES.md','copyright'),(root/'Source/dsp/WebKit-LICENSE.txt','WebKit-LICENSE.txt')]:shutil.copy2(notice,licenses/filename)
+        for dependency,files in dependencies.items():
+            for source in files:shutil.copy2(source,licenses/(dependency+'-'+source.name))
         (stage/'DEBIAN').mkdir()
         (stage/'DEBIAN/control').write_text(f'Package: {linux_name}\nVersion: {version}\nArchitecture: amd64\nMaintainer: Beatmaker Cues <noreply@github.com>\nDepends: ffmpeg, libwebkit2gtk-4.1-0, libgtk-3-0t64 | libgtk-3-0, libasound2t64 | libasound2, libcurl4t64 | libcurl4, libfreetype6\nDescription: Beatmaker Cues native standalone and VST3 instrument\n')
         desktop=stage/'usr/share/applications'/f'{linux_name}.desktop';desktop.parent.mkdir(parents=True)

@@ -6,7 +6,7 @@ import { toast } from "./ui";
 
 interface LibraryState extends Library {
   status: "idle" | "loading" | "ready" | "error";
-  load: () => Promise<void>;
+  load: (quiet?:boolean) => Promise<void>;
   isFavorite: (id: string) => boolean;
   toggleFavorite: (t: Track) => Promise<void>;
   addFavorites: (tracks: Track[]) => Promise<void>;
@@ -20,6 +20,8 @@ interface LibraryState extends Library {
 }
 
 const replacePlaylist = (list: Playlist[], p: Playlist) => list.map((x) => (x.id === p.id ? p : x));
+const favoriteIndexes=new WeakMap<Track[],Set<string>>();
+export function favoriteIds(tracks:Track[]){let index=favoriteIndexes.get(tracks);if(!index){index=new Set(tracks.map(track=>track.id));favoriteIndexes.set(tracks,index);}return index;}
 
 export const useLibrary = create<LibraryState>((set, get) => ({
   favorites: [],
@@ -37,8 +39,8 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     }
   },
 
-  load: async () => {
-    set({ status: "loading" });
+  load: async (quiet=false) => {
+    if(!quiet)set({ status: "loading" });
     try {
       const lib = await api.library();
       set({ ...lib, status: "ready" });
@@ -47,7 +49,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     }
   },
 
-  isFavorite: (id) => get().favorites.some((t) => t.id === id),
+  isFavorite: (id) => favoriteIds(get().favorites).has(id),
 
   toggleFavorite: async (track) => {
     const prev = get().favorites;
@@ -66,7 +68,8 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 
   addFavorites: async (tracks) => {
     const prev = get().favorites;
-    const fresh = tracks.filter((t) => !prev.some((f) => f.id === t.id));
+    const ids=favoriteIds(prev);
+    const fresh = tracks.filter((t) => !ids.has(t.id));
     if (!fresh.length) return toast(getT().toasts.allAlreadyFavorites);
     set({ favorites: [...fresh, ...prev] });
     try {
@@ -145,3 +148,12 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     }
   },
 }));
+
+// Pick up another app/host's committed edits when this view becomes active.
+let refreshing=false;
+const refreshSharedLibrary=()=>{
+  if(refreshing||document.visibilityState==='hidden'||useLibrary.getState().status!=='ready')return;
+  refreshing=true;void useLibrary.getState().load(true).finally(()=>{refreshing=false;});
+};
+window.addEventListener('focus',refreshSharedLibrary);
+document.addEventListener('visibilitychange',refreshSharedLibrary);

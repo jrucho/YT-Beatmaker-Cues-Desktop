@@ -21,10 +21,13 @@ pnpm build
 
 Run `pnpm desktop` to build/start the main desktop app. The desktop workspace
 includes the studio; native mobile builds use the responsive phone interface.
+Desktop builds also require CMake 3.24+ and a C++17 compiler for the portable
+shared-library lock helper. Set `CMAKE_COMMAND` if CMake is outside PATH.
 
 ## Main desktop installers
 
 Build on each platform using its native compiler/tools as required by Electron:
+Linux x64-to-arm64 packaging additionally needs `g++-aarch64-linux-gnu`.
 
 ```sh
 pnpm installer:mac     # macOS arm64 and x64 DMGs
@@ -79,6 +82,8 @@ Select the App scheme, your development team and a suitable bundle identifier.
 assets and local Swift plug-in sources. The exported project needs Xcode/SPM and
 internet for declared remote Swift dependencies; Node is not needed just to
 compile the export. Signing and profile renewal use your own Apple account.
+Optional App Group sharing is documented in [shared libraries](shared-libraries.md).
+It is disabled by default and needs appropriately entitled provisioning profiles.
 
 ## Native AU/VST3/AUv3 and plug-in standalone
 

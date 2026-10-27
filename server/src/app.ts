@@ -7,6 +7,7 @@ import { config } from "./config.js";
 import { localAudio } from "./localAudio.js";
 import * as library from "./library.js";
 import { fileStorage } from "./libraryFile.js";
+import {sharedFileStorage} from './sharedLibrary.js';
 import { findVideoFor, radio, search, suggestions } from "./search.js";
 import { getPlaylist, searchPlaylists } from "./playlists.js";
 import { proxyStream, serveFile } from "./stream.js";
@@ -43,7 +44,7 @@ export interface RunningServer {
 
 /** Builds the Musike HTTP server (API + web app) and starts listening. */
 export async function startServer(opts: StartOptions = {}): Promise<RunningServer> {
-  library.useLibraryStorage(fileStorage());
+  library.useLibraryStorage(config.sharedLibraryDir?sharedFileStorage(fileStorage(),config.dataDir,config.sharedLibraryDir):fileStorage());
   const found = await refreshTools();
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "warn" } });
 
@@ -76,9 +77,22 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     return { playlists: await searchPlaylists(query(q), langOf(req)) };
   });
 
-  app.get("/api/youtube/playlists/:id", async req => {
+  app.get("/api/youtube/playlists/:id", async (req,reply) => {
     const { id } = req.params as { id: string };
-    return getPlaylist(id, langOf(req));
+    if((req.query as {progress?:string}).progress!=='1')return getPlaylist(id, langOf(req));
+    const controller=new AbortController(),sent=new Map<string,unknown>();
+    const close=()=>controller.abort();reply.raw.on('close',close);
+    reply.hijack();reply.raw.writeHead(200,{'content-type':'application/x-ndjson; charset=utf-8','cache-control':'no-store'});reply.raw.flushHeaders();
+    const send=(type:string,page:unknown)=>{if(!reply.raw.destroyed)reply.raw.write(JSON.stringify({type,page})+'\n');};
+    try{
+      const final=await getPlaylist(id,langOf(req),{signal:controller.signal,onProgress:page=>{
+        const delta=page.tracks.filter(track=>sent.get(track.id)!==track);for(const track of delta)sent.set(track.id,track);
+        send('page',{...page,tracks:delta});
+      }});
+      send('done',{...final,tracks:[]});
+    }catch(error){if(!controller.signal.aborted)reply.raw.write(JSON.stringify({type:'error',status:error instanceof HttpError?error.status:500,error:error instanceof HttpError?tr(langOf(req),error.text):(error as Error).message})+'\n');}
+    finally{reply.raw.off('close',close);if(!reply.raw.destroyed)reply.raw.end();}
+    return reply;
   });
 
   app.delete("/api/library/tracks/:id", async req => {

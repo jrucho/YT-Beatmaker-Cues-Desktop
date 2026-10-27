@@ -18,6 +18,7 @@ for name in ['Source','Assets','Web','Scripts','Tests','README.md','CMakeLists.t
     if source.is_dir():shutil.copytree(source,output/name,dirs_exist_ok=True,ignore=ignore)
     else:shutil.copy2(source,output/name)
 shutil.copy2(root.parent/'THIRD_PARTY_NOTICES.md',output/'THIRD_PARTY_NOTICES.md')
+shutil.copy2(root.parent/'LICENSE',output/'APPLICATION-LICENSE.txt')
 mappings=[]
 for dep,name in [('juce','JUCE'),('signalsmithstretch','SignalsmithStretch'),('signalsmithlinear','SignalsmithLinear')]:
     source=build/'_deps'/f'{dep}-src'
@@ -68,7 +69,7 @@ projectFile.write_text(json.dumps(data))
 subprocess.run(['plutil','-convert','xml1',str(projectFile)],check=True)
 # Xcode reads XML property lists as native pbxproj files too.
 notes=output/'OPEN-IN-XCODE.md'
-notes.write_text('Open BeatmakerCuesPrototype.xcodeproj. Select BeatmakerCues_Standalone and your connected iPhone/iPad. Choose your Apple development team for the standalone and AUv3 targets; if the bundle ID is unavailable, set a unique container ID and matching child extension ID. No App Groups are used. The legacy internal project/bundle IDs are retained for saved-state/data compatibility. See README.md for architecture and verification limitations.\n')
+notes.write_text('Open BeatmakerCuesPrototype.xcodeproj. Select BeatmakerCues_Standalone and your connected iPhone/iPad. Choose your Apple development team for the standalone and AUv3 targets; if the bundle ID is unavailable, set a unique container ID and matching child extension ID. App Groups are opt-in: sharing requires the same configured group and entitled provisioning profiles for the main app, container and AUv3. Unconfigured builds retain private storage. The legacy internal project/bundle IDs are retained for saved-state/data compatibility. See README.md for architecture and verification limitations.\n')
 archive=release/(output.name+'.zip')
 subprocess.run(['ditto','-c','-k','--keepParent',str(output),str(archive)],check=True)
 manifest=release/f'SHA256SUMS-AUv3-{version}.txt'

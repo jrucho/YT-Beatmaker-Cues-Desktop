@@ -5,6 +5,23 @@ Audit date: 2026-10-25. Repository:
 
 ## Decision and present state
 
+### 2026-10-26 scope and performance update
+
+The approved scope now includes compatible main-app/plug-in library sharing,
+supported iOS App Groups, and **full native feature parity** across main desktop,
+iOS/iPadOS and Android. Advanced/stems/FX/sequencer/sidechain/VJ functionality must
+be retained. The historical separate-storage/no-sharing scope below is superseded
+by that requirement. Desktop shared-library storage and opt-in iOS App Group
+storage are now implemented locally; see [shared libraries](shared-libraries.md).
+Physical group/signing acceptance and full native feature routing remain pending.
+
+The branch has pushed pipeline/portability commits through `7436987`, followed by
+uncommitted loading, windowing, persistence and resizing work. See
+[the live performance audit](loading-performance-audit.md) for the reproduced
+JUCE bridge freeze, its verified fix, and the bounded native PCM cache that now
+plays the supplied 645-second song. Physical-device acceptance and cross-platform
+execution remain pending. Existing local release artifacts predate these fixes.
+
 ### Decisions approved after the audit
 
 - Keep the mobile-style editor as the main plug-in; add a separate desktop-layout

@@ -6,8 +6,25 @@
 #include "AppleHttp.h"
 #endif
 #include <cmath>
+#include <cstring>
+#if JUCE_ANDROID
+#include "AndroidCodec.h"
+#endif
+#include <map>
 
 namespace {
+juce::var fxStateValue(const beatmaker::dsp::FxState& state){
+    auto* value=new juce::DynamicObject;value->setProperty("schema",1);value->setProperty("enabled",state.enabled);value->setProperty("padActive",state.padActive);value->setProperty("multi",state.multi);value->setProperty("held",state.held);value->setProperty("x",state.x);value->setProperty("y",state.y);
+    juce::Array<juce::var> effects;for(const auto type:state.effects)effects.add(juce::String(beatmaker::dsp::effectNames[(int)type].data()));value->setProperty("effects",effects);return juce::var(value);
+}
+// POSIX record locks are process-owned, so they cannot exclude another loader
+// thread or another processor instance in the same host process.
+std::shared_ptr<std::timed_mutex> mediaMutex(const juce::String& path){
+    static std::mutex guard;static std::map<juce::String,std::weak_ptr<std::timed_mutex>> locks;
+    std::lock_guard<std::mutex> lock(guard);
+    for(auto it=locks.begin();it!=locks.end();)if(it->second.expired())it=locks.erase(it);else ++it;
+    auto& weak=locks[path];auto result=weak.lock();if(!result){result=std::make_shared<std::timed_mutex>();weak=result;}return result;
+}
 juce::AudioProcessorValueTreeState::ParameterLayout parameterLayout() {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
     layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"gain", 1}, "Output", 0.0f, 1.0f, 0.8f));
@@ -15,10 +32,29 @@ juce::AudioProcessorValueTreeState::ParameterLayout parameterLayout() {
     return layout;
 }
 constexpr int rolandNotes[] = {48,49,50,51,44,45,46,47,40,41,42,43,36,37,38,39};
+juce::File audioCacheFolder(){const auto overridePath=juce::SystemStats::getEnvironmentVariable("BEATMAKER_AUDIO_CACHE_DIR",{});return overridePath.isNotEmpty()?juce::File(overridePath):juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("BeatmakerCuesPrototype/Media");}
+bool validCachedMp4(const juce::File& file){
+    if(file.getSize()<12||file.getSize()>64*1024*1024)return false;
+    char bytes[8];auto input=file.createInputStream();return input&&input->read(bytes,8)==8&&std::memcmp(bytes+4,"ftyp",4)==0;
+}
+void cacheDuration(const juce::File& file,double duration){
+    if(!file.isAChildOf(audioCacheFolder())||!file.getFileName().startsWith("song-"))return;
+    auto* info=new juce::DynamicObject;info->setProperty("schema",1);info->setProperty("size",file.getSize());info->setProperty("modified",file.getLastModificationTime().toMilliseconds());info->setProperty("duration",duration);
+    juce::TemporaryFile temporary(file.getSiblingFile(file.getFileName()+".info.json"));if(temporary.getFile().replaceWithText(juce::JSON::toString(juce::var(info))))temporary.overwriteTargetFileWithTemporary();
+}
+double cachedDuration(const juce::File& file){
+    const auto info=juce::JSON::parse(file.getSiblingFile(file.getFileName()+".info.json").loadFileAsString());const double duration=(double)info["duration"];
+    return info.isObject()&&(int)info["schema"]==1&&(juce::int64)info["size"]==file.getSize()&&(juce::int64)info["modified"]==file.getLastModificationTime().toMilliseconds()&&std::isfinite(duration)&&duration>0?duration:0;
+}
 
 std::unique_ptr<juce::AudioFormatReader> mediaReader(juce::AudioFormatManager& formats,const juce::File& input,juce::String& error,const std::function<bool()>& cancelled={}){
     std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(input));
     if(reader)return reader;
+   #if JUCE_ANDROID
+    const auto decoded=decodeAndroidAudio(input,error,cancelled);
+    if(decoded.existsAsFile())reader.reset(formats.createReaderFor(decoded));
+    return reader;
+   #endif
    #if JUCE_LINUX || JUCE_WINDOWS
     const auto directory=LibraryStore::defaultDirectory().getChildFile("Decoded");directory.createDirectory();
     const auto decoded=directory.getChildFile(juce::String::toHexString((input.getFullPathName()+juce::String(input.getSize())+juce::String(input.getLastModificationTime().toMilliseconds())).hashCode64())+".wav");
@@ -37,17 +73,21 @@ std::unique_ptr<juce::AudioFormatReader> mediaReader(juce::AudioFormatManager& f
 }
 }
 
-CueProcessor::CueProcessor()
+CueProcessor::CueProcessor(AudioTransport transport)
     : AudioProcessor(BusesProperties().withOutput("Stereo", juce::AudioChannelSet::stereo(), true)),
-      parameters(*this, nullptr, "Parameters", parameterLayout()) {
+      parameters(*this, nullptr, "Parameters", parameterLayout()),audioTransport(std::move(transport)) {
     for (auto& bank : cues) for (auto& cue : bank) cue.store(-1);
     gainValue=parameters.getRawParameterValue("gain");speedValue=parameters.getRawParameterValue("speed");
     sessionId=wrapperType==wrapperType_Standalone||wrapperType==wrapperType_Undefined?"standalone":juce::Uuid().toString();
     setLatencySamples(0);
     queueThread=std::thread([this]{runQueue();});
+   #if JUCE_IOS || JUCE_ANDROID
+    if(wrapperType==wrapperType_Standalone)standaloneNowPlaying=createStandaloneNowPlaying(*this);
+   #endif
 }
 
 CueProcessor::~CueProcessor() {
+    standaloneNowPlaying.reset();
     stopQueue.store(true);++queueGeneration;
     ++loadGeneration;
     if(queueThread.joinable())queueThread.join();
@@ -63,6 +103,10 @@ bool CueProcessor::isBusesLayoutSupported(const BusesLayout& layout) const {
 
 void CueProcessor::prepareToPlay(double rate, int maximumBlock) {
     hostRate = rate > 0 ? rate : 44100;
+    fxControlRate.store(hostRate);nativeFxGraph.prepare(hostRate);
+    int latency=0;
+    {std::lock_guard<std::mutex> lock(metadataMutex);nativeFxGraph.configure(requestedFxGraph);fxGraphUpdates.publish(requestedFxGraph);latency=beatmaker::dsp::FxGraph::latency(requestedFxGraph,hostRate);fxTailSeconds.store(beatmaker::dsp::FxGraph::tail(requestedFxGraph,hostRate));}
+    setLatencySamples(latency);
     fadeLength = juce::jmax(2, (int) std::round(hostRate * 0.003));
     fadeRemaining = 0;
     lastVoice.fill(0);fadeOrigin.fill(0);
@@ -144,7 +188,7 @@ void CueProcessor::padEvent(int bank,int pad,bool down,bool triggered,float velo
 
 void CueProcessor::jump(double seconds, float velocity) {
     if (current == nullptr || !std::isfinite(seconds)) return;
-    const double target = juce::jlimit(0.0, (double) current->audio.getNumSamples() - 1, seconds * current->rate);
+    const double target = juce::jlimit(0.0, (double) current->frames() - 1, seconds * current->rate);
     for(int c=0;c<2;++c)fadeOrigin[(size_t)c]=playing.load()?lastVoice[(size_t)c]:0.0f;
     position = target;
     velocityGain = velocity;
@@ -173,10 +217,10 @@ void CueProcessor::execute(const Command& command) {
             }
             break;
         case Action::play:
-            if (current && !playing.load()) jump(position >= current->audio.getNumSamples() - 1 ? 0 : position / current->rate, 1.0f);
+            if (current && !playing.load()) jump(position >= current->frames() - 1 ? 0 : position / current->rate, 1.0f);
             break;
         case Action::cue: jump(command.value,1.0f);if(current)padEvent(command.bank,command.pad,false,true,1.0f);break;
-        case Action::pause: requestedPlay.store(false);playing.store(false); fadeRemaining = 0; break;
+        case Action::pause: requestedPlay.store(false);playing.store(false);cacheWaiting=false;cacheBuffering.store(false); fadeRemaining = 0; break;
         case Action::seek:
             if (current) {
                 const bool wasPlaying = playing.load();
@@ -199,17 +243,101 @@ void CueProcessor::execute(const Command& command) {
 }
 
 float CueProcessor::read(double at, int channel) const {
-    if (!current || at < 0 || at >= current->audio.getNumSamples()) return 0;
-    const int index = (int) at, next = juce::jmin(index + 1, current->audio.getNumSamples() - 1);
+    if (!current || at < 0 || at >= current->frames()) return 0;
+    const int index = (int) at, next = juce::jmin(index + 1, current->frames() - 1);
     const float fraction = (float) (at - index);
-    const float* source = current->audio.getReadPointer(juce::jmin(channel, current->audio.getNumChannels() - 1));
-    return source[index] + fraction * (source[next] - source[index]);
+    const float first=current->value(index,channel);
+    return first+fraction*(current->value(next,channel)-first);
+}
+float CueProcessor::processEffect(float sample,int channel) const {
+    return beatmaker::dsp::process(currentEffectKernel,sample,channel,currentEffectBits,currentEffectAmount);
+}
+void CueProcessor::outputFrame(juce::AudioBuffer<float>& buffer,int frame,beatmaker::dsp::Stereo voice,float gain){
+    for(int c=0;c<2;++c)voice[(size_t)c]=processEffect(voice[(size_t)c],c);
+    const auto result=nativeFxGraph.process(voice);
+    if(buffer.getNumChannels()==1)buffer.setSample(0,frame,gain*(nativeFxGraph.enabled()?0.5f*(result[0]+result[1]):result[0]));
+    else for(int c=0;c<2;++c)buffer.setSample(c,frame,gain*result[(size_t)c]);
+}
+void CueProcessor::setFxGraph(const juce::var& value){
+    const auto schema=value["schema"];
+    if(!value.isObject()||(value.hasProperty("schema")&&((!schema.isInt()&&!schema.isInt64()&&!schema.isDouble())||(double)schema!=1)))throw std::runtime_error("Invalid native FX graph state");
+    int latency=0;
+    {std::lock_guard<std::mutex> lock(metadataMutex);auto next=requestedFxGraph;
+        const auto boolean=[&](const char* key,bool& target){if(value.hasProperty(key)){if(!value[key].isBool())throw std::runtime_error("Native FX flags must be boolean");target=(bool)value[key];}};
+        boolean("enabled",next.enabled);boolean("padActive",next.padActive);boolean("multi",next.multi);boolean("held",next.held);
+        const auto position=[&](const char* key,double& target){if(value.hasProperty(key)){const auto v=value[key];if(!v.isDouble()&&!v.isInt()&&!v.isInt64())throw std::runtime_error("Native FX position must be numeric");const double amount=v;if(!std::isfinite(amount)||amount<0||amount>1)throw std::runtime_error("Native FX position must be between zero and one");target=amount;}};
+        position("x",next.x);position("y",next.y);
+        if(value.hasProperty("effects")){const auto effects=value["effects"];if(!effects.isArray()||effects.size()!=4)throw std::runtime_error("Native FX graph needs exactly four corners");for(int i=0;i<4;++i){if(!effects[i].isString())throw std::runtime_error("Native FX names must be strings");const int kind=beatmaker::dsp::effectIndex(effects[i].toString().toStdString());if(kind<0)throw std::runtime_error("This FX graph effect is not implemented natively yet");next.effects[(size_t)i]=(beatmaker::dsp::Effect)kind;}}
+        requestedFxGraph=next;fxGraphUpdates.publish(next);fxTailSeconds.store(beatmaker::dsp::FxGraph::tail(next,fxControlRate.load()));latency=beatmaker::dsp::FxGraph::latency(next,fxControlRate.load());
+    }
+    if(getLatencySamples()!=latency)setLatencySamples(latency);
+}
+juce::var CueProcessor::fxGraphState() const {std::lock_guard<std::mutex> lock(metadataMutex);return fxStateValue(requestedFxGraph);}
+void CueProcessor::setEffectKernel(const juce::var& value){
+    const auto type=value["type"].toString();const auto input=value["amount"];
+    if(value.hasProperty("amount")&&!input.isInt()&&!input.isInt64()&&!input.isDouble())throw std::runtime_error("Effect amount must be numeric");
+    const double amount=value.hasProperty("amount")?(double)input:(type=="none"?0:1);
+    if(!std::isfinite(amount)||amount<0||amount>1)throw std::runtime_error("Effect amount must be between zero and one");
+    const juce::StringArray types{"none","bitDecimator","bitCrash","twelveBit","centerCancel"};
+    const int kind=types.indexOf(type);if(kind<0)throw std::runtime_error("This effect kernel is not implemented natively yet");
+    const float gain=(float)amount;juce::uint32 gainBits=0;std::memcpy(&gainBits,&gain,sizeof(gain));
+    requestedEffectKernel.store(((juce::uint64)gainBits<<16)|((juce::uint64)beatmaker::dsp::decimatorBits(amount)<<8)|(juce::uint64)kind);
+}
+juce::var CueProcessor::effectKernelState() const {
+    const auto state=requestedEffectKernel.load();const int kind=(int)(state&255),bits=(int)((state>>8)&255);
+    const auto gainBits=(juce::uint32)(state>>16);float gain=0;std::memcpy(&gain,&gainBits,sizeof(gain));
+    auto* result=new juce::DynamicObject;const juce::StringArray types{"none","bitDecimator","bitCrash","twelveBit","centerCancel"};
+    result->setProperty("type",types[juce::jlimit(0,4,kind)]);
+    result->setProperty("amount",kind==1||kind==2?(12-bits)/8.0:(double)gain);return juce::var(result);
 }
 
+bool CueProcessor::prepareAudio(double from,double to){
+    bool available=true;
+    if(current->paged){
+        // All reads from the previous render segment have finished. Releasing
+        // here also lets an offline bounce reuse slots within a large host block.
+        current->paged->releasePages();
+        available=current->paged->prepareRange(from,to);
+        if(!available&&isNonRealtime()){
+            // Hosts may bounce faster than wall-clock time. Only an explicitly
+            // non-realtime render may wait; decoding still stays on the worker.
+            const auto deadline=juce::Time::getMillisecondCounterHiRes()+10000;
+            while(!available&&!current->paged->failed()&&current==published.load()&&!stopQueue.load()&&juce::Time::getMillisecondCounterHiRes()<deadline){
+                current->paged->releasePages();juce::Thread::sleep(1);available=current->paged->prepareRange(from,to);
+            }
+        }
+    }
+    if(available){
+        if(cacheWaiting){cacheWaiting=false;cacheBuffering.store(false);fadeOrigin=lastVoice;fadeRemaining=fadeLength;stretchSeek=true;}
+        return true;
+    }
+    if(!cacheWaiting){cacheWaiting=true;cacheBuffering.store(true);++cacheMisses;bufferingOrigin=lastVoice;bufferingFadeRemaining=fadeLength;stretchSeek=true;}
+    return false;
+}
+void CueProcessor::renderBuffering(juce::AudioBuffer<float>& buffer,int start,int count){
+    // Never wait for IO in the audio callback. Preserve the target position and
+    // join the previous waveform to silence while the worker prepares a cold cue.
+    for(int i=0;i<count;++i){
+        const float fade=bufferingFadeRemaining>0?1.0f-cueFade[(size_t)(fadeLength-bufferingFadeRemaining)]:0;
+        const float gain=outputGain.getNextValue()*(muted.load()?0.0f:1.0f);
+        for(int c=0;c<2;++c)lastVoice[(size_t)c]=bufferingOrigin[(size_t)c]*fade;
+        outputFrame(buffer,start+i,lastVoice,gain);
+        if(bufferingFadeRemaining>0)--bufferingFadeRemaining;
+    }
+}
 void CueProcessor::render(juce::AudioBuffer<float>& buffer, int start, int count) {
-    if (!current || !playing.load()) return;
+    if(count<=0)return;
+    if(!current||!playing.load()){
+        if(nativeFxGraph.enabled())for(int i=0;i<count;++i)outputFrame(buffer,start+i,{},outputGain.getNextValue()*(muted.load()?0.0f:1.0f));
+        return;
+    }
+    if(count>8192){for(int offset=0;offset<count;offset+=8192)render(buffer,start+offset,juce::jmin(8192,count-offset));return;}
     const float speed=speedValue->load();
     const bool useStretch=preservePitch.load()&&(std::abs(speed-1.0f)>0.0001f||std::abs(semitones.load())>0.001f);
+    const double ratio=current->rate/hostRate;
+    const double history=useStretch?stretch.inputLatency()*ratio:0;
+    const double ahead=(count*speed+(useStretch?stretch.outputSeekLength(speed):0)+8)*ratio+2;
+    if(!prepareAudio(position-history,position+ahead)){renderBuffering(buffer,start,count);return;}
     if(useStretch) {
         if(!stretchWasActive){stretchSeek=true;fadeOrigin=lastVoice;fadeRemaining=fadeLength;}
         stretchWasActive=true;
@@ -238,38 +366,40 @@ void CueProcessor::render(juce::AudioBuffer<float>& buffer, int start, int count
                 const float incoming=cueFadeIn();
                 const float outgoing=1.0f-incoming;
                 const float gain=outputGain.getNextValue()*(muted.load()?0.0f:1.0f);
-                for(int c=0;c<buffer.getNumChannels();++c){
+                for(int c=0;c<2;++c){
                     const float voice=stretchOutput.getSample(c,i)*incoming*velocityGain+fadeOrigin[(size_t)c]*outgoing;
                     lastVoice[(size_t)c]=voice;
-                    buffer.setSample(c,start+offset+i,gain*voice);
                 }
+                outputFrame(buffer,start+offset+i,lastVoice,gain);
                 if(fadeRemaining>0)--fadeRemaining;
             }
             position+=inputFrames*sourceStep;offset+=frames;
-            if(position>=current->audio.getNumSamples()){playing.store(false);needAdvance.store(true);}
+            if(position>=current->frames()){playing.store(false);needAdvance.store(true);}
         }
+        if(offset<count)render(buffer,start+offset,count-offset);
         return;
     }
     if(stretchWasActive){fadeOrigin=lastVoice;fadeRemaining=fadeLength;}
     stretchWasActive=false;
     const double step = current->rate / hostRate * speedValue->load();
-    const double end = current->audio.getNumSamples();
+    const double end = current->frames();
     for (int frame = start; frame < start + count; ++frame) {
         if (loopEnabled.load() && position / current->rate >= loopOut.load()) {
             const double target = loopIn.load();
             jump(target, velocityGain);
             loopEnabled.store(true);
+            if(!prepareAudio(position,position+(start+count-frame)*step+2)){renderBuffering(buffer,frame,start+count-frame);return;}
         }
-        if (position >= end) { playing.store(false);needAdvance.store(true); break; }
+        if (position >= end) { playing.store(false);needAdvance.store(true);render(buffer,frame,start+count-frame);return; }
         const float incoming = cueFadeIn();
         const float outgoing = 1.0f-incoming;
         const float gain = outputGain.getNextValue() * (muted.load() ? 0.0f : 1.0f);
         const float endFade = (float) juce::jlimit(0.0, 1.0, (end - position) / (step * fadeLength));
-        for (int channel = 0; channel < buffer.getNumChannels(); ++channel) {
+        for (int channel = 0; channel < 2; ++channel) {
             const float voice=read(position, channel)*incoming*velocityGain*endFade+fadeOrigin[(size_t)channel]*outgoing;
             lastVoice[(size_t)channel]=voice;
-            buffer.setSample(channel,frame,gain*voice);
         }
+        outputFrame(buffer,frame,lastVoice,gain);
         position += step;
         if (fadeRemaining > 0) --fadeRemaining;
     }
@@ -277,15 +407,19 @@ void CueProcessor::render(juce::AudioBuffer<float>& buffer, int start, int count
 
 void CueProcessor::processBlock(juce::AudioBuffer<float>& output, juce::MidiBuffer& midi) {
     juce::ScopedNoDenormals noDenormals;
+    beatmaker::dsp::FxState update;if(fxGraphUpdates.consume(update))nativeFxGraph.configure(update);
+    const auto effect=requestedEffectKernel.load();currentEffectKernel=(beatmaker::dsp::Kernel)(effect&255);currentEffectBits=(int)((effect>>8)&255);
+    const auto effectGain=(juce::uint32)(effect>>16);std::memcpy(&currentEffectAmount,&effectGain,sizeof(currentEffectAmount));
     output.clear();
     Sample* next;
     do { next = published.load(); audioHazard.store(next); } while (next != published.load());
     if (next != current) {
         current = next;
-        position = current ? juce::jlimit(0.0, (double) current->audio.getNumSamples() - 1, restorePosition.load() * current->rate) : 0;
+        position = current ? juce::jlimit(0.0, (double) current->frames() - 1, restorePosition.load() * current->rate) : 0;
         playing.store(false); fadeRemaining = 0;
         lastVoice.fill(0);fadeOrigin.fill(0);
         stretchSeek=true;
+        cacheWaiting=false;cacheBuffering.store(false);cacheMisses.store(0);bufferingFadeRemaining=0;
         ready.store(current != nullptr);
         if (current && requestedPlay.load()) jump(position / current->rate, 1.0f);
     }
@@ -304,6 +438,8 @@ void CueProcessor::processBlock(juce::AudioBuffer<float>& output, juce::MidiBuff
         rendered = offset;
     }
     render(output, rendered, output.getNumSamples() - rendered);
+    if(current&&current->paged)current->paged->releasePages();
+    if(loadFirstRenderMs.load()==0&&current&&current==published.load()&&measuredLoadGeneration.load()==loadGeneration.load()&&loadPublishedMs.load()>0)loadFirstRenderMs.store(juce::Time::getMillisecondCounterHiRes());
     playhead.store(current ? position / current->rate : 0);
     midi.clear();
 }
@@ -320,7 +456,8 @@ void CueProcessor::publish(std::unique_ptr<Sample> sample, int generation, bool 
     auto* pointer = sample.get();
     retained.push_back(std::move(sample));
     published.store(pointer);
-    durationSeconds.store(pointer->audio.getNumSamples()/pointer->rate);
+    durationSeconds.store(pointer->frames()/pointer->rate);
+    if(measuredLoadGeneration.load()==generation)loadPublishedMs.store(juce::Time::getMillisecondCounterHiRes());
     nativeAdvancing.store(false);
     const auto* inUse = audioHazard.load();
     retained.erase(std::remove_if(retained.begin(), retained.end(), [pointer, inUse](const auto& item) {
@@ -328,42 +465,72 @@ void CueProcessor::publish(std::unique_ptr<Sample> sample, int generation, bool 
     }), retained.end());
 }
 
-void CueProcessor::loadFile(const juce::File& input, bool preserveCues) {
-    const int generation = ++loadGeneration;
-    { std::lock_guard<std::mutex> lock(metadataMutex); status = "Loading " + input.getFileName() + "…"; }
-    loaders.addJob([this, input, preserveCues, generation] {
+void CueProcessor::failLoad(const juce::String& error,int generation){
+    std::lock_guard<std::mutex> lock(metadataMutex);if(generation!=loadGeneration.load())return;
+    status=error;requestedPlay.store(false);playing.store(false);ready.store(false);published.store(nullptr);durationSeconds.store(0);nativeAdvancing.store(false);nativeErrorRevision.fetch_add(1);
+}
+void CueProcessor::loadFile(const juce::File& input, bool preserveCues,int ticket) {
+    int generation;
+    { std::lock_guard<std::mutex> lock(metadataMutex);if(ticket>0&&ticket!=loadGeneration.load())return;generation=ticket>0?ticket:++loadGeneration;status = "Loading " + input.getFileName() + "…";
+      if(ticket==0){measuredLoadGeneration.store(generation);loadStartedMs.store(juce::Time::getMillisecondCounterHiRes());loadDecoderMs.store(0);loadPcmReadMs.store(0);loadDownloadMs.store(0);loadPublishedMs.store(0);loadFirstRenderMs.store(0);}}
+    loaders.addJob([this, input, preserveCues, generation] {decodeFile(input,preserveCues,generation);});
+}
+void CueProcessor::decodeFile(const juce::File& input,bool preserveCues,int generation){
+        if(generation!=loadGeneration.load())return;
         juce::File file = input;
        #if JUCE_IOS
         // Keep an extension-owned copy; document picker access is not a durable DAW session path.
         const auto directory = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("BeatmakerCues/Media");
         directory.createDirectory();
         const auto local = directory.getChildFile(juce::Uuid().toString() + "." + input.getFileExtension().substring(1));
-        const auto cache=juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("BeatmakerCuesPrototype/Media");
-        if (!input.isAChildOf(directory)&&!input.isAChildOf(cache)&&input.copyFileTo(local)) file = local;
+        const auto cache=audioCacheFolder();
+        if (!input.isAChildOf(directory)&&!input.isAChildOf(cache)&&!input.isAChildOf(libraryStore.mediaDirectory())&&input.copyFileTo(local)) file = local;
        #endif
         juce::AudioFormatManager formats;
         formats.registerBasicFormats();
         juce::String error;
+        const auto decoderStarted=juce::Time::getMillisecondCounterHiRes();
         auto reader=mediaReader(formats,file,error,[this,generation]{return generation!=loadGeneration.load();});
+        if(generation==loadGeneration.load())loadDecoderMs.store(juce::Time::getMillisecondCounterHiRes()-decoderStarted);
+        const bool invalidEncoded=!reader&&!error.containsIgnoreCase("Install FFmpeg")&&!error.containsIgnoreCase("cancelled")&&!error.containsIgnoreCase("timed out");
         if (!reader) error = error.isNotEmpty()?error:"Cannot open audio. Try WAV, AIFF, FLAC or MP3.";
-        else if (reader->numChannels<1 || reader->lengthInSamples < 2 || reader->sampleRate <= 0
-                 || reader->lengthInSamples > 24 * 1024 * 1024) error = "Audio must fit in 192 MB decoded stereo memory.";
+        else if (reader->numChannels<1 || reader->lengthInSamples < 2 || !std::isfinite(reader->sampleRate) || reader->sampleRate <= 0
+                 || reader->lengthInSamples > PagedAudio::maxFrames) error = "Audio has invalid metadata or exceeds the supported frame range.";
         else {
             auto sample = std::make_unique<Sample>();
             sample->rate = reader->sampleRate;
             sample->path = file.getFullPathName();
+            if(reader->lengthInSamples>PagedAudio::residentFrameLimit){
+                const auto pcmStarted=juce::Time::getMillisecondCounterHiRes();
+                const int start=(int)juce::jlimit(0.0,(double)reader->lengthInSamples-1,restorePosition.load()*reader->sampleRate);
+                try{sample->paged=std::make_unique<PagedAudio>(std::move(reader),start);}
+                catch(const std::exception& failure){failLoad("Audio cache preparation failed: "+juce::String(failure.what()),generation);return;}
+                if(generation!=loadGeneration.load())return;
+                loadPcmReadMs.store(juce::Time::getMillisecondCounterHiRes()-pcmStarted);
+                cacheDuration(file,sample->frames()/sample->rate);
+                publish(std::move(sample),generation,preserveCues);return;
+            }
             sample->audio.setSize(juce::jmin(2, (int) reader->numChannels), (int) reader->lengthInSamples);
-            if (reader->read(&sample->audio, 0, sample->audio.getNumSamples(), 0, true, true)) {
+            const auto pcmStarted=juce::Time::getMillisecondCounterHiRes();bool decoded=true;
+            for(int offset=0;offset<sample->audio.getNumSamples()&&decoded;offset+=65536){
+                if(generation!=loadGeneration.load())return;
+                const auto count=juce::jmin(65536,sample->audio.getNumSamples()-offset);
+                decoded=reader->read(&sample->audio,offset,count,offset,true,true);
+            }
+            if (decoded) {
+                if(generation==loadGeneration.load())loadPcmReadMs.store(juce::Time::getMillisecondCounterHiRes()-pcmStarted);
+                cacheDuration(file,sample->audio.getNumSamples()/sample->rate);
                 publish(std::move(sample), generation, preserveCues);
                 return;
             }
             error = "Audio decoding failed.";
         }
-        const auto cacheFolder=juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("BeatmakerCuesPrototype/Media");
-        if(error=="Audio decoding failed."&&file.isAChildOf(cacheFolder)&&file.getFileName().startsWith("song-")&&generation==loadGeneration.load())file.deleteFile();
-        std::lock_guard<std::mutex> lock(metadataMutex);
-        if (generation == loadGeneration.load()) status = error;
-    });
+        const auto cacheFolder=audioCacheFolder();
+        if((invalidEncoded||error=="Audio decoding failed.")&&file.isAChildOf(cacheFolder)&&file.getFileName().startsWith("song-")&&generation==loadGeneration.load()){
+            const auto retained=file.getSiblingFile(file.getFileName()+".invalid-"+juce::Uuid().toString());
+            if(file.moveFileTo(retained)){file.getSiblingFile(file.getFileName()+".info.json").deleteFile();error+=" Cached copy retained; select the song again to download a fresh copy.";}
+        }
+        failLoad(error,generation);
 }
 
 void CueProcessor::loadDemo(bool preserveCues) {
@@ -396,7 +563,7 @@ void CueProcessor::loadFromApp(const juce::String& videoId, int port) {
         auto stream = url.createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
             .withConnectionTimeoutMs(10000).withStatusCode(&statusCode).withNumRedirectsToFollow(0));
         juce::String error = "Start Beatmaker Cues Desktop and check its local port (normally 4280).";
-        const auto folder = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("BeatmakerCuesPrototype/Media");
+        const auto folder = audioCacheFolder();
         folder.createDirectory();
         const auto file = folder.getChildFile(videoId + "-" + juce::Uuid().toString() + ".m4a");
         if (stream && statusCode == 200) {
@@ -428,12 +595,27 @@ void CueProcessor::loadFromApp(const juce::String& videoId, int port) {
 
 void CueProcessor::installSampleForTest(std::unique_ptr<Sample> sample) { publish(std::move(sample), ++loadGeneration, false); }
 juce::String CueProcessor::getStatus() const { std::lock_guard<std::mutex> lock(metadataMutex); return status; }
+juce::var CueProcessor::loadDiagnostics() const {
+    std::lock_guard<std::mutex> lock(metadataMutex);
+    auto* result=new juce::DynamicObject;const auto start=loadStartedMs.load(),first=loadFirstRenderMs.load(),publishedAt=loadPublishedMs.load();
+    result->setProperty("fxGraphLatencySamples",getLatencySamples());
+    const auto* sample=published.load();
+    result->setProperty("sampleStorage",sample?(sample->paged?"paged":"resident"):"none");
+    result->setProperty("pcmCacheBytes",sample?(juce::int64)(sample->paged?sample->paged->pcmBytes():(size_t)sample->frames()*sample->channels()*sizeof(float)):0);
+    result->setProperty("buffering",cacheBuffering.load());result->setProperty("cacheMisses",cacheMisses.load());
+    if(sample&&sample->paged){result->setProperty("cachedPages",sample->paged->loadedPages());result->setProperty("decoderPageReads",sample->paged->decoderReads());}
+    result->setProperty("generation",measuredLoadGeneration.load());result->setProperty("downloadMs",loadDownloadMs.load());result->setProperty("decoderInitMs",loadDecoderMs.load());result->setProperty("pcmReadMs",loadPcmReadMs.load());
+    result->setProperty("requestToPublishMs",publishedAt>0?publishedAt-start:-1);result->setProperty("requestToFirstRenderMs",first>0?first-start:-1);result->setProperty("note","First-render timing measures buffer processing, excluding earlier UI URL resolution, FX look-ahead (reported separately) and physical device output latency");return juce::var(result);
+}
 double CueProcessor::getDuration() const {return durationSeconds.load();}
 
 void CueProcessor::getStateInformation(juce::MemoryBlock& destination) {
     juce::XmlElement state("BeatmakerCuesPrototype");
+    state.createNewChildElement("EffectKernel")->addTextElement(juce::JSON::toString(effectKernelState()));
+    state.createNewChildElement("NativeFxGraph")->addTextElement(juce::JSON::toString(fxGraphState()));
     state.setAttribute("version", 1);
     state.setAttribute("sessionId",getSessionId());
+    state.setAttribute("editorWidth",editorWidth.load());state.setAttribute("editorHeight",editorHeight.load());
     const auto legacy=getLegacyState();if(legacy.isNotEmpty())state.createNewChildElement("LegacyUI")->addTextElement(legacy);
     {std::lock_guard<std::mutex> lock(metadataMutex);if(nativeQueue.isObject()){
         auto queue=nativeQueue.clone();queue.getDynamicObject()->setProperty("index",nativeIndex.load());
@@ -466,10 +648,19 @@ void CueProcessor::setStateInformation(const void* data, int size) {
     auto state = getXmlFromBinary(data, size);
     if (!state || !state->hasTagName("BeatmakerCuesPrototype") || state->getIntAttribute("version") != 1) return;
     hostRestored.store(true);
+    if(const auto* graph=state->getChildByName("NativeFxGraph")){
+        try{setFxGraph(juce::JSON::parse(graph->getAllSubText()));}catch(const std::exception&){setFxGraph(fxStateValue({}));}
+    }else setFxGraph(fxStateValue({}));
+    if(const auto* effect=state->getChildByName("EffectKernel")){
+        try{setEffectKernel(juce::JSON::parse(effect->getAllSubText()));}catch(const std::exception&){requestedEffectKernel.store(0);}
+    }else requestedEffectKernel.store(0);
+    if(state->getIntAttribute("editorWidth")>0&&state->getIntAttribute("editorHeight")>0){editorWidth.store(juce::jlimit(320,4096,state->getIntAttribute("editorWidth")));editorHeight.store(juce::jlimit(400,4096,state->getIntAttribute("editorHeight")));}
     {std::lock_guard<std::mutex> lock(metadataMutex);const auto saved=state->getStringAttribute("sessionId");if(saved.isNotEmpty()&&saved.length()<80&&saved.containsOnly("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"))sessionId=saved;}
     if(const auto* legacy=state->getChildByName("LegacyUI")){std::lock_guard<std::mutex> lock(metadataMutex);legacyState=legacy->getAllSubText();}
     playing.store(false);requestedPlay.store(false);needAdvance.store(false);nativeEnded.store(false);
+    {std::lock_guard<std::mutex> lock(metadataMutex);++queueGeneration;manualQueueRequest.store(0);manualQueueIntent.store(-1);}
     if(const auto* savedQueue=state->getChildByName("NativeQueue"))setNativeQueue(juce::JSON::parse(savedQueue->getAllSubText()));
+    else {std::lock_guard<std::mutex> lock(metadataMutex);nativeQueue=juce::var();nativeIndex.store(0);}
     if (const auto* savedUi = state->getChildByName("MobileUI")) setWebState(savedUi->getAllSubText());
     selectedBank.store(juce::jlimit(0, 9, state->getIntAttribute("bank")));
     preset.store(juce::jlimit(0, 2, state->getIntAttribute("preset")));
@@ -525,6 +716,15 @@ juce::String CueProcessor::sessionUiState() const {
     auto player=juce::JSON::parse(state["musike:player"].toString());
     if(hostRestored.load()&&!player.isObject())player=juce::var(new juce::DynamicObject);
     if(auto* fields=player.getDynamicObject()){
+        juce::var nativeTracks;{std::lock_guard<std::mutex> lock(metadataMutex);nativeTracks=nativeQueue["tracks"];}
+        if(nativeTracks.isArray()){
+            const auto saved=player["queue"];bool same=saved.isArray()&&saved.size()==nativeTracks.size();
+            if(same)for(int i=0;i<saved.size();++i)if(saved[i]["id"].toString()!=nativeTracks[i]["id"].toString()){same=false;break;}
+            if(!same){juce::Array<juce::var> retainedTracks;for(const auto& track:*nativeTracks.getArray()){
+                auto* item=new juce::DynamicObject;for(const auto* key:{"id","title","artist","album","duration"})item->setProperty(key,track[key]);
+                auto art=track["artwork"].toString();if(art.isEmpty())art=track["art"].toString();if(art.isEmpty())art=track["thumb"].toString();item->setProperty("art",art);item->setProperty("thumb",art);item->setProperty("kind",track["kind"].isString()?track["kind"]:juce::var("song"));retainedTracks.add(juce::var(item));
+            }fields->setProperty("queue",retainedTracks);}
+        }
         fields->setProperty("position",nativeAdvancing.load()?0:playhead.load());
         if(nativeSnapshot().hasProperty("trackId"))fields->setProperty("index",nativeIndex.load());
         if(hostRestored.load()){
@@ -567,60 +767,91 @@ juce::var CueProcessor::getWebCues() const {
     return juce::var(result.release());
 }
 
-void CueProcessor::loadRemote(const juce::String& link, double startAt, juce::String trackId,bool prefetch) {
+void CueProcessor::loadRemote(const juce::String& link, double startAt, juce::String trackId,bool prefetch,bool preservePlayIntent) {
     if(prefetch&&(link.startsWith("beatmaker-cache://")||link.startsWith("beatmaker-local://")))return;
+    int generation;
+    {std::lock_guard<std::mutex> lock(metadataMutex);
+        const auto tracks=nativeQueue["tracks"];const int index=nativeIndex.load();
+        if(!prefetch&&trackId.isNotEmpty()&&tracks.isArray()&&index>=0&&index<tracks.size()&&tracks[index]["id"].toString()!=trackId)return;
+        generation=prefetch?loadGeneration.load():++loadGeneration;
+        if(!prefetch){if(!preservePlayIntent)requestedPlay.store(false);playing.store(false);ready.store(false);published.store(nullptr);restorePosition.store(startAt);nativeEnded.store(false);status="Loading song…";
+            measuredLoadGeneration.store(generation);loadStartedMs.store(juce::Time::getMillisecondCounterHiRes());loadDecoderMs.store(0);loadPcmReadMs.store(0);loadDownloadMs.store(0);loadPublishedMs.store(0);loadFirstRenderMs.store(0);}
+    }
     if(link.startsWith("beatmaker-local://")){
         const auto id=link.fromFirstOccurrenceOf("beatmaker-local://",false,false);
-        requestedPlay.store(false);playing.store(false);ready.store(false);published.store(nullptr);
-        loaders.addJob([this,id,startAt]{
+        loaders.addJob([this,id,generation]{
+            if(generation!=loadGeneration.load())return;
             try{
                 const auto entry=libraryStore.media(id);const juce::File file(entry["path"].toString());
-                if(!file.existsAsFile()){std::lock_guard<std::mutex> lock(metadataMutex);status="Local audio is missing; re-import the file. The library entry has been kept.";return;}
-                restorePosition.store(startAt);loadFile(file,true);
-            }catch(const std::exception& error){std::lock_guard<std::mutex> lock(metadataMutex);status="Cannot read local audio: "+juce::String(error.what());}
+                if(!file.existsAsFile()){failLoad("Local audio is missing; re-import the file. The library entry has been kept.",generation);return;}
+                loadFile(file,true,generation);
+            }catch(const std::exception& error){failLoad("Cannot read local audio: "+juce::String(error.what()),generation);}
         });return;
     }
     if(link.startsWith("beatmaker-cache://")){
         const auto id=link.fromFirstOccurrenceOf("beatmaker-cache://",false,false);
         if(id.length()==11&&id.containsOnly("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")){
-            const auto file=juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("BeatmakerCuesPrototype/Media/song-"+id+".m4a");
-            if(file.existsAsFile()){restorePosition.store(startAt);requestedPlay.store(false);playing.store(false);ready.store(false);published.store(nullptr);loadFile(file,true);return;}
+            const auto file=audioCacheFolder().getChildFile("song-"+id+".m4a");
+            if(file.existsAsFile()){loadFile(file,true,generation);return;}
         }
-        std::lock_guard<std::mutex> lock(metadataMutex);status="Cached song is unavailable; select the song again";return;
+        failLoad("Cached song is unavailable; select the song again",generation);return;
     }
     const juce::URL source(link);
     if (source.getScheme() != "https" || !(source.getDomain().endsWith(".googlevideo.com") || source.getDomain() == "googlevideo.com")) {
-        std::lock_guard<std::mutex> lock(metadataMutex); status = "Unsupported audio URL"; return;
+        if(!prefetch)failLoad("Unsupported audio URL",generation);return;
     }
-    const int generation = prefetch?loadGeneration.load():++loadGeneration;
-    if(!prefetch){requestedPlay.store(false); playing.store(false); ready.store(false); published.store(nullptr);restorePosition.store(startAt);nativeEnded.store(false);
-        std::lock_guard<std::mutex> lock(metadataMutex); status = "Downloading song…";}
-    loaders.addJob([this, source, link, generation, startAt, trackId,prefetch] {
-        const auto folder = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("BeatmakerCuesPrototype/Media");
+    loaders.addJob([this, source, link, generation, trackId,prefetch] {
+        const auto folder = audioCacheFolder();
         folder.createDirectory();
         const auto stableId=trackId.length()==11&&trackId.containsOnly("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")?trackId:juce::String::toHexString(source.toString(true).hashCode64());
         const auto file = folder.getChildFile("song-"+stableId + ".m4a");
         juce::String error;
+        const auto downloadStarted=juce::Time::getMillisecondCounterHiRes();
+        const auto cancelDownload=[this,generation,prefetch,stableId]{
+            if(stopQueue.load())return true;
+            if(!prefetch)return generation!=loadGeneration.load();
+            // Becoming the current song must reuse, not cancel/restart, its prefetch.
+            std::lock_guard<std::mutex> lock(metadataMutex);const auto tracks=nativeQueue["tracks"];const int currentIndex=nativeIndex.load();
+            if(!tracks.isArray()||currentIndex<0||currentIndex>=tracks.size())return true;
+            int next=currentIndex+1;if(next>=tracks.size())next=nativeQueue["repeat"].toString()=="all"?0:-1;
+            return tracks[currentIndex]["id"].toString()!=stableId&&(next<0||tracks[next]["id"].toString()!=stableId);
+        };
+        {
+        const auto mutex=mediaMutex(file.getFullPathName());
+        std::unique_lock<std::timed_mutex> localLock(*mutex,std::defer_lock);
+        while(!localLock.try_lock_for(std::chrono::milliseconds(50))){if(cancelDownload())return;}
+        juce::InterProcessLock downloadLock("beatmaker-media-"+juce::String::toHexString(file.getFullPathName().hashCode64()));
+        while(!downloadLock.enter(50)){if(cancelDownload())return;}
+        struct Unlock{juce::InterProcessLock& lock;~Unlock(){lock.exit();}}unlock{downloadLock};
+        if(cancelDownload())return;
+        if(file.existsAsFile()&&!validCachedMp4(file)){file.deleteFile();file.getSiblingFile(file.getFileName()+".info.json").deleteFile();}
         if (!file.existsAsFile()) {
             const auto part = file.getSiblingFile(file.getFileName() + "-"+juce::Uuid().toString()+".partial");
             auto output = part.createOutputStream();
             juce::int64 offset=0, total=-1;
             if (!output) error = "Cannot create audio cache";
-            while (output && generation == loadGeneration.load() && (total < 0 || offset < total) && offset < 64 * 1024 * 1024) {
+            while (output && !cancelDownload() && (total < 0 || offset < total) && offset < 64 * 1024 * 1024) {
                 bool success=false;
-                for (int attempt=0; attempt<3 && !success; ++attempt) {
+                 for (int attempt=0; attempt<3 && !success && !cancelDownload(); ++attempt) {
                     int code=0; juce::StringPairArray headers;
                     const auto end = total < 0 ? offset+1048575 : juce::jmin(offset+1048575,total-1);
                     const auto requestHeaders="Range: bytes="+juce::String(offset)+"-"+juce::String(end)+"\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36\r\nAccept-Encoding: identity\r\n";
+                    std::unique_ptr<juce::InputStream> stream;
+                    if(audioTransport){
+                        const auto response=audioTransport(link,requestHeaders,cancelDownload);
+                        code=response.status;headers=response.headers;
+                        stream=std::make_unique<juce::MemoryInputStream>(response.data,true);
+                    }else{
                    #if JUCE_MAC || JUCE_IOS
-                    const auto response=appleHttp(link,"GET",requestHeaders,{},15,[this,generation]{return generation!=loadGeneration.load();});
+                    const auto response=appleHttp(link,"GET",requestHeaders,{},15,cancelDownload);
                     code=response.status;headers=response.headers;
-                    auto stream=std::make_unique<juce::MemoryInputStream>(response.data,true);
+                     stream=std::make_unique<juce::MemoryInputStream>(response.data,true);
                    #else
-                    auto stream = source.createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
+                     stream = source.createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
                         .withConnectionTimeoutMs(15000).withStatusCode(&code).withResponseHeaders(&headers)
                         .withExtraHeaders(requestHeaders));
                    #endif
+                    }
                     if (!stream || code != 206) { juce::Logger::outputDebugString("Plugin audio range HTTP "+juce::String(code)); continue; }
                     juce::String range;
                     for (int i=0;i<headers.size();++i) if (headers.getAllKeys()[i].equalsIgnoreCase("content-range")) range=headers.getAllValues()[i];
@@ -637,24 +868,15 @@ void CueProcessor::loadRemote(const juce::String& link, double startAt, juce::St
                 if(!success){error="Audio download failed; try the song again.";break;}
             }
             output.reset();
-            if(error.isEmpty()&&offset==total&&generation==loadGeneration.load())part.moveFileTo(file);
+             if(error.isEmpty()&&offset==total&&!cancelDownload()){if(!part.moveFileTo(file)){part.deleteFile();error="Cannot publish the completed audio cache";}}
             else {part.deleteFile();if(error.isEmpty())error="Audio download cancelled or too large";}
+        }
         }
         if(generation!=loadGeneration.load())return;
         if(prefetch)return;
-        if(error.isEmpty()) {
-            juce::AudioFormatManager formats;formats.registerBasicFormats();
-            auto reader=mediaReader(formats,file,error,[this,generation]{return generation!=loadGeneration.load();});
-            if(reader&&reader->sampleRate>0&&reader->lengthInSamples>1&&reader->lengthInSamples<=24*1024*1024) {
-                auto sample=std::make_unique<Sample>();sample->rate=reader->sampleRate;sample->path=file.getFullPathName();
-                sample->audio.setSize(juce::jmin(2,(int)reader->numChannels),(int)reader->lengthInSamples);
-                if(reader->read(&sample->audio,0,sample->audio.getNumSamples(),0,true,true)) {
-                    restorePosition.store(startAt);publish(std::move(sample),generation,true);return;
-                }
-            }
-            error="Cannot decode song audio";
-        }
-        std::lock_guard<std::mutex> lock(metadataMutex);status=error;
+        loadDownloadMs.store(juce::Time::getMillisecondCounterHiRes()-downloadStarted);
+        if(error.isEmpty()){decodeFile(file,true,generation);return;}
+        failLoad(error,generation);
     });
 }
 
@@ -666,19 +888,18 @@ juce::var CueProcessor::cachedTrack(const juce::String& id){
         }
     }
     if(id.length()!=11||!id.containsOnly("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"))return {};
-    const auto file=juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("BeatmakerCuesPrototype/Media/song-"+id+".m4a");
+    const auto file=audioCacheFolder().getChildFile("song-"+id+".m4a");
     if(!file.existsAsFile())return {};
-    juce::AudioFormatManager formats;formats.registerBasicFormats();
-    juce::String error;auto reader=mediaReader(formats,file,error);
-    if(!reader||reader->sampleRate<=0||reader->lengthInSamples<2)return {};
+    // A cache lookup must not initialise a decoder (or run FFmpeg) on the shared storage worker.
+    if(!validCachedMp4(file)){file.deleteFile();file.getSiblingFile(file.getFileName()+".info.json").deleteFile();return {};}
     auto* result=new juce::DynamicObject;result->setProperty("url","beatmaker-cache://"+id);result->setProperty("mime","audio/mp4");
-    result->setProperty("duration",reader->lengthInSamples/reader->sampleRate);result->setProperty("title",id);return juce::var(result);
+    result->setProperty("duration",cachedDuration(file));result->setProperty("title",id);return juce::var(result);
 }
 
 juce::var CueProcessor::importLocalFile(const juce::File& input){
     juce::AudioFormatManager formats;formats.registerBasicFormats();juce::String error;auto reader=mediaReader(formats,input,error);
     if(!reader||reader->sampleRate<=0||reader->lengthInSamples<2)throw std::runtime_error("Cannot decode this audio file");
-    if(reader->lengthInSamples>24*1024*1024)throw std::runtime_error("Decoded audio exceeds the supported memory budget");
+    if(reader->lengthInSamples>PagedAudio::maxFrames)throw std::runtime_error("Audio exceeds the supported frame range");
     const auto id="loc"+juce::Uuid().toString().removeCharacters("-").substring(0,8);
     const auto directory=libraryStore.mediaDirectory();if(!directory.createDirectory())throw std::runtime_error("Cannot create media storage");
     const auto destination=directory.getChildFile(id+input.getFileExtension());
@@ -697,7 +918,33 @@ void CueProcessor::setNativeQueue(const juce::var& value){
     bool changed=nativeIndex.load()!=index||nativeQueue["repeat"].toString()!=value["repeat"].toString()||nativeQueue["tracks"].size()!=tracks.size();
     if(!changed)for(int i=0;i<tracks.size();++i)if(nativeQueue["tracks"][i]["id"].toString()!=tracks[i]["id"].toString()){changed=true;break;}
     nativeQueue=value.clone();nativeIndex.store(index);
-    if(changed){++queueGeneration;needAdvance.store(false);nativeEnded.store(false);}
+    if(changed){++queueGeneration;manualQueueRequest.store(0);manualQueueIntent.store(-1);needAdvance.store(false);nativeEnded.store(false);}
+}
+
+bool CueProcessor::submitRemoteCommand(Command command){if(!submit(command))return false;remoteTransportRevision.fetch_add(1);return true;}
+bool CueProcessor::performRemoteAction(RemoteAction action,double seconds){
+    if(action==RemoteAction::toggle)action=requestedPlay.load()&&!nativeEnded.load()?RemoteAction::pause:RemoteAction::play;
+    if(action==RemoteAction::play||action==RemoteAction::pause){
+        {std::lock_guard<std::mutex> lock(metadataMutex);if(!ready.load()&&!nativeAdvancing.load()&&nativeQueue["tracks"].size()==0)return false;}
+        if(!submitRemoteCommand({action==RemoteAction::play?Action::play:Action::pause}))return false;
+        requestedPlay.store(action==RemoteAction::play);playIntentRevision.fetch_add(1);if(action==RemoteAction::play)nativeEnded.store(false);return true;
+    }
+    if(action==RemoteAction::seek){
+        if(!std::isfinite(seconds)||!ready.load())return false;
+        return submitRemoteCommand({Action::seek,0,0,juce::jlimit(0.0,getDuration(),seconds)});
+    }
+    if(action!=RemoteAction::next&&action!=RemoteAction::previous)return false;
+    if(action==RemoteAction::previous&&manualQueueIntent.load()<0&&ready.load()&&!nativeAdvancing.load()&&playhead.load()>3)return submitRemoteCommand({Action::seek,0,0,0});
+    std::lock_guard<std::mutex> lock(metadataMutex);const auto tracks=nativeQueue["tracks"];const int current=nativeIndex.load();
+    if(!tracks.isArray()||tracks.size()==0){return action==RemoteAction::previous&&ready.load()?submitRemoteCommand({Action::seek,0,0,0}):false;}
+    const int intent=manualQueueIntent.load();int target=(intent>=0?intent:current)+(action==RemoteAction::next?1:-1);
+    if(target<0)target=nativeQueue["repeat"].toString()=="all"?tracks.size()-1:0;
+    if(target>=tracks.size()){if(nativeQueue["repeat"].toString()!="all")return false;target=0;}
+    if(target==current&&ready.load()){
+        if(intent>=0){++queueGeneration;++loadGeneration;manualQueueRequest.store(0);manualQueueIntent.store(-1);needAdvance.store(false);}
+        return submitRemoteCommand({Action::seek,0,0,0});
+    }
+    const auto generation=(juce::uint32)++queueGeneration;++loadGeneration;manualQueueIntent.store(target);manualQueueRequest.store(((juce::uint64)generation<<32)|(juce::uint32)(target+1));needAdvance.store(false);nativeEnded.store(false);remoteTransportRevision.fetch_add(1);return true;
 }
 
 juce::var CueProcessor::nativeSnapshot() const {
@@ -706,11 +953,21 @@ juce::var CueProcessor::nativeSnapshot() const {
     auto* result=new juce::DynamicObject;
     result->setProperty("position",nativeAdvancing.load()?0:playhead.load());result->setProperty("duration",getDuration());
     result->setProperty("ready",ready.load()&&!nativeAdvancing.load());result->setProperty("playing",requestedPlay.load()&&(playing.load()||nativeAdvancing.load()));
-    result->setProperty("buffered",ready.load()?getDuration():0);
+    const auto* sample=published.load();
+    result->setProperty("buffered",ready.load()?(sample&&sample->paged?sample->paged->bufferedTo(playhead.load()):getDuration()):0);
+    result->setProperty("buffering",cacheBuffering.load());
+    result->setProperty("rate",(double)speedValue->load());
+    result->setProperty("canNext",tracks.isArray()&&tracks.size()>1&&(index+1<tracks.size()||nativeQueue["repeat"].toString()=="all"));
+    result->setProperty("canPrevious",ready.load()||(tracks.isArray()&&tracks.size()>0));
     if(tracks.isArray()&&index>=0&&index<tracks.size()){
         result->setProperty("queueIndex",index);result->setProperty("trackId",tracks[index]["id"]);
         result->setProperty("url",tracks[index]["id"].toString().startsWith("loc")?"beatmaker-local://"+tracks[index]["id"].toString():"beatmaker-cache://"+tracks[index]["id"].toString());
         result->setProperty("loop",tracks[index]["loop"]);
+        for(const auto* key:{"title","artist","album"})result->setProperty(key,tracks[index][key]);
+        if(!ready.load()||nativeAdvancing.load()||getDuration()<=0)result->setProperty("duration",tracks[index]["duration"]);
+        auto artwork=tracks[index]["artwork"].toString();if(artwork.isEmpty())artwork=tracks[index]["art"].toString();if(artwork.isEmpty())artwork=tracks[index]["thumb"].toString();result->setProperty("artwork",artwork);
+    }else if(ready.load()&&!tracks.isArray()){
+        result->setProperty("trackId",samplePath);result->setProperty("title",samplePath=="demo:"?"Beatmaker Cues demo":juce::File(samplePath).getFileNameWithoutExtension());result->setProperty("artist","Beatmaker Cues");
     }
     return juce::var(result);
 }
@@ -719,18 +976,33 @@ void CueProcessor::runQueue(){
     juce::String warmed;
     juce::var queue;
     int observedGeneration=-1;
-    int savedCues=-1;double savedPosition=-1;
+    int savedCues=-1,savedTrack=-1;double savedPosition=-1;
     juce::uint32 lastSaved=0;
     while(!stopQueue.load()){
         juce::Thread::sleep(20);
-        if(openEditors.load()==0&&getWebState().length()>2&&juce::Time::getMillisecondCounter()-lastSaved>=1000&&
-           (cueRevision.load()!=savedCues||std::abs(playhead.load()-savedPosition)>0.5)){
-            try{const auto snapshot=sessionUiState();setWebState(snapshot);libraryStore.writePreferences(snapshot,getSessionId());savedCues=cueRevision.load();savedPosition=playhead.load();lastSaved=juce::Time::getMillisecondCounter();}
+        bool cacheFailed=false;int cacheGeneration=0;
+        {std::lock_guard<std::mutex> lock(metadataMutex);
+            const auto* latest=published.load();const auto* inUse=audioHazard.load();
+            retained.erase(std::remove_if(retained.begin(),retained.end(),[latest,inUse](const auto& sample){return sample.get()!=latest&&sample.get()!=inUse;}),retained.end());
+            if(auto* sample=published.load())if(sample->paged){
+                cacheFailed=sample->paged->failed();cacheGeneration=loadGeneration.load();
+                for(int b=0;b<10;++b)for(int p=0;p<16;++p)sample->paged->setCue(b*16+p,cues[(size_t)b][(size_t)p].load());
+                sample->paged->setLoop(loopIn.load(),loopOut.load(),loopEnabled.load());
+            }
+        }
+        if(cacheFailed){failLoad("Audio page decoding failed; select the song again.",cacheGeneration);continue;}
+        if((openEditors.load()==0||backgroundPlayback.load())&&getWebState().length()>2&&juce::Time::getMillisecondCounter()-lastSaved>=1000&&
+           (cueRevision.load()!=savedCues||nativeTrackRevision.load()!=savedTrack||std::abs(playhead.load()-savedPosition)>0.5)){
+            try{const auto snapshot=sessionUiState();setWebState(snapshot);libraryStore.writePreferences(snapshot,getSessionId());savedCues=cueRevision.load();savedTrack=nativeTrackRevision.load();savedPosition=playhead.load();lastSaved=juce::Time::getMillisecondCounter();}
             catch(const std::exception& error){juce::Logger::outputDebugString("Automatic session save: "+juce::String(error.what()));lastSaved=juce::Time::getMillisecondCounter();}
         }
-        const bool advancing=needAdvance.exchange(false);
-        if(!advancing&&!ready.load())continue;
+        const auto request=manualQueueRequest.exchange(0);
+        int manual=request?(int)(juce::uint32)request-1:-1;
+        const bool automatic=needAdvance.exchange(false);
         const int generation=queueGeneration.load();
+        if(request&&(juce::uint32)(request>>32)!=(juce::uint32)generation)manual=-1;
+        const bool advancing=manual>=0||automatic;
+        if(!advancing&&!ready.load())continue;
         if(!advancing&&generation==observedGeneration&&warmed.isNotEmpty())continue;
         if(advancing||generation!=observedGeneration){
             const std::lock_guard<std::mutex> lock(metadataMutex);queue=nativeQueue.clone();
@@ -738,20 +1010,20 @@ void CueProcessor::runQueue(){
         }
         const auto tracks=queue["tracks"];if(!tracks.isArray()||tracks.size()==0)continue;
         const int index=nativeIndex.load();
-        int next=index+1;
-        if(advancing&&queue["repeat"].toString()=="one")next=index;
+        int next=manual>=0?manual:index+1;
+        if(advancing&&manual<0&&queue["repeat"].toString()=="one")next=index;
         if(next>=tracks.size())next=queue["repeat"].toString()=="all"?0:-1;
         if(advancing){
-            if(!requestedPlay.load())continue;
+            if(!requestedPlay.load()&&manual<0)continue;
             if(next<0){nativeEnded.store(true);continue;}
-            if(next==index){restartAtZero.store(true);continue;}
+            if(next==index&&manual<0){restartAtZero.store(true);continue;}
         }else if(next<0||next==index)continue;
         const auto id=tracks[next]["id"].toString();
         if(!advancing&&(warmed==id||!requestedPlay.load()))continue;
         const auto cancelled=[this,generation]{return stopQueue.load()||generation!=queueGeneration.load();};
         if(advancing){
-            setWebState(sessionUiState());nativeAdvancing.store(true);ready.store(false);published.store(nullptr);
-            nativeIndex.store(next);nativeTrackRevision.fetch_add(1);
+            setWebState(sessionUiState());
+            {std::lock_guard<std::mutex> lock(metadataMutex);if(generation!=queueGeneration.load())continue;nativeAdvancing.store(true);ready.store(false);published.store(nullptr);nativeIndex.store(next);nativeTrackRevision.fetch_add(1);}
             const auto state=juce::JSON::parse(getWebState());const auto all=juce::JSON::parse(state["musike:cues:v1"].toString());const auto bankMap=all[juce::Identifier(id)];
             for(int b=0;b<10;++b)for(int p=0;p<16;++p){const auto value=bankMap[juce::Identifier(juce::String::charToString((juce::juce_wchar)('A'+b)))][juce::Identifier(juce::String(p+1))];cues[(size_t)b][(size_t)p].store(value.isVoid()?-1:(double)value);}
         }
@@ -763,10 +1035,10 @@ void CueProcessor::runQueue(){
             const auto loop=tracks[next]["loop"];
             loopIn.store((double)loop["from"]);loopOut.store((double)loop["to"]);loopEnabled.store((bool)loop["on"]&&loopOut.load()>loopIn.load());
             {std::lock_guard<std::mutex> lock(metadataMutex);webTrack=id;}
-            loadRemote(track["url"].toString(),0,id);requestedPlay.store(true);warmed.clear();
+            loadRemote(track["url"].toString(),0,id,false,true);if(manual>=0&&generation==queueGeneration.load())manualQueueIntent.store(-1);warmed.clear();
         }catch(const std::exception& error){
             if(cancelled())continue;
-            if(advancing){nativeAdvancing.store(false);requestedPlay.store(false);nativeErrorRevision.fetch_add(1);std::lock_guard<std::mutex> lock(metadataMutex);status=juce::String("Cannot advance playlist: ")+error.what();}
+            if(advancing){nativeAdvancing.store(false);requestedPlay.store(false);if(manual>=0)manualQueueIntent.store(-1);nativeErrorRevision.fetch_add(1);std::lock_guard<std::mutex> lock(metadataMutex);status=juce::String("Cannot advance playlist: ")+error.what();}
             else warmed=id;
         }
     }

@@ -24,7 +24,20 @@ int main(int argc, char** argv) {
         instance->setStateInformation(state.getData(), (int) state.getSize());
         std::unique_ptr<juce::AudioProcessorEditor> editor(instance->createEditorIfNeeded());
         if (!editor || editor->getWidth() < 320) { std::cerr << "Editor failed\n"; return 1; }
+        if(!editor->isResizable()){std::cerr<<"Host reports a fixed-size editor\n";return 1;}
+        editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);editor->setVisible(true);
+        for(const auto bounds:{juce::Point<int>(360,760),juce::Point<int>(1280,600),juce::Point<int>(760,760),juce::Point<int>(1600,480),juce::Point<int>(480,1400)}){
+            editor->setSize(bounds.x,bounds.y);
+            if(editor->getWidth()!=bounds.x||editor->getHeight()!=bounds.y){std::cerr<<"Host editor rejected a valid aspect ratio\n";return 1;}
+        }
         if (description->pluginFormatName == "VST3") {
+            juce::MemoryBlock resizedState;instance->getStateInformation(resizedState);
+            const auto envelopeState=juce::AudioProcessor::getXmlFromBinary(resizedState.getData(),(int)resizedState.getSize());
+            const auto* component=envelopeState?envelopeState->getChildByName("IComponent"):nullptr;
+            juce::MemoryBlock componentBytes;if(component)componentBytes.fromBase64Encoding(component->getAllSubText());
+            const auto processorStateXml=juce::AudioProcessor::getXmlFromBinary(componentBytes.getData(),(int)componentBytes.getSize());
+            if(!processorStateXml||processorStateXml->getIntAttribute("editorWidth")!=480||processorStateXml->getIntAttribute("editorHeight")!=1400){std::cerr<<"VST3 host resize did not reach/persist the actual plug-in editor\n";return 1;}
+            std::cout<<"PASS: real VST3 host resize forwards portrait/landscape/square/wide/tall bounds and persists them\n";
             // Exercise the actual plug-in binary through the host's VST3 state envelope.
             juce::XmlElement saved("BeatmakerCuesPrototype");
             saved.setAttribute("version", 1); saved.setAttribute("file", "demo:");
@@ -47,7 +60,7 @@ int main(int argc, char** argv) {
             if (!audible) { std::cerr << "Demo did not produce DAW-bus audio via MIDI\n"; return 1; }
             std::cout << "PASS: VST3 demo rendered into host audio buffers from MIDI\n";
         }
-        editor.reset(); instance->releaseResources();
+        instance->editorBeingDeleted(editor.get());editor.reset(); instance->releaseResources();
         std::cout << "PASS: loaded " << description->name << " (" << description->pluginFormatName
                   << "), processed MIDI/audio, round-tripped state and created editor\n";
     }

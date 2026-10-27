@@ -1,27 +1,29 @@
 import { ClockIcon, DotsThreeIcon, HeartIcon, VideoCameraIcon } from "@phosphor-icons/react";
-import { memo, type MouseEvent } from "react";
+import { memo, useCallback, type MouseEvent } from "react";
 import { useT } from "../i18n";
 import { cn, formatTime } from "../lib/format";
 import type { Track } from "../lib/types";
 import { selectCurrent, usePlayer } from "../player/player";
 import { useAppearance } from "../stores/appearance";
-import { useLibrary } from "../stores/library";
+import { useLibrary, favoriteIds } from "../stores/library";
 import { useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { Equalizer } from "./Brand";
+import {VirtualList,type VirtualRowProps} from './VirtualList';
 
 interface RowProps {
   track: Track;
   position: number;
-  onPlay: () => void;
+  onPlay: (index:number) => void;
+  virtual: VirtualRowProps;
   playlistId?: string;
   showAlbum: boolean;
 }
 
-const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, showAlbum }: RowProps) {
+const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, showAlbum,virtual }: RowProps) {
   const isCurrent = usePlayer((s) => selectCurrent(s)?.id === track.id);
-  const isPlaying = usePlayer((s) => s.status === "playing" || s.status === "loading");
-  const isFavorite = useLibrary((s) => s.favorites.some((t) => t.id === track.id));
+  const isPlaying = usePlayer((s) => selectCurrent(s)?.id===track.id&&(s.status === "playing" || s.status === "loading"));
+  const isFavorite = useLibrary((s) => favoriteIds(s.favorites).has(track.id));
   const toggleFavorite = useLibrary((s) => s.toggleFavorite);
   const openMenu = useUi((s) => s.openMenu);
   const t = useT();
@@ -36,6 +38,7 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, s
 
   return (
     <li
+      {...virtual}
       onContextMenu={menuAt}
       className={cn(
         "group relative grid items-center gap-3 rounded-xl px-2 py-1.5 transition-colors duration-150 hover:bg-surface-2 md:px-3",
@@ -46,7 +49,7 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, s
     >
       <button
         type="button"
-        onClick={onPlay}
+        onClick={()=>onPlay(position)}
         aria-label={t.common.playX(track.title)}
         className="absolute inset-0 rounded-xl focus-visible:outline-offset-[-2px]"
       />
@@ -121,6 +124,7 @@ export function TrackList({ tracks, context, playlistId, showAlbum: albumWanted 
   const t = useT();
   // Pages ask for the album column where it makes sense; Settings can turn it off everywhere.
   const showAlbum = useAppearance((s) => s.albumColumn) && albumWanted;
+  const onPlay=useCallback((index:number)=>playList(context??tracks,index),[playList,context,tracks]);
   return (
     <div>
       {header && (
@@ -142,18 +146,17 @@ export function TrackList({ tracks, context, playlistId, showAlbum: albumWanted 
           <span className="w-9" />
         </div>
       )}
-      <ul className="flex flex-col">
-        {tracks.map((t, i) => (
+      <VirtualList items={tracks} itemKey={(track,index)=>`${track.id}-${index}`} className="flex flex-col" renderItem={(t,i,virtual)=>(
           <TrackRow
             key={`${t.id}-${i}`}
             track={t}
             position={i}
             playlistId={playlistId}
             showAlbum={showAlbum}
-            onPlay={() => playList(context ?? tracks, i)}
+            onPlay={onPlay}
+            virtual={virtual}
           />
-        ))}
-      </ul>
+        )}/>
     </div>
   );
 }

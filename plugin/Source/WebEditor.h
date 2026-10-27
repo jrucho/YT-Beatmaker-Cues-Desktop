@@ -4,7 +4,7 @@
 
 class MobileWebEditor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
-    explicit MobileWebEditor(CueProcessor&);
+    explicit MobileWebEditor(CueProcessor&, bool offlineSmoke = false);
     ~MobileWebEditor() override;
     void resized() override;
     void evaluate(const juce::String& script, juce::WebBrowserComponent::EvaluationCallback callback) { browser.evaluateJavascript(script,std::move(callback)); }
@@ -16,7 +16,9 @@ private:
     void http(const juce::var&, juce::WebBrowserComponent::NativeFunctionCompletion);
     void timerCallback() override;
     void emit(const juce::String&, juce::var);
+    bool uiStateIsStale() const;
     CueProcessor& engine;
+    const bool offlineSmoke;
     juce::MemoryInputStream webBytes;
     juce::ZipFile archive;
     juce::WebBrowserComponent browser;
@@ -34,6 +36,7 @@ private:
     int timerTicks=0;
     int previousTrackRevision=0,previousErrorRevision=0;
     int previousRestoreRevision=0;
+    int previousRemoteRevision=0;
     juce::String previousParameters;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MobileWebEditor)
 };

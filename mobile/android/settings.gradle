@@ -1,4 +1,6 @@
 include ':app'
+include ':pluginStandalone'
+project(':pluginStandalone').projectDir = new File(rootDir, '../../plugin/Android/app')
 include ':capacitor-cordova-android-plugins'
 project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
 

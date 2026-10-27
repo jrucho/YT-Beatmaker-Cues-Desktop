@@ -69,7 +69,7 @@ export interface SystemMedia {
 
 export interface MusikeApi {
   searchPlaylists(q: string, signal?: AbortSignal): Promise<CatalogPlaylist[]>;
-  youtubePlaylist(id: string, signal?: AbortSignal): Promise<CatalogPlaylistPage>;
+  youtubePlaylist(id: string, signal?: AbortSignal, onProgress?:(page:CatalogPlaylistPage)=>void): Promise<CatalogPlaylistPage>;
   removeLibraryTrack(id: string, scope?: "all" | "history"): Promise<Library>;
   search(q: string, type: "song" | "video", signal?: AbortSignal): Promise<Track[]>;
   suggest(q: string, signal?: AbortSignal): Promise<string[]>;

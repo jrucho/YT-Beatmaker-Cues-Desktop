@@ -7,6 +7,12 @@
     const job = pending.get(promiseId);
     if (!job) return;
     pending.delete(promiseId);
+    try{
+      if(typeof result?.__pluginBase64==='string'){
+        const bytes=Uint8Array.from(atob(result.__pluginBase64),character=>character.charCodeAt(0));
+        result=JSON.parse(new TextDecoder().decode(bytes));
+      }
+    }catch(error){job.reject(error);return;}
     if (result && result.__error) job.reject(new Error(result.__error));
     else job.resolve(result);
   });
@@ -52,6 +58,7 @@
     for(const [key,value] of Object.entries(durable))if(localStorage.getItem(key)===null)localStorage.setItem(key,value);
   }).catch(error=>{window.__pluginStorageError=error.message;return invoke('diagnostic','Persistent storage: '+error.message);});
   let libraryBase='';
+  let libraryVersion=null;
   let libraryWrite=Promise.resolve();
   const listeners = new Map();
   const methods = (names) => names.map(name => ({name,rtype:'promise'}));
@@ -80,7 +87,10 @@
       if (plugin==='Filesystem') {
         const key='plugin-file:'+args.path;
         if (method==='readFile'&&args.path==='library.json'){
-          await libraryWrite.catch(()=>{});libraryBase=await invoke('libraryRead');return {data:libraryBase};
+          await libraryWrite.catch(()=>{});
+          const version=await invoke('libraryVersion');
+          if(libraryVersion!==version||!libraryBase){const snapshot=await invoke('librarySnapshot');libraryBase=snapshot.json;libraryVersion=snapshot.version;}
+          return {data:libraryBase};
         }
         if (method==='readFile') {const data=localStorage.getItem(key);if(data===null)throw Error('File not found');return {data};}
         if (method==='writeFile') {localStorage.setItem(key,String(args.data));return {uri:key};}
@@ -89,7 +99,7 @@
           const from='plugin-file:'+args.from;const data=localStorage.getItem(from);if(data===null)throw Error('File not found');
           if(args.to==='library.json'){
             const base=libraryBase;
-            const work=libraryWrite.catch(()=>{}).then(async()=>{libraryBase=await invoke('libraryCommit',{base,next:data});localStorage.removeItem(from);});
+            const work=libraryWrite.catch(()=>{}).then(async()=>{libraryBase=await invoke('libraryCommit',{base,next:data});libraryVersion=null;localStorage.removeItem(from);});
             libraryWrite=work;await work;return {};
           }
           localStorage.setItem('plugin-file:'+args.to,data);localStorage.removeItem(from);return {};
@@ -98,7 +108,7 @@
       if (plugin==='MusikeMidi') return {devices:[{id:1,name:'DAW MIDI input'}]};
       if (plugin==='Share') {
         const key=args.files?.[0];
-        return invoke('exportText',{name:args.title||'Beatmaker backup.json',text:localStorage.getItem(key)||''});
+        try{return await invoke('exportText',{name:args.title||'Beatmaker backup.json',text:localStorage.getItem(key)||''});}finally{localStorage.removeItem(key);}
       }
       return {};
     }
@@ -109,8 +119,10 @@
       resolveTrack(message.id,message.lang,message.region).then(payload=>window.__musikeResolve?.(message.req,payload),error=>window.__musikeResolve?.(message.req,{error:error.message}));
     }};
   async function resolveTrack(id,lang='en',region='US') {
+    const started=performance.now();
     const cached=await invoke('cachedTrack',id);
-    if(cached?.url)return cached;
+    window.__pluginLastResolution={cacheLookupMs:performance.now()-started,cacheHit:!!cached?.url};
+    if(cached?.url){window.__pluginLastResolution.resolveMs=performance.now()-started;return cached;}
     const ua='Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
     const post=async(path,body,name,version,clientId)=>{
       const response=await invoke('http',{url:'https://www.youtube.com/youtubei/v1/'+path,method:'POST',headers:{'content-type':'application/json','User-Agent':ua,'X-YouTube-Client-Name':clientId,'X-YouTube-Client-Version':version,'X-Goog-Api-Format-Version':'2','Origin':'https://www.youtube.com'},data:JSON.stringify(body)});
@@ -126,7 +138,7 @@
         const response=await post('player?prettyPrint=false&alt=json',{videoId:id,racyCheckOk:true,contentCheckOk:true,context:{client:{...makeClient(name,version),visitorData:visitor,originalUrl:'https://www.youtube.com/watch?v='+id}},playbackContext:{contentPlaybackContext:{html5Preference:'HTML5_PREF_WANTS'}}},name,version,clientId);
         if(response.playabilityStatus?.status!=='OK'){reason=response.playabilityStatus?.reason||reason;continue;}
         const best=(response.streamingData?.adaptiveFormats||[]).filter(f=>f.url&&f.mimeType?.startsWith('audio/mp4')).sort((a,b)=>b.bitrate-a.bitrate)[0];
-        if(best){window.__pluginResolverClient=name;return {url:best.url,mime:best.mimeType,title:response.videoDetails?.title||'',duration:Number(response.videoDetails?.lengthSeconds)||0};}
+        if(best){window.__pluginResolverClient=name;window.__pluginLastResolution.resolveMs=performance.now()-started;return {url:best.url,mime:best.mimeType,title:response.videoDetails?.title||'',duration:Number(response.videoDetails?.lengthSeconds)||0};}
       }catch(error){reason=error.message;}
     }
     window.__pluginResolveError=reason;throw Error(reason);
@@ -134,7 +146,7 @@
   let lastStored='', lastSynced='';
   let reconciling=false;
   function persist() {
-    const state=Object.fromEntries(Object.keys(localStorage).filter(key=>(key.startsWith('musike:')||key.startsWith('plugin-file:'))&&!key.startsWith('plugin-file:library')).map(key=>[key,localStorage.getItem(key)]));
+    const state=Object.fromEntries(Object.keys(localStorage).filter(key=>key.startsWith('musike:')).map(key=>[key,localStorage.getItem(key)]));
     const json=JSON.stringify(state);
     if(json!==lastStored){lastStored=json;invoke('store',json).catch(error=>{lastStored='';console.error(error);});}
     const stores=window.__pluginStores;

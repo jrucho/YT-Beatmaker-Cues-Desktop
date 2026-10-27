@@ -27,3 +27,8 @@ server/cache/
 .env
 .DS_Store
 Thumbs.db
+desktop/.native-build/
+desktop/native-bin/
+plugin/.android-deps/
+plugin/Android/app/.cxx/
+plugin/Android/app/build/

@@ -5,23 +5,39 @@
 #endif
 
 namespace {
+ #if JUCE_IOS || JUCE_ANDROID
+ constexpr int resizeGripSize=0;
+ #else
+ constexpr int resizeGripSize=18;
+ #endif
 juce::var object(std::initializer_list<std::pair<juce::Identifier,juce::var>> fields) {
     auto result=std::make_unique<juce::DynamicObject>();
     for(const auto& field:fields)result->setProperty(field.first,field.second);
     return juce::var(result.release());
 }
 juce::var failure(const juce::String& text) {return object({{"__error",text}});}
+juce::var bridgeResult(const juce::var& result){
+    // JUCE 8.0.12 emits events through repeated String::replace calls. Large JSON
+    // strings (catalog pages and library snapshots) contain many backslashes and
+    // trigger quadratic copies on the UI thread. Encode on this worker instead;
+    // base64 has no characters needing that escaping, and preserves UTF-8.
+    const auto json=juce::JSON::toString(result,true);
+    if(json.getNumBytesAsUTF8()<16*1024)return result;
+    return object({{"__pluginBase64",juce::Base64::toBase64(json.toRawUTF8(),json.getNumBytesAsUTF8())}});
+}
 }
 
-MobileWebEditor::MobileWebEditor(CueProcessor& processor)
-    : AudioProcessorEditor(processor), engine(processor),
+MobileWebEditor::MobileWebEditor(CueProcessor& processor, bool offline)
+    : AudioProcessorEditor(processor), engine(processor), offlineSmoke(offline),
      #if BEATMAKER_DESKTOP_BETA
       webBytes(MobileWebAssets::desktopbetaui_zip,MobileWebAssets::desktopbetaui_zipSize,false), archive(webBytes), browser(options()) {
-        setSize(1280,850);setResizable(true,true);setResizeLimits(950,650,1800,1400);
+        const int defaultWidth=1280,defaultHeight=850;
      #else
       webBytes(MobileWebAssets::mobileui_zip,MobileWebAssets::mobileui_zipSize,false), archive(webBytes), browser(options()) {
-    setSize(440,800);setResizable(true,true);setResizeLimits(320,480,1200,1400);
+    const int defaultWidth=440,defaultHeight=800;
      #endif
+    const int width=engine.editorWidth.load()>0?engine.editorWidth.load():defaultWidth,height=engine.editorHeight.load()>0?engine.editorHeight.load():defaultHeight;
+    setResizable(true,resizeGripSize>0);setResizeLimits(320,400,4096,4096);setSize(width,height);
     engine.openEditors.fetch_add(1);
     previousRestoreRevision=engine.restoreRevision.load();
     addAndMakeVisible(browser);
@@ -29,7 +45,11 @@ MobileWebEditor::MobileWebEditor(CueProcessor& processor)
     startTimerHz(60);
 }
 MobileWebEditor::~MobileWebEditor(){stopTimer();cancelled->store(true);requests.removeAllJobs(true,-1);storageWorker.removeAllJobs(false,-1);engine.openEditors.fetch_sub(1);}
-void MobileWebEditor::resized(){browser.setBounds(getLocalBounds());}
+void MobileWebEditor::resized(){
+    // Native browser subviews can cover a software JUCE grip. Reserve its own hit area.
+    browser.setBounds(getLocalBounds().withTrimmedBottom(resizeGripSize));
+    engine.editorWidth.store(getWidth());engine.editorHeight.store(getHeight());
+}
 
 juce::WebBrowserComponent::Options MobileWebEditor::options() {
     auto configuration=juce::WebBrowserComponent::Options{};
@@ -45,17 +65,30 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withResourceProvider([this](const auto& path){return resource(path);})
         .withNativeFunction("audio",[this](const auto& args,auto complete){complete(audio(args[0]));})
         .withNativeFunction("store",[this](const auto& args,auto complete){
+            if(engine.backgroundPlayback.load()||uiStateIsStale()){complete(true);return;}
             engine.setWebState(args[0].toString());
             const auto snapshot=engine.getWebState();
             const auto session=engine.getSessionId();
-            storageTask([this,snapshot,session]{engine.libraryStore.writePreferences(snapshot,session);return juce::var(true);},std::move(complete));
+            const int trackRevision=engine.nativeTrackRevision.load(),remoteRevision=engine.remoteTransportRevision.load();
+            storageTask([this,snapshot,session,trackRevision,remoteRevision]{if(!engine.backgroundPlayback.load()&&engine.nativeTrackRevision.load()==trackRevision&&engine.remoteTransportRevision.load()==remoteRevision)engine.libraryStore.writePreferences(snapshot,session);return juce::var(true);},std::move(complete));
         })
         .withNativeFunction("initialState",[this](const auto&,auto complete){storageTask([this]{
             engine.libraryStore.migrate(engine.getLegacyState());return object({{"defaults",engine.libraryStore.readPreferences(engine.getSessionId())},{"session",engine.sessionUiState()}});
         },std::move(complete));})
         .withNativeFunction("libraryRead",[this](const auto&,auto complete){storageTask([this]{return juce::var(engine.libraryStore.readLibrary());},std::move(complete));})
+        .withNativeFunction("libraryVersion",[this](const auto&,auto complete){storageTask([this]{return juce::var(engine.libraryStore.version());},std::move(complete));})
+        .withNativeFunction("librarySnapshot",[this](const auto&,auto complete){storageTask([this]{return engine.libraryStore.readSnapshot();},std::move(complete));})
         .withNativeFunction("libraryCommit",[this](const auto& args,auto complete){const auto baseline=args[0]["base"].toString(), next=args[0]["next"].toString();storageTask([this,baseline,next]{return juce::var(engine.libraryStore.commitLibrary(baseline,next));},std::move(complete));})
         .withNativeFunction("cachedTrack",[this](const auto& args,auto complete){const auto id=args[0].toString();storageTask([this,id]{return engine.cachedTrack(id);},std::move(complete));})
+        .withNativeFunction("loadDiagnostics",[this](const auto&,auto complete){complete(engine.loadDiagnostics());})
+        .withNativeFunction("effectKernel",[this](const auto& args,auto complete){
+            try{if(!args.isEmpty())engine.setEffectKernel(args[0]);complete(engine.effectKernelState());}
+            catch(const std::exception& error){complete(failure(error.what()));}
+        })
+        .withNativeFunction("fxGraph",[this](const auto& args,auto complete){
+            try{if(!args.isEmpty())engine.setFxGraph(args[0]);complete(engine.fxGraphState());}
+            catch(const std::exception& error){complete(failure(error.what()));}
+        })
         .withNativeFunction("importAudio",[this](const auto&,auto complete){
             exporter=std::make_unique<juce::FileChooser>("Import audio",juce::File{},"*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a");
             juce::Component::SafePointer<MobileWebEditor> safe(this);
@@ -65,9 +98,9 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
                     safe->storageTask([safe,file]{return safe?safe->engine.importLocalFile(file):juce::var{};},std::move(complete));
                 });
         })
-        .withNativeFunction("syncCues",[this](const auto& args,auto complete){engine.syncWebCues(args[0]);complete(true);})
+        .withNativeFunction("syncCues",[this](const auto& args,auto complete){if(!engine.backgroundPlayback.load()&&!uiStateIsStale())engine.syncWebCues(args[0]);complete(true);})
         .withNativeFunction("midiOptions",[this](const auto& args,auto complete){engine.overwrite.store((bool)args[0]["overwrite"]);complete(true);})
-        .withNativeFunction("http",[this](const auto& args,auto complete){http(args[0],std::move(complete));})
+        .withNativeFunction("http",[this](const auto& args,auto complete){if(offlineSmoke)complete(failure("Catalog disabled for offline smoke test"));else http(args[0],std::move(complete));})
         .withNativeFunction("diagnostic",[](const auto& args,auto complete){juce::Logger::outputDebugString("Plugin UI: "+args[0].toString());complete(true);})
         .withNativeFunction("exportText",[this](const auto& args,auto complete){
             const auto name=juce::File::createLegalFileName(args[0]["name"].toString());
@@ -91,7 +124,9 @@ std::optional<juce::WebBrowserComponent::Resource> MobileWebEditor::resource(con
         const auto begin=html.indexOf("<script type=\"module\"");
         if(begin>=0){const auto end=html.indexOf(begin,"</script>")+9;const auto tag=html.substring(begin,end);
             const auto script=tag.fromFirstOccurrenceOf("src=\"",false,false).upToFirstOccurrenceOf("\"",false,false);
-            html=html.substring(0,begin)+"<script type=\"module\">await window.__pluginInit;await import("+juce::JSON::toString(script)+");</script>"+html.substring(end);
+            // Android exposes scripts through its Java interface rather than
+            // injecting them at document start. Bootstrap before importing UI.
+            html=html.substring(0,begin)+"<script type=\"module\">if(window.__JUCE__?.getAndroidUserScripts&&!window.__JUCE__.backend){window.inAndroidUserScriptEval=true;try{(0,eval)(window.__JUCE__.getAndroidUserScripts());}finally{delete window.inAndroidUserScriptEval;}}await window.__pluginInit;await import("+juce::JSON::toString(script)+");</script>"+html.substring(end);
             bytes.replaceAll(html.toRawUTF8(),html.getNumBytesAsUTF8());
         }
     }
@@ -110,7 +145,7 @@ void MobileWebEditor::storageTask(std::function<juce::var()> action,juce::WebBro
     juce::Component::SafePointer<MobileWebEditor> safe(this);
     storageWorker.addJob([safe,action=std::move(action),complete=std::move(complete)]{
         juce::var result;
-        try{result=action();}catch(const std::exception& error){result=failure(error.what());}
+        try{result=bridgeResult(action());}catch(const std::exception& error){result=failure(error.what());}
         juce::MessageManager::callAsync([safe,result,complete=std::move(complete)]{if(safe)complete(result);});
     });
 }
@@ -124,7 +159,9 @@ void MobileWebEditor::http(const juce::var& request,juce::WebBrowserComponent::N
     juce::Component::SafePointer<MobileWebEditor> safe(this);const auto cancel=cancelled;
     engine.networkWorkers.addJob([safe,cancel,request,complete=std::move(complete)] {
         if(cancel->load())return;
-        juce::URL url(request["url"].toString());
+        // Keep existing query parameters in the address when sending raw JSON.
+        // inPostData is required by Android to enable its output stream.
+        auto url=juce::URL::createWithoutParsing(request["url"].toString());
         const auto method=request["method"].toString().toUpperCase();
         auto data=request["data"];
         if(!data.isVoid()&&!data.isString())data=juce::JSON::toString(data);
@@ -138,7 +175,7 @@ void MobileWebEditor::http(const juce::var& request,juce::WebBrowserComponent::N
         status=response.status;responseHeaders=response.headers;
         auto stream=std::make_unique<juce::MemoryInputStream>(response.data,true);
        #else
-        auto stream=url.createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
+        auto stream=url.createInputStream(juce::URL::InputStreamOptions(method=="POST"?juce::URL::ParameterHandling::inPostData:juce::URL::ParameterHandling::inAddress)
             .withConnectionTimeoutMs(15000).withHttpRequestCmd(method.isEmpty()?"GET":method).withExtraHeaders(headers)
             .withStatusCode(&status).withResponseHeaders(&responseHeaders));
        #endif
@@ -148,8 +185,13 @@ void MobileWebEditor::http(const juce::var& request,juce::WebBrowserComponent::N
         else {
             juce::MemoryBlock body;stream->readIntoMemoryBlock(body,12*1024*1024);
             auto fields=std::make_unique<juce::DynamicObject>();
-            for(int i=0;i<responseHeaders.size();++i)fields->setProperty(juce::Identifier(responseHeaders.getAllKeys()[i]),responseHeaders.getAllValues()[i]);
-            result=object({{"status",status},{"headers",juce::var(fields.release())},{"data",juce::String::fromUTF8((const char*)body.getData(),(int)body.getSize())}});
+            for(int i=0;i<responseHeaders.size();++i){
+                const auto key=responseHeaders.getAllKeys()[i];
+                // HttpURLConnection includes its status line under a null key;
+                // JUCE surfaces that as an empty header, invalid in JS Headers.
+                if(key.isNotEmpty())fields->setProperty(juce::Identifier(key),responseHeaders.getAllValues()[i]);
+            }
+             result=bridgeResult(object({{"status",status},{"headers",juce::var(fields.release())},{"data",juce::String::fromUTF8((const char*)body.getData(),(int)body.getSize())}}));
         }
         juce::MessageManager::callAsync([safe,complete=std::move(complete),result]{if(safe)complete(result);});
     });
@@ -157,6 +199,7 @@ void MobileWebEditor::http(const juce::var& request,juce::WebBrowserComponent::N
 
 juce::var MobileWebEditor::audio(const juce::var& message) {
     const auto command=message["cmd"].toString();
+    if(command!="snapshot"&&command!="position"&&engine.backgroundPlayback.load()&&uiStateIsStale())return true;
     if(command=="load") {
         engine.setNativeQueue(message["queue"]);
         sourceId=(int)message["sourceId"];sourceUrl=message["url"].toString();announced=false;pendingLoad=true;
@@ -165,8 +208,8 @@ juce::var MobileWebEditor::audio(const juce::var& message) {
         const auto id=tracks.isArray()&&index>=0&&index<tracks.size()?tracks[index]["id"].toString():juce::String{};
         if(sourceUrl.isNotEmpty())engine.loadRemote(sourceUrl,lastPosition,id);
         else {engine.requestedPlay.store(false);engine.submit({CueProcessor::Action::pause});pendingLoad=false;}
-    } else if(command=="play") {engine.requestedPlay.store(true);if(engine.ready.load())engine.submit({CueProcessor::Action::play});}
-    else if(command=="pause") {engine.requestedPlay.store(false);engine.submit({CueProcessor::Action::pause});}
+    } else if(command=="play") {engine.requestedPlay.store(true);engine.playIntentRevision.fetch_add(1);if(engine.ready.load())engine.submit({CueProcessor::Action::play});}
+    else if(command=="pause") {engine.requestedPlay.store(false);engine.playIntentRevision.fetch_add(1);engine.submit({CueProcessor::Action::pause});}
     else if(command=="seek"||command=="cue") {
         if((int)message["sourceId"]!=sourceId)return failure("Audio source changed");
         const double target=(double)message["to"];
@@ -202,9 +245,16 @@ void MobileWebEditor::emit(const juce::String& event,juce::var payload) {
     browser.emitEventIfBrowserIsVisible("pluginAudio",object({{"event",event},{"payload",payload}}));
 }
 
+bool MobileWebEditor::uiStateIsStale() const {return engine.remoteTransportRevision.load()!=previousRemoteRevision||engine.nativeTrackRevision.load()!=previousTrackRevision;}
 void MobileWebEditor::timerCallback() {
+    // Native playback/Now Playing continues independently while the app is
+    // backgrounded. Reconcile the latest revisions when its WebView returns.
+    if(engine.backgroundPlayback.load())return;
+    previousRemoteRevision=engine.remoteTransportRevision.load();
     if(previousRestoreRevision!=engine.restoreRevision.load()){
-        previousRestoreRevision=engine.restoreRevision.load();announced=false;pendingLoad=false;browser.refresh();return;
+        previousRestoreRevision=engine.restoreRevision.load();announced=false;pendingLoad=false;
+        if(engine.editorWidth.load()>0&&engine.editorHeight.load()>0)setSize(engine.editorWidth.load(),engine.editorHeight.load());
+        browser.refresh();return;
     }
     if(previousTrackRevision!=engine.nativeTrackRevision.load()){
         previousTrackRevision=engine.nativeTrackRevision.load();announced=false;pendingLoad=true;lastRevision=-1;emit("track",engine.nativeSnapshot());
@@ -226,7 +276,7 @@ void MobileWebEditor::timerCallback() {
     const auto encoded=juce::JSON::toString(parameters,true);
     if(encoded!=previousParameters){previousParameters=encoded;browser.emitEventIfBrowserIsVisible("pluginParameters",parameters);}
     if(previousErrorRevision!=engine.nativeErrorRevision.load()){
-        previousErrorRevision=engine.nativeErrorRevision.load();emit("error",object({{"message",engine.getStatus()}}));
+        previousErrorRevision=engine.nativeErrorRevision.load();pendingLoad=false;announced=false;emit("error",object({{"message",engine.getStatus()}}));
     }
     const bool isReady=engine.ready.load(), isPlaying=engine.playing.load();
     if(pendingLoad&&isReady&&!announced) {announced=true;pendingLoad=false;emit("ready",object({{"duration",engine.getDuration()}}));}

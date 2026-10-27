@@ -40,7 +40,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - run: pnpm exec playwright install chromium
-      - run: pnpm test:app
+      - run: pnpm test:app --shared-library
       - name: Verify macOS app signatures and installers
         run: |
           codesign --verify --deep --strict "desktop/out/mac-arm64/YT Beatmaker Cues Desktop.app"
@@ -96,6 +96,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      - run: sudo apt-get update && sudo apt-get install -y g++-aarch64-linux-gnu
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm installer:linux
@@ -154,7 +155,7 @@ jobs:
           MUSIKE_KEY_PASSWORD: ${{ secrets.MUSIKE_KEY_PASSWORD }}
         run: |
           pnpm --filter @musike/mobile build
-          sh mobile/android/gradlew -p mobile/android assembleDebug assembleRelease bundleRelease --console=plain
+          sh mobile/android/gradlew -p mobile/android :app:assembleDebug :app:assembleRelease :app:bundleRelease --console=plain
           mkdir -p release
           VERSION=$(node -p 'require("./mobile/package.json").version')
           cp mobile/android/app/build/outputs/apk/debug/app-debug.apk "release/Beatmaker-Cues-Test-${VERSION}-Android.apk"

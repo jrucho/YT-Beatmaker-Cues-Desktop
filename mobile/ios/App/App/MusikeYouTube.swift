@@ -56,6 +56,7 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             if let cached = MusikeAudio.cachedTrack(videoId) { done(cached); return }
+            if videoId.range(of: "^loc[0-9a-f]{8}$", options: .regularExpression) != nil { done(["error": "Local audio is missing or unavailable in this app's shared container. Its library entry was retained."]); return }
             self.resolveUncached(videoId: videoId, lang: lang, region: region, done: done)
         }
     }

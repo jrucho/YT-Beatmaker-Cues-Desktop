@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowCounterClockwise, ArrowSquareOut, CircleNotch, DownloadSimple, FolderOpen, GearSix, GridFour, Info, List, MagnifyingGlass, MusicNotes, Pause, Play, PlaylistIcon, Plus, Shuffle, SlidersHorizontal, SpeakerHigh, TrashIcon, X } from "@phosphor-icons/react";
 import { api, saveFile } from "../lib/api";
 import { desktop } from "../lib/desktop";
@@ -12,6 +12,7 @@ import { AddToPlaylistDialog, NamePlaylistDialog } from "../components/Dialogs";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { Toasts } from "../components/Toasts";
 import { YouTubePlaylists } from "../components/YouTubePlaylists";
+import {VirtualGrid} from '../components/VirtualGrid';
 import { loadBeatmaker, setEngineBank, type Engine } from "./runtime";
 import { CONTROLLER_PRESETS, readControllerPreset, saveControllerPreset } from "../native/controllerMapping";
 import { padFeedback, usePadFeedback } from "../mobile/padFeedback";
@@ -120,10 +121,10 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
     return () => { if (videoEl.parentElement === video.current) videoEl.remove(); };
   }, [p.mediaKind]);
 
-  const tracks = source === "favorites" ? library.favorites : source === "history" ? library.history
+  const tracks = useMemo(()=>source === "favorites" ? library.favorites : source === "history" ? library.history
     : source === "all" ? [...new Map([...library.favorites, ...library.history, ...library.playlists.flatMap(x => x.tracks)].map(t => [t.id, t])).values()]
-    : library.playlists.find(x => x.id === source)?.tracks ?? [];
-  const shown = results ?? tracks.filter(t => `${t.title} ${t.artist} ${t.album ?? ""}`.toLowerCase().includes(query.toLowerCase()));
+    : library.playlists.find(x => x.id === source)?.tracks ?? [],[source,library.favorites,library.history,library.playlists]);
+  const shown = useMemo(()=>results ?? tracks.filter(t => `${t.title} ${t.artist} ${t.album ?? ""}`.toLowerCase().includes(query.toLowerCase())),[results,tracks,query]);
   const selectedPlaylist = library.playlists.find(p => p.id === source);
 
   function selectCollection(id: string) {
@@ -205,6 +206,37 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
     } catch (err) { toast((err as Error).message, "error"); }
   }
 
+  // Playback position updates must not rebuild hundreds of library cards.
+  const libraryPanel=useMemo(()=>(
+    <aside className="bm-library">
+      <div className="bm-library-heading"><button className="bm-tab is-active" onClick={() => selectCollection("all")}>LIBRARY <span>({tracks.length})</span></button><button className={`bm-tab ${!list ? "is-selected" : ""}`} onClick={() => setList(false)} aria-label="Cover view"><GridFour size={15} /> COVERS</button><button className={`bm-tab ${list ? "is-selected" : ""}`} onClick={() => setList(true)}><List size={16} /> LIST</button></div>
+      <div className="bm-collections" aria-label="Studio playlists">{library.playlists.map(playlist => <div className={`bm-collection ${source === playlist.id ? "is-selected" : ""}`} key={playlist.id}>
+        <button type="button" className="bm-collection-open" aria-label={`Open playlist ${playlist.name}`} onClick={() => selectCollection(playlist.id)}><PlaylistIcon size={17} /><span>{playlist.name}</span><small>{playlist.tracks.length}</small></button>
+        <button type="button" className="bm-collection-delete" aria-label={`Delete playlist ${playlist.name}`} title="Delete playlist" onClick={() => void deleteCollection(playlist.id)}><TrashIcon size={14} /></button>
+      </div>)}</div>
+      <form className="bm-search-row" onSubmit={e => { e.preventDefault(); void search(); }}>
+        <select className="bm-search-type" aria-label="Studio search type" value={searchType} onChange={e => { controller.current?.abort(); setSearching(false); setResults(null); setSearchType(e.target.value); setPlaylistQuery(""); }}><option value="songs">Songs</option><option value="playlists">Playlists</option></select>
+        <div className="bm-search"><MagnifyingGlass size={18} /><input ref={input} value={query} onChange={e => { setQuery(e.target.value); if (!e.target.value) { controller.current?.abort(); setSearching(false); setResults(null); setPlaylistQuery(""); } }} placeholder="Search music or paste a YouTube link…" aria-label="Search music" /><button type="button" aria-label="Clear search" onClick={() => { controller.current?.abort(); setSearching(false); setQuery(""); setResults(null); setPlaylistQuery(""); }}><X size={13} /></button></div>
+        <button className="bm-icon-button" type="submit" aria-label="Search YouTube Music"><Plus size={21} /></button>
+      </form>
+      <div className="bm-library-filter">
+        <select aria-label="Library collection" value={source} onChange={e => selectCollection(e.target.value)}><option value="all">All tracks</option><option value="favorites">Favorites</option><option value="history">Recently played</option>{library.playlists.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+        <button type="button" className="bm-new-playlist" onClick={() => setCreatingPlaylist(true)} aria-label="New playlist" title="New playlist"><Plus size={14} /> Playlist</button>
+        <span>{searching ? "SEARCHING…" : results ? `${results.length} RESULTS` : "YOUR COLLECTION"}</span>
+      </div>
+      {searchType === "playlists" ? <div className="bm-playlist-search"><YouTubePlaylists query={playlistQuery} onPreview={launch} onImported={playlist => selectCollection(playlist.id)} /></div> : <VirtualGrid items={shown} itemKey={track=>track.id} className={`bm-covers ${list ? "bm-list" : ""}`} busy={searching} renderItem={(t,_index,virtual)=><div {...virtual} className={`bm-track ${track?.id === t.id ? "is-current" : ""}`}>
+        <button className="bm-track-main" onClick={() => launch(t)} aria-label={`Play ${t.title}`}>
+          <div className="bm-cover-art">{t.art || t.thumb ? <img src={t.art || t.thumb} loading="lazy" alt="" /> : <MusicNotes size={30} />}<span className="bm-cover-play"><Play weight="fill" size={21} /></span></div>
+          <div className="bm-track-info"><strong title={t.title}>{t.title}</strong><span>{t.artist || "Unknown artist"}</span></div>
+        </button>
+        <button className={`bm-favorite ${library.isFavorite(t.id) ? "is-saved" : ""}`} aria-label={library.isFavorite(t.id) ? "Remove from favorites" : "Save to favorites"} onClick={() => void library.toggleFavorite(t)}>{library.isFavorite(t.id) ? "♥" : "+"}</button>
+        <button className="bm-track-playlist" aria-label={`Add ${t.title} to a playlist`} title="Add to playlist" onClick={() => openAddToPlaylist([t])}><PlaylistIcon size={15} /></button>
+        {!results && <button className="bm-track-remove" aria-label={`Remove ${t.title} from ${selectedPlaylist ? selectedPlaylist.name : source === "favorites" ? "favorites" : source === "history" ? "history" : "library"}`} title={selectedPlaylist ? "Remove from this playlist" : source === "all" ? "Remove from library and all playlists" : "Remove from collection"} onClick={() => void removeTrack(t)}><TrashIcon size={14} /></button>}
+      </div>} empty={!shown.length&&<div className="bm-empty-library"><span className="bm-empty-symbol"><MusicNotes size={34} weight="thin" /></span><h2>{library.status === "error" ? "Library unavailable" : results ? "No tracks found" : "Your next idea starts here."}</h2><p>{library.status === "error" ? "Check the local server, then retry." : "Search YouTube Music above, choose a track, and make it your own."}</p>{library.status === "error" ? <button onClick={() => void library.load()}>Retry library</button> : <div className="bm-suggestions">{["J Dilla", "Nujabes", "Jazz samples"].map(q => <button key={q} onClick={() => { setQuery(q); void search(q); }}>{q} ↗</button>)}</div>}</div>}/>}
+      <button className="bm-browser-link" onClick={onBrowse}>Open full music library <ArrowSquareOut size={14} /></button>
+    </aside>
+  ),[library,tracks,shown,track?.id,list,source,query,searchType,playlistQuery,searching,selectedPlaylist,onBrowse,openAddToPlaylist]);
+
   return (
     <div className={`bm-app ${desktop?.platform === "darwin" ? "bm-mac" : ""}`} data-engine-ready={engineReady}>
       {desktop && <div className="bm-titlebar app-drag"><span>BEATMAKER CUES</span><span>v{__APP_VERSION__}</span></div>}
@@ -224,36 +256,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
       </header>
 
       <div className="bm-workspace">
-        <aside className="bm-library">
-          <div className="bm-library-heading"><button className="bm-tab is-active" onClick={() => selectCollection("all")}>LIBRARY <span>({tracks.length})</span></button><button className={`bm-tab ${!list ? "is-selected" : ""}`} onClick={() => setList(false)} aria-label="Cover view"><GridFour size={15} /> COVERS</button><button className={`bm-tab ${list ? "is-selected" : ""}`} onClick={() => setList(true)}><List size={16} /> LIST</button></div>
-          <div className="bm-collections" aria-label="Studio playlists">{library.playlists.map(playlist => <div className={`bm-collection ${source === playlist.id ? "is-selected" : ""}`} key={playlist.id}>
-            <button type="button" className="bm-collection-open" aria-label={`Open playlist ${playlist.name}`} onClick={() => selectCollection(playlist.id)}><PlaylistIcon size={17} /><span>{playlist.name}</span><small>{playlist.tracks.length}</small></button>
-            <button type="button" className="bm-collection-delete" aria-label={`Delete playlist ${playlist.name}`} title="Delete playlist" onClick={() => void deleteCollection(playlist.id)}><TrashIcon size={14} /></button>
-          </div>)}</div>
-          <form className="bm-search-row" onSubmit={e => { e.preventDefault(); void search(); }}>
-            <select className="bm-search-type" aria-label="Studio search type" value={searchType} onChange={e => { controller.current?.abort(); setSearching(false); setResults(null); setSearchType(e.target.value); setPlaylistQuery(""); }}><option value="songs">Songs</option><option value="playlists">Playlists</option></select>
-            <div className="bm-search"><MagnifyingGlass size={18} /><input ref={input} value={query} onChange={e => { setQuery(e.target.value); if (!e.target.value) { controller.current?.abort(); setSearching(false); setResults(null); setPlaylistQuery(""); } }} placeholder="Search music or paste a YouTube link…" aria-label="Search music" /><button type="button" aria-label="Clear search" onClick={() => { controller.current?.abort(); setSearching(false); setQuery(""); setResults(null); setPlaylistQuery(""); }}><X size={13} /></button></div>
-            <button className="bm-icon-button" type="submit" aria-label="Search YouTube Music"><Plus size={21} /></button>
-          </form>
-          <div className="bm-library-filter">
-            <select aria-label="Library collection" value={source} onChange={e => selectCollection(e.target.value)}><option value="all">All tracks</option><option value="favorites">Favorites</option><option value="history">Recently played</option>{library.playlists.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
-            <button type="button" className="bm-new-playlist" onClick={() => setCreatingPlaylist(true)} aria-label="New playlist" title="New playlist"><Plus size={14} /> Playlist</button>
-            <span>{searching ? "SEARCHING…" : results ? `${results.length} RESULTS` : "YOUR COLLECTION"}</span>
-          </div>
-          {searchType === "playlists" ? <div className="bm-playlist-search"><YouTubePlaylists query={playlistQuery} onPreview={launch} onImported={playlist => selectCollection(playlist.id)} /></div> : <div className={`bm-covers ${list ? "bm-list" : ""}`} aria-busy={searching}>
-            {shown.map(t => <div className={`bm-track ${track?.id === t.id ? "is-current" : ""}`} key={t.id}>
-              <button className="bm-track-main" onClick={() => launch(t)} aria-label={`Play ${t.title}`}>
-                <div className="bm-cover-art">{t.art || t.thumb ? <img src={t.art || t.thumb} loading="lazy" alt="" /> : <MusicNotes size={30} />}<span className="bm-cover-play"><Play weight="fill" size={21} /></span></div>
-                <div className="bm-track-info"><strong title={t.title}>{t.title}</strong><span>{t.artist || "Unknown artist"}</span></div>
-              </button>
-              <button className={`bm-favorite ${library.isFavorite(t.id) ? "is-saved" : ""}`} aria-label={library.isFavorite(t.id) ? "Remove from favorites" : "Save to favorites"} onClick={() => void library.toggleFavorite(t)}>{library.isFavorite(t.id) ? "♥" : "+"}</button>
-              <button className="bm-track-playlist" aria-label={`Add ${t.title} to a playlist`} title="Add to playlist" onClick={() => openAddToPlaylist([t])}><PlaylistIcon size={15} /></button>
-              {!results && <button className="bm-track-remove" aria-label={`Remove ${t.title} from ${selectedPlaylist ? selectedPlaylist.name : source === "favorites" ? "favorites" : source === "history" ? "history" : "library"}`} title={selectedPlaylist ? "Remove from this playlist" : source === "all" ? "Remove from library and all playlists" : "Remove from collection"} onClick={() => void removeTrack(t)}><TrashIcon size={14} /></button>}
-            </div>)}
-            {!shown.length && <div className="bm-empty-library"><span className="bm-empty-symbol"><MusicNotes size={34} weight="thin" /></span><h2>{library.status === "error" ? "Library unavailable" : results ? "No tracks found" : "Your next idea starts here."}</h2><p>{library.status === "error" ? "Check the local server, then retry." : "Search YouTube Music above, choose a track, and make it your own."}</p>{library.status === "error" ? <button onClick={() => void library.load()}>Retry library</button> : <div className="bm-suggestions">{["J Dilla", "Nujabes", "Jazz samples"].map(q => <button key={q} onClick={() => { setQuery(q); void search(q); }}>{q} ↗</button>)}</div>}</div>}
-          </div>}
-          <button className="bm-browser-link" onClick={onBrowse}>Open full music library <ArrowSquareOut size={14} /></button>
-        </aside>
+        {libraryPanel}
 
         <main className="bm-deck">
           <nav className="bm-banks" aria-label="Cue banks">{BANKS.map(b => <button key={b} className={bank === b ? "is-active" : ""} aria-pressed={bank === b} onClick={() => { setBank(b); setEngineBank(b); setActive(null); }}>{b}</button>)}<button className="bm-map" disabled={!engineReady} onClick={() => engineAction("mapping")} title="Open MIDI mappings"><GridFour size={17} /> MAP</button></nav>

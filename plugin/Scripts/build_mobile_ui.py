@@ -13,7 +13,7 @@ environment = dict(os.environ, BEATMAKER_APP_SOURCE=str(app), BEATMAKER_PLUGIN_W
 subprocess.run(["node", str(app / "web/node_modules/vite/bin/vite.js"), "build", "--mode", "native", "--config", str(plugin / "Web/vite.config.mts")], cwd=app / "web", env=environment, check=True)
 destination = plugin / ("Assets/desktop-beta-ui.zip" if desktop_beta else "Assets/mobile-ui.zip")
 with zipfile.ZipFile(destination, "w", zipfile.ZIP_STORED) as archive:
-    for file in sorted(output.rglob("*")):
+    for file in sorted(output.rglob("*"), key=lambda file: file.relative_to(output).as_posix()):
         if file.is_file():
             entry = zipfile.ZipInfo(file.relative_to(output).as_posix(), date_time=(1980, 1, 1, 0, 0, 0))
             # Outer native packages compress this data. Stored entries avoid

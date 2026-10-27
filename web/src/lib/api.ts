@@ -39,7 +39,27 @@ async function request<T>(path: string, init?: RequestInit & { json?: unknown })
 
 export const api: MusikeApi = {
   searchPlaylists: (q, signal) => request<{ playlists: CatalogPlaylist[] }>(`/api/search/playlists?q=${encodeURIComponent(q)}`, { signal }).then(r => r.playlists),
-  youtubePlaylist: (id, signal) => request<CatalogPlaylistPage>(`/api/youtube/playlists/${encodeURIComponent(id)}`, { signal }),
+  youtubePlaylist: async (id, signal, onProgress) => {
+    if(!onProgress)return request<CatalogPlaylistPage>(`/api/youtube/playlists/${encodeURIComponent(id)}`,{signal});
+    const response=await fetch(`/api/youtube/playlists/${encodeURIComponent(id)}?progress=1`,{signal,headers:{[LANG_HEADER]:getLang()}});
+    if(!response.ok){const error=await response.json().catch(()=>({}));throw new ApiError(response.status,error.error||getT().player.httpError(response.status));}
+    if(!response.headers.get('content-type')?.includes('application/x-ndjson')){const page=await response.json() as CatalogPlaylistPage;onProgress(page);return page;}
+    if(!response.body)throw new ApiError(500,'Playlist response was empty');
+    const reader=response.body.getReader(),decoder=new TextDecoder(),tracks=new Map<string,Track>();
+    let buffer='',result:CatalogPlaylistPage|undefined,complete=false;
+    const line=(text:string)=>{
+      if(!text.trim())return;const message=JSON.parse(text);
+      if(message.type==='error')throw new ApiError(message.status||500,message.error||'Playlist loading failed');
+      if(message.type!=='page'&&message.type!=='done')throw new ApiError(500,'Invalid playlist stream');
+      for(const track of message.page.tracks)tracks.set(track.id,track);
+      result={...message.page,tracks:[...tracks.values()]};onProgress(result!);complete=message.type==='done';
+    };
+    try{
+      while(true){const chunk=await reader.read();if(chunk.done)break;buffer+=decoder.decode(chunk.value,{stream:true});let end;while((end=buffer.indexOf('\n'))>=0){line(buffer.slice(0,end));buffer=buffer.slice(end+1);}}
+      buffer+=decoder.decode();if(buffer.trim())line(buffer);
+      if(!complete||!result)throw new ApiError(500,'Playlist transfer did not complete');return result;
+    }finally{reader.releaseLock();}
+  },
   removeLibraryTrack: (id, scope = "all") => request<Library>(`/api/library/tracks/${id}?scope=${scope}`, { method: "DELETE" }),
   search: (q: string, type: "song" | "video", signal?: AbortSignal) =>
     request<{ tracks: Track[] }>(`/api/search?q=${encodeURIComponent(q)}&type=${type}`, { signal }).then((r) => r.tracks),

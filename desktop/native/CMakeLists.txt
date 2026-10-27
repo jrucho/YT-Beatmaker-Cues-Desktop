@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.24)
+project(BeatmakerLibraryLock LANGUAGES CXX)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+find_package(Threads REQUIRED)
+add_executable(beatmaker-library-lock library-lock.cpp)
+target_compile_features(beatmaker-library-lock PRIVATE cxx_std_17)
+target_link_libraries(beatmaker-library-lock PRIVATE Threads::Threads)

@@ -32,6 +32,7 @@ jobs:
     uses: ./.github/workflows/plugins.yml
     with:
       source_sha: ${{ github.sha }}
+    secrets: inherit
   source:
     runs-on: ubuntu-24.04
     steps:

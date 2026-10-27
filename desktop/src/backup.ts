@@ -8,7 +8,7 @@ const BACKUPS_KEPT = 5;
  * so nothing the user saved can be lost to one. Returns the backup's path, if one was made.
  * Never throws: a failed backup must not keep the app from opening (it retries on the next launch).
  */
-export function backupLibraryOnUpdate(userData: string, version: string, now = new Date()): string | null {
+export function backupLibraryOnUpdate(userData: string, version: string, now = new Date(),sharedFile?:string): string | null {
   const versionFile = path.join(userData, "version.json");
   let previous: string | undefined;
   try {
@@ -20,7 +20,7 @@ export function backupLibraryOnUpdate(userData: string, version: string, now = n
 
   try {
     let made: string | null = null;
-    const library = path.join(userData, "data", "library.json");
+    const library = sharedFile&&existsSync(sharedFile)?sharedFile:path.join(userData, "data", "library.json");
     if (existsSync(library)) {
       const dir = path.join(userData, "backups");
       mkdirSync(dir, { recursive: true });

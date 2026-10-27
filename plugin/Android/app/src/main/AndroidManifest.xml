@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <application android:name="app.musike.android.StandaloneApplication" android:allowBackup="true" android:label="Beatmaker Cues Plug-in" android:icon="@drawable/plugin_icon" android:theme="@style/StandaloneTheme" android:usesCleartextTraffic="false" android:hardwareAccelerated="true">
+        <activity android:name="app.musike.android.MainActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity>
+        <service android:name="app.musike.android.PlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+    </application>
+</manifest>

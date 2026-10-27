@@ -8,7 +8,7 @@ const HISTORY_LIMIT = 60;
 /** Where the library is kept: a file on the server and the desktop app, app storage on Android. */
 export interface LibraryStorage {
   read(): Promise<string | null>;
-  write(json: string): Promise<void>;
+  write(json: string,baseline?:string): Promise<void|string>;
   reloadBeforeRead?: boolean;
 }
 
@@ -16,12 +16,20 @@ let storage: LibraryStorage | null = null;
 let state: Library | null = null;
 let writeChain: Promise<void> = Promise.resolve();
 let loading: Promise<Library> | null = null;
+let lastLoadedJson:string|null|undefined;
+let persistedBaseline='';
+let mutations:Promise<unknown>=Promise.resolve();
+function mutate<T>(action:(library:Library)=>Promise<T>):Promise<T>{
+  const work=mutations.catch(()=>{}).then(async()=>action(await load()));mutations=work;return work;
+}
 
 /** Set once at startup, before any request. */
 export function useLibraryStorage(s: LibraryStorage) {
   storage = s;
   state = null;
   loading = null;
+  lastLoadedJson=undefined;
+  persistedBaseline='';
 }
 
 const randomUUID = () => globalThis.crypto.randomUUID();
@@ -31,8 +39,12 @@ async function load(): Promise<Library> {
   if (loading) return loading;
   if (!storage) throw new Error("Library storage not configured");
   loading = (async () => {
+    await writeChain.catch(()=>{});
     const json = await storage!.read();
+    if(state&&lastLoadedJson===json)return state;
     state = json ? cleanLibrary(JSON.parse(json)) : { favorites: [], playlists: [], history: [] };
+    lastLoadedJson=json;
+    persistedBaseline=JSON.stringify(state);
     return state;
   })().finally(() => { loading = null; });
   return loading;
@@ -40,8 +52,14 @@ async function load(): Promise<Library> {
 
 /** Serialized writes so concurrent requests never interleave. */
 function persist(): Promise<void> {
+  lastLoadedJson=undefined;
   const snapshot = JSON.stringify(state, null, 2);
-  writeChain = writeChain.catch(() => {}).then(() => storage!.write(snapshot));
+  const baseline=persistedBaseline;
+  writeChain = writeChain.catch(() => {}).then(async() => {
+    const committed=await storage!.write(snapshot,baseline);
+    if(typeof committed==='string'&&state)Object.assign(state,cleanLibrary(JSON.parse(committed)));
+    persistedBaseline=typeof committed==='string'?committed:snapshot;
+  });
   return writeChain;
 }
 
@@ -74,11 +92,12 @@ function findPlaylist(lib: Library, pid: string): Playlist {
 }
 
 export async function getLibrary(): Promise<Library> {
+  await mutations.catch(()=>{});
   return load();
 }
 
 export async function removeTrack(id: string, scope: "all" | "history" = "all"): Promise<Library> {
-  const lib = await load();
+  return mutate(async lib=>{
   lib.history = lib.history.filter(t => t.id !== id);
   if (scope === "all") {
     lib.favorites = lib.favorites.filter(t => t.id !== id);
@@ -91,41 +110,46 @@ export async function removeTrack(id: string, scope: "all" | "history" = "all"):
   }
   await persist();
   return lib;
+  });
 }
 
 export async function addFavorite(track: Track): Promise<Track[]> {
-  const lib = await load();
+  return mutate(async lib=>{
   lib.favorites = [track, ...lib.favorites.filter((t) => t.id !== track.id)];
   await persist();
   return lib.favorites;
+  });
 }
 
 /** Adds many at once (in the given order, on top), skipping ones already there. */
 export async function addFavorites(tracks: Track[]): Promise<Track[]> {
-  const lib = await load();
+  return mutate(async lib=>{
   const seen = new Set(lib.favorites.map((t) => t.id));
   const added = tracks.filter((t) => !seen.has(t.id) && !!seen.add(t.id));
   lib.favorites = [...added, ...lib.favorites];
   await persist();
   return lib.favorites;
+  });
 }
 
 export async function removeFavorite(id: string): Promise<Track[]> {
-  const lib = await load();
+  return mutate(async lib=>{
   lib.favorites = lib.favorites.filter((t) => t.id !== id);
   await persist();
   return lib.favorites;
+  });
 }
 
 export async function pushHistory(track: Track): Promise<Track[]> {
-  const lib = await load();
+  return mutate(async lib=>{
   lib.history = [track, ...lib.history.filter((t) => t.id !== track.id)].slice(0, HISTORY_LIMIT);
   await persist();
   return lib.history;
+  });
 }
 
 export async function createPlaylist(name: string, tracks: Track[] = []): Promise<Playlist> {
-  const lib = await load();
+  return mutate(async lib=>{
   const clean = name.trim().slice(0, 80);
   if (!clean) throw new HttpError(400, msg("playlistNameRequired"));
   // Importing the same playlist twice (a double tap, a retry) should open the one already there, not add another.
@@ -139,45 +163,50 @@ export async function createPlaylist(name: string, tracks: Track[] = []): Promis
   const playlist: Playlist = { id: randomUUID(), name: clean, createdAt: now, updatedAt: now, tracks };
   lib.playlists.unshift(playlist);
   await persist();
-  return playlist;
+  return findPlaylist(lib,playlist.id);
+  });
 }
 
 export async function renamePlaylist(pid: string, name: string): Promise<Playlist> {
-  const lib = await load();
+  return mutate(async lib=>{
   const p = findPlaylist(lib, pid);
   const clean = name.trim().slice(0, 80);
   if (!clean) throw new HttpError(400, msg("playlistNameRequired"));
   p.name = clean;
   p.updatedAt = Date.now();
   await persist();
-  return p;
+  return findPlaylist(lib,p.id);
+  });
 }
 
 export async function deletePlaylist(pid: string): Promise<void> {
-  const lib = await load();
+  return mutate(async lib=>{
   findPlaylist(lib, pid);
   lib.playlists = lib.playlists.filter((p) => p.id !== pid);
   await persist();
+  });
 }
 
 export async function addToPlaylist(pid: string, tracks: Track | Track[]): Promise<Playlist> {
-  const lib = await load();
+  return mutate(async lib=>{
   const p = findPlaylist(lib, pid);
   for (const track of Array.isArray(tracks) ? tracks : [tracks]) {
     if (!p.tracks.some((t) => t.id === track.id)) p.tracks.push(track);
   }
   p.updatedAt = Date.now();
   await persist();
-  return p;
+  return findPlaylist(lib,p.id);
+  });
 }
 
 export async function removeFromPlaylist(pid: string, trackId: string): Promise<Playlist> {
-  const lib = await load();
+  return mutate(async lib=>{
   const p = findPlaylist(lib, pid);
   p.tracks = p.tracks.filter((t) => t.id !== trackId);
   p.updatedAt = Date.now();
   await persist();
-  return p;
+  return findPlaylist(lib,p.id);
+  });
 }
 
 // Backup import: a library exported from any Musike instance (web, desktop, another computer).
@@ -231,7 +260,7 @@ export interface ImportResult {
  */
 export async function importLibrary(input: unknown, mode: "merge" | "replace"): Promise<ImportResult> {
   const incoming = cleanLibrary(input);
-  const lib = await load();
+  return mutate(async lib=>{
   const result: ImportResult = { playlistsAdded: 0, playlistsMerged: 0, tracksAdded: 0, favoritesAdded: 0 };
 
   if (mode === "replace") {
@@ -274,4 +303,5 @@ export async function importLibrary(input: unknown, mode: "merge" | "replace"): 
   lib.history = union(lib.history, incoming.history).list.slice(0, HISTORY_LIMIT);
   await persist();
   return result;
+  });
 }

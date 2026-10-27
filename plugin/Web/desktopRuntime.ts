@@ -3,6 +3,7 @@
 import {beatmakerMedia, cuePosition, selectCurrent, usePlayer} from '../player/player';
 import {useCueStore, CUE_BANKS} from '../mobile/cueStore';
 import {useUi} from '../stores/ui';
+import {cleanBackupState} from '../lib/backupState';
 
 const pad = (key: string) => key === '0' ? 10 : Number(key);
 const keyFor = (number: number) => number === 10 ? '0' : String(number);
@@ -44,6 +45,17 @@ const unavailable=()=>{throw Error('This desktop beta does not yet host-route st
 export async function loadBeatmaker() {
   if(installed)return;installed=true;
   const host = window as any;
+  host.__pluginImportDesktopCues=(entries:Record<string,Record<string,number|{time:number}>>)=>{
+    const all=JSON.parse(localStorage.getItem('musike:cues:v1')||'{}');
+    for(const [key,values] of Object.entries(entries)){
+      const match=/^ytbm_cues_([\w-]{11}):bank:([A-J])$/.exec(key);
+      if(!match)throw Error('Invalid desktop cue bank');
+      all[match[1]]={...all[match[1]],[match[2]]:Object.fromEntries(Object.entries(values).map(([key,value])=>[pad(key),typeof value==='number'?value:value.time]))};
+    }
+    const text=JSON.stringify(all);cleanBackupState({'musike:cues:v1':text});
+    localStorage.setItem('musike:cues:v1',text);
+    useCueStore.getState().setBank(useCueStore.getState().bank);
+  };
   host.musikeBeatmakerHost={active:true,media:beatmakerMedia,trackId:()=>`youtube:${selectCurrent(usePlayer.getState())?.id||'none'}`,cueId:()=>`${selectCurrent(usePlayer.getState())?.id||'none'}:bank:${useCueStore.getState().bank}`,bankName:()=>useCueStore.getState().bank};
   host.musikeBeatmakerEngine={
     snapshot(){const p=usePlayer.getState();return {cues:Object.fromEntries(Object.entries(useCueStore.getState().cues).map(([number,time])=>[keyFor(Number(number)),time])),pitch:p.speed,ready:true,mediaReady:p.duration>0&&p.status!=='loading',rateMode:p.speedMode==='speed'?'SPEED':'PITCH',rateTarget:'track',rateMin:-75,rateMax:100,saved:true};},

@@ -1,6 +1,19 @@
 #include "AppleHttp.h"
 #import <Foundation/Foundation.h>
 
+juce::File appleSharedLibraryDirectory(){
+   #if JUCE_IOS && defined(BEATMAKER_APP_GROUP)
+    @autoreleasepool {
+        NSString* group=[NSString stringWithUTF8String:BEATMAKER_APP_GROUP];
+        if(![group hasPrefix:@"group."])return {};
+        NSURL* container=[[NSFileManager defaultManager] containerURLForSecurityApplicationGroupIdentifier:group];
+        if(container)return juce::File(juce::String([[container path] UTF8String])).getChildFile("Beatmaker Cues/SharedLibrary");
+    }
+   #endif
+    return {};
+}
+juce::String appleLibraryIdentity(){@autoreleasepool {return juce::String([[[NSBundle mainBundle] bundleIdentifier] UTF8String]);}}
+
 AppleHttpResult appleHttp(const juce::String& url,const juce::String& method,const juce::String& headers,const juce::String& body,int timeoutSeconds,std::function<bool()> shouldCancel) {
     @autoreleasepool {
         AppleHttpResult result;
