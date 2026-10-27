@@ -17,6 +17,7 @@
     updateViewport();
     addEventListener('resize', updateViewport);
     addEventListener('pageshow', updateViewport);
+    document.addEventListener('visibilitychange', updateViewport);
     window.visualViewport?.addEventListener('resize', updateViewport);
   }
   window.__pluginDesktopBeta=window.__JUCE__.initialisationData.desktopBeta?.[0]===true;

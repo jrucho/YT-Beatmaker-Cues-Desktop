@@ -9,7 +9,8 @@ const output = path.resolve(process.argv[3] || 'release-final');
 const {version} = JSON.parse(readFileSync('package.json', 'utf8'));
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
 const sha = name => createHash('sha256').update(readFileSync(path.join(staging, name))).digest('hex');
-const expected = [
+const appleAndroidPrerelease = process.argv.includes('--apple-android-prerelease');
+const completeInventory = [
   ...['arm64', 'x64'].map(arch => `YT-Beatmaker-Cues-Desktop-${version}-macOS-${arch}.dmg`),
   `YT-Beatmaker-Cues-Desktop-${version}-Windows.exe`,
   ...['x64', 'arm64'].flatMap(arch => ['AppImage', 'deb'].map(ext => `YT-Beatmaker-Cues-Desktop-${version}-Linux-${arch}.${ext}`)),
@@ -32,6 +33,11 @@ const expected = [
   `Source-Build-${version}.json`, `iOS-Build-${version}.json`, `AUv3-Build-${version}.json`,
   ...['macOS', 'Windows', 'Linux', 'Android'].map(platform => `Main-Build-${platform}-${version}.json`),
 ];
+// Explicitly scoped prereleases retain every source/signature/checksum gate.
+// The default continues to require the complete Windows/Linux/Apple matrix.
+const expected = appleAndroidPrerelease
+  ? completeInventory.filter(name => !/-(Windows|Linux)(?:[-.]|$)/.test(name))
+  : completeInventory;
 if (process.argv[2] === '--inventory') {
   console.log(JSON.stringify(expected, null, 2));
   process.exit(0);
@@ -63,7 +69,7 @@ for (const name of available) {
 }
 mkdirSync(output); // An existing release staging directory must not be overwritten.
 for (const name of expected) copyFileSync(path.join(staging, name), path.join(output, name));
-const manifest = {version, sourceCommit, files: expected.map(name => ({name, sha256: sha(name)})), status: 'candidate; physical acceptance and final publication are separate'};
+const manifest = {version, sourceCommit, scope: appleAndroidPrerelease ? 'macOS-iOS-Android-prerelease' : 'complete-matrix', files: expected.map(name => ({name, sha256: sha(name)})), status: 'candidate; physical acceptance and final publication are separate'};
 const manifestName = `Release-Build-${version}.json`;
 writeFileSync(path.join(output, manifestName), JSON.stringify(manifest, null, 2) + '\n');
 const all = [...manifest.files, {name: manifestName, sha256: createHash('sha256').update(readFileSync(path.join(output, manifestName))).digest('hex')}];

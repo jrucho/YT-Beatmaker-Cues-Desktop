@@ -6,12 +6,11 @@ reported separately below.
 
 ## Downloads
 
-- Main desktop: Mac arm64/x64 DMG, Windows x64 installer, Linux x64/arm64
-  AppImage/Debian packages. These retain the desktop studio interface.
+- Main desktop: Mac arm64/x64 DMGs retain the full desktop studio interface.
 - Main mobile: Android stable-key Setup APK and development-key Test APK; unsigned
   iOS IPA and portable main-iOS Xcode project. These use the responsive mobile UI.
-- Native plug-ins: Mac universal AU/VST3, Windows/Linux x64 VST3, plus separate
-  plug-in standalone ZIPs. The normal editor uses the mobile-style interface.
+- Native plug-ins: Mac universal AU/VST3 plus separate plug-in standalone ZIPs.
+  The normal editor uses the mobile-style interface.
 - Separate `Desktop-Beta` archives use the desktop studio layout and distinct
   IDs and independent sessions. They host-route core cue/transport/loop/speed controls;
   browser stems/FX, sequencer, sidechain and VJ are not yet host-routed.
@@ -20,6 +19,8 @@ reported separately below.
 - Android plug-in standalone: a separate arm64 APK using the JUCE native engine,
   mobile-style editor, cue banks and Android system media controls. It installs
   alongside the main Android app, with its own sandboxed library and sessions.
+  Its WebView layout includes a measured-viewport fix for the black/empty
+  content region seen with zero-height CSS viewport units.
 - Complete source ZIP/TAR.GZ and plug-in corresponding-source/dependency ZIP are
   attached. The repository tag, source and final binaries must identify one SHA.
 
@@ -51,7 +52,7 @@ See CHANGELOG.md and the per-platform build records for detail.
 
 ## Installation and migration
 
-Mac builds are ad-hoc signed and not notarized; Windows/Linux outputs are unsigned.
+Mac builds are ad-hoc signed and not notarized.
 iOS IPAs require your Apple signing account. The Android Setup APK uses the new
 persistent release key. The published 1.0.3 Android APK has a different key and
 cannot update in place: read `docs/android-1.0.4-migration.md` before uninstalling.

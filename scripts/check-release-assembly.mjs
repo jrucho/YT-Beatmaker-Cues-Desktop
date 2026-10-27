@@ -35,5 +35,13 @@ try {
   await writeFile(path.join(staging,'unrelated-old-release.zip'),'not for publication');
   assert.equal(run().status,0);
   assert(!(await readdir(output)).includes('unrelated-old-release.zip'),'Older files must not contaminate final release');
+  await rm(output,{recursive:true});
+  for(const name of inventory.filter(name=>/-(Windows|Linux)(?:[-.]|$)/.test(name)))await rm(path.join(staging,name));
+  const scoped=()=>spawnSync(process.execPath,['scripts/assemble-release.mjs',staging,output,'--apple-android-prerelease'],{encoding:'utf8'});
+  assert.equal(scoped().status,0,'Explicit Apple/Android prerelease should require exactly its scoped inventory');
+  assert.equal(JSON.parse(await readFile(path.join(output,`Release-Build-${version}.json`),'utf8')).scope,'macOS-iOS-Android-prerelease');
+  await rm(output,{recursive:true});
+  await rm(path.join(staging,`Beatmaker-Cues-Plugin-Standalone-${version}-Android-arm64.apk`));
+  assert.notEqual(scoped().status,0,'Scoped prerelease must include the new native Android standalone');
   console.log('PASS: complete matrix, missing target, mixed SHA, dirty source, tampered checksum and staging isolation gates');
 } finally {await rm(temporary,{recursive:true,force:true});}

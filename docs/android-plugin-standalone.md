@@ -9,6 +9,8 @@ The initial port targets arm64 devices, Android 7/API 24 or newer.
 
 Install Java 21, Android SDK platform/build-tools 36, NDK 28.1.13356709 and SDK
 CMake 3.31.6. Set `JAVA_HOME` and `ANDROID_HOME`, then from the repository root:
+On a Linux build host, JUCE's host-side resource compiler also requires the X11,
+Xext, Xrandr, Xinerama, Xcursor, FreeType and Fontconfig development packages.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -42,6 +44,12 @@ JUCE AGPLv3 option; distribute the corresponding-source/dependency archive.
   optional push-notification `JuceActivity` is not needed.
 - The HTML bootstrap evaluates JUCE Android user scripts before importing the
   application, so storage, HTTP and native audio bridges exist at startup.
+- The Android bridge measures the viewport in pixels for the app and dialog
+  bounds. Some JUCE-hosted WebViews resolve CSS `vh`/`dvh` units as zero despite
+  a correct `innerHeight`; this previously clipped the content to a narrow top
+  strip and left a large black region. Startup, resize and resume synchronize
+  the measured bounds. Portrait (412×915 CSS pixels), landscape (732×412) and
+  restored portrait layouts were checked on the API 35 emulator.
 - MediaExtractor/MediaCodec convert unsupported encoded inputs to disk PCM WAV
   off the audio callback. The native processor then uses resident or bounded
   paged playback. Full first-use AAC conversion can take substantial time;

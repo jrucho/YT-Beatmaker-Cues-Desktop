@@ -183,6 +183,8 @@ jobs:
         with:
           packages: platform-tools
       - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.1.13356709' 'cmake;3.31.6'
+      - name: Host dependencies for JUCE's cross-build resource compiler
+        run: sudo apt-get update && sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get install -y --no-install-recommends libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev libfreetype6-dev libfontconfig1-dev
       - run: pnpm install --frozen-lockfile
       - run: python3 plugin/Scripts/build_mobile_ui.py .
       - name: Configure persistent Android signing
