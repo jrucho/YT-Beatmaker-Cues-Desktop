@@ -40,6 +40,12 @@ int main(int argc,char** argv) {
         editor->evaluate(script,[&](auto value){if(value.getResult())result=*value.getResult();else if(value.getError())std::cerr<<value.getError()->message<<"\n";completed=true;});
         for(int i=0;i<100&&!completed;++i)pump(50);return result;};
     for(int i=0;i<100;++i){pump(100);if((bool)evaluate("Boolean(window.__pluginStores)"))break;}
+    // Exported stores become available before React's first commit and before
+    // fonts/ResizeObserver have established virtual row measurements on CI.
+    for(int i=0;i<100;++i){pump(50);if((bool)evaluate("Boolean(document.querySelector('.bm-app[data-engine-ready=\"true\"],.music-app main'))"))break;}
+    if(!(bool)evaluate("Boolean(document.querySelector('.bm-app[data-engine-ready=\"true\"],.music-app main'))")){std::cerr<<"Editor UI did not mount\n";return 1;}
+    evaluate("document.fonts.ready.then(()=>window.__pluginFontsReady=true);true");
+    for(int i=0;i<100&&!(bool)evaluate("Boolean(window.__pluginFontsReady)");++i)pump(50);
     std::cout<<"DOM: "<<evaluate("document.body.innerText").toString()<<"\n";
     std::cout<<"Bridge: "<<evaluate("JSON.stringify({platform:Capacitor.getPlatform(),resolver:!!window.webkit?.messageHandlers?.musikeResolve,ready:window.__pluginReady})").toString()<<"\n";
     if(!(bool)evaluate("Boolean(window.__pluginStores)")){std::cerr<<"Mobile app failed to initialise\n";return 1;}
@@ -126,9 +132,14 @@ int main(int argc,char** argv) {
         const std::array<std::pair<int,int>,5> shapes{{{360,760},{1280,600},{760,760},{1600,480},{480,1400}}};
         for(const auto [width,height]:shapes){
             editor->setSize(width,height);pump(250);
-            const auto layout=evaluate("JSON.stringify({width:innerWidth,height:innerHeight,overflow:document.documentElement.scrollWidth-innerWidth,rows:document.querySelectorAll('[data-virtual-list] [data-index],[data-virtual-grid] [data-index]').length})").toString();
-            const auto values=juce::JSON::parse(layout);
-            if((int)values["width"]<=0||(int)values["overflow"]>2||(int)values["rows"]>80||(int)values["rows"]==0){std::cerr<<"Responsive 500-track layout failed at "<<width<<"x"<<height<<": "<<layout<<"\n";return 1;}
+            juce::String layout;bool bounded=false;
+            for(int attempt=0;attempt<40;++attempt){
+                layout=evaluate("JSON.stringify({width:innerWidth,height:innerHeight,overflow:document.documentElement.scrollWidth-innerWidth,rows:document.querySelectorAll('[data-virtual-list] [data-index],[data-virtual-grid] [data-index]').length,gridHeight:document.querySelector('[data-virtual-grid]')?.clientHeight,cardHeight:document.querySelector('[data-virtual-grid] [data-index]')?.getBoundingClientRect().height})").toString();
+                const auto values=juce::JSON::parse(layout);
+                bounded=(int)values["width"]>0&&(int)values["overflow"]<=2&&(int)values["rows"]>0&&(int)values["rows"]<=80;
+                if(bounded)break;pump(50);
+            }
+            if(!bounded){std::cerr<<"Responsive 500-track layout failed at "<<width<<"x"<<height<<": "<<layout<<"\n";return 1;}
             if(!dynamic_cast<juce::ResizableCornerComponent*>(editor->getComponentAt(width-3,height-3))){std::cerr<<"Native resize grip is not reachable\n";return 1;}
         }
        #if !BEATMAKER_DESKTOP_BETA
