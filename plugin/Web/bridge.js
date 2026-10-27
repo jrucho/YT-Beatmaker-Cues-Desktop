@@ -2,6 +2,23 @@
   let counter = Math.floor(Date.now()*1024+Math.random()*1024);
   const pending = new Map();
   const backend = window.__JUCE__.backend;
+  // Some Android WebViews embedded by JUCE resolve vh/dvh to zero even while
+  // innerHeight is correct. Use measured pixels for the app and dialog bounds.
+  if (window.__JUCE__.getAndroidUserScripts) {
+    const root = document.documentElement;
+    root.dataset.pluginAndroid = '';
+    const updateViewport = () => {
+      const height = window.innerHeight;
+      if (height > 0) {
+        root.style.setProperty('--plugin-viewport-height', height + 'px');
+        root.style.setProperty('--plugin-vh', (height / 100) + 'px');
+      }
+    };
+    updateViewport();
+    addEventListener('resize', updateViewport);
+    addEventListener('pageshow', updateViewport);
+    window.visualViewport?.addEventListener('resize', updateViewport);
+  }
   window.__pluginDesktopBeta=window.__JUCE__.initialisationData.desktopBeta?.[0]===true;
   backend.addEventListener('__juce__complete', ({promiseId, result}) => {
     const job = pending.get(promiseId);

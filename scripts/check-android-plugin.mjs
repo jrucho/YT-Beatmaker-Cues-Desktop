@@ -29,6 +29,9 @@ const evaluate=expression=>new Promise((resolve,reject)=>{
 const snapshot=()=>evaluate('__pluginInvoke("audio",{cmd:"snapshot"})');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 try{
+  const layout=await evaluate(`({viewport:innerHeight,root:document.documentElement.getBoundingClientRect().height,app:document.querySelector('.music-app')?.getBoundingClientRect().height,main:document.querySelector('main')?.getBoundingClientRect().height})`);
+  assert(layout.root>=layout.viewport-2&&layout.app>=layout.viewport-2&&layout.main>layout.viewport*.6,
+    'Android content collapsed behind a black region: '+JSON.stringify(layout));
   const catalog=await evaluate(`(async()=>{
     if(typeof __pluginInvoke!=='function')throw Error('Native bridge missing');
     const page=await __pluginStores.api.youtubePlaylist('PLW4NDfp3IicGyAw0Ix0Z0yr-FL35Eo_qB');
@@ -54,7 +57,7 @@ try{
   assert(second.playing&&second.position>first.position+0.8,'Background system play did not advance native transport');
   adb('shell','cmd','media_session','dispatch','pause');await delay(1000);
   assert.equal((await snapshot()).playing,false);
-  console.log(JSON.stringify({result:'PASS',catalog,backgroundPositions:[first.position,second.position],load:await evaluate('__pluginInvoke("loadDiagnostics")')},null,2));
+  console.log(JSON.stringify({result:'PASS',layout,catalog,backgroundPositions:[first.position,second.position],load:await evaluate('__pluginInvoke("loadDiagnostics")')},null,2));
 }finally{
   adb('shell','am','start','-n',`${application}/app.musike.android.MainActivity`);
   socket.close();

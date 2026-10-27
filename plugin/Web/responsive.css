@@ -1,4 +1,13 @@
 /* Plug-in-only layout rules. The existing standalone desktop stylesheet is retained. */
+:root[data-plugin-android] {height:var(--plugin-viewport-height,100%);}
+:root[data-plugin-android] body,
+:root[data-plugin-android] #root {height:100%;}
+:root[data-plugin-android] .music-app {height:var(--plugin-viewport-height,100%);}
+:root[data-plugin-android] [class~="max-h-[45dvh]"] {max-height:calc(var(--plugin-vh)*45);}
+:root[data-plugin-android] [class~="max-h-[55dvh]"] {max-height:calc(var(--plugin-vh)*55);}
+:root[data-plugin-android] [class~="max-h-[70dvh]"] {max-height:calc(var(--plugin-vh)*70);}
+:root[data-plugin-android] [class~="h-[min(52dvh,560px)]"] {height:min(calc(var(--plugin-vh)*52),560px);}
+:root[data-plugin-android] [class~="max-w-[min(100%,46dvh)]"] {max-width:min(100%,calc(var(--plugin-vh)*46));}
 :root[data-plugin-editor="desktop"] .bm-app {height:100dvh;min-height:0;overflow:hidden;padding:0 12px;}
 :root[data-plugin-editor="desktop"] .bm-header {flex-wrap:wrap;gap:10px;padding:10px 0;}
 :root[data-plugin-editor="desktop"] .bm-brand {min-width:0;flex:1 1 180px;}
