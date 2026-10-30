@@ -1,13 +1,15 @@
-# Official product lineup (local development; publication on hold)
+# Product lineup — 1.0.4
 
-User direction, 2026-10-27: wait until the applications and plug-ins are ready
-together. Do not publish 1.0.4 or push further changes while this hold applies.
+The v1.0.4 release is authorized for publication with source on `main`, a
+`release/1.0.4` version branch, and separately labeled application/plug-in exports.
+See [downloads](downloads-1.0.4.md) for the complete published asset inventory.
 
 | Product | Official implementation |
 | --- | --- |
 | iOS | Native JUCE app formerly called the plug-in standalone, with its embedded AUv3 |
 | Android | New native JUCE Android application, with the loading, touch and safe-area fixes |
-| Desktop standalone | Existing full desktop 1.0.3 application |
+| Full desktop studio | Original full desktop implementation, packaged as 1.0.4 for Mac and Windows |
+| Native cue standalone | Universal Mac app and Windows x64 app; shared native/mobile cue and sample-pad engine |
 | VST3 / AU | Native plug-in with a unified responsive cue workspace, supporting portrait and landscape |
 
 ## Name, icon and compatibility
@@ -65,4 +67,4 @@ The standalone selects two supported hardware audio bursts rather than JUCE's
 24–34 ms; these observations exclude physical audio-device output latency.
 
 Full desktop native stems/FX/sequencer/sidechain/VJ parity is still separate work.
-The desktop 1.0.3 implementation remains the official full desktop standalone.
+The separately labeled full desktop studio retains the original stems/VJ/FX implementation.

@@ -1,6 +1,14 @@
 # Changelog
 
-## 1.0.4 — unreleased
+## 1.0.4
+
+- Released the native cue standalone for Mac (universal) and Windows x64 alongside AU/VST3, native Android, and an unsigned iOS app with embedded AUv3. Full desktop studio installers remain separately labeled for Mac and Windows.
+- Added per-pad sample imports on native desktop/mobile: 32-voice one-shot playback, MIDI timing/velocity, app-local retained files and session persistence. Sample pads never mark/jump cues; unassigned pads retain normal cue behavior.
+- Disabled player and pad keyboard shortcuts in hosted VST3/AU/AUv3 mode so DAW computer-keyboard MIDI and transport keys remain available. Standalone shortcuts remain active.
+- Unified portrait/landscape native cue layouts with real waveform editing, a rich playlist dock, bottom transport/navigation and whole-number pitch/speed values.
+- Fixed Android browsing-player safe-area placement and the one-pixel native window edge; imported samples use document-provider streams rather than inaccessible file paths.
+- Added on-demand Android AAC decoding, rate-transition smoothing and Windows multi-instance decoder-cache locking. Verified uncached next-track playback with the Android emulator screen off.
+- Added complete source/dependency archives, portable iOS/macOS Xcode exports, release inventory/checksums and main-branch download links.
 
 - Added cue/MIDI-aware portable backups and an explicit Android signing migration route. Created a persistent release-signing setup for future APK updates; published 1.0.3 test APKs have a different certificate and cannot update in place.
 - Added a coordinated, same-commit candidate workflow, clean-source exports and verified draft-only assembly with a complete target inventory. Individual build workflows no longer publish partial releases.
@@ -13,7 +21,7 @@
 - Added native MIDI/touch pad feedback and editor-closed plug-in playlist preparation/advancement. Plug-in cues use an atomic command with a 3 ms transition continuous across rapid/pitch-processed retriggers.
 - Fixed FFmpeg discovery selecting an executable-named directory instead of the binary inside it.
 - Added persistence/concurrency/recovery checks, real AAC decode verification, render-allocation checks and live plug-in WebView restoration checks.
-- No App Groups or automatic main-app/AUv3 library sharing. Signing, platform-native CI and hardware verification status are documented in `plugin/README.md`; 1.0.4 is not yet published.
+- iOS uses private storage by default; App Group sharing is opt-in. Signing, platform-native CI and hardware verification status are documented in `plugin/README.md`.
 
 ## 1.0.3
 

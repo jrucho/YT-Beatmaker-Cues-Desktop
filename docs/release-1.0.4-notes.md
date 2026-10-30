@@ -1,32 +1,40 @@
-# Beatmaker Cues 1.0.4 — unpublished development notes
+# Beatmaker Cues 1.0.4
 
-Publication and further pushes are on hold at the user's request. See
-`docs/official-product-lineup.md` for the current product direction: the native
-iOS and Android apps and responsive native plug-ins use the original iOS icon;
-desktop 1.0.3 remains the official full desktop standalone. The inventory below
-describes development build targets, not a published 1.0.4 release.
+Source is available on `main`, `release/1.0.4` and tag `v1.0.4`.
+See [all exports](downloads-1.0.4.md) and the [release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.4).
+This release covers Mac, Windows, Android and iOS. The complete source includes
+the other development targets; Linux installers remain at v1.0.3.
 
 ## Downloads
 
-- Main desktop: Mac arm64/x64 DMGs retain the full desktop studio interface.
-- Main mobile: Android stable-key Setup APK and development-key Test APK; unsigned
-  iOS IPA and portable main-iOS Xcode project. These use the responsive mobile UI.
-- Native plug-ins: Mac universal AU/VST3 plus separate plug-in standalone ZIPs.
-  The normal editor uses the mobile-style interface.
-- Separate `Desktop-Beta` archives use the desktop studio layout and distinct
-  IDs and independent sessions. They host-route core cue/transport/loop/speed controls;
-  browser stems/FX, sequencer, sidechain and VJ are not yet host-routed.
-- AUv3: unsigned container IPA with embedded extension and portable plug-in Xcode
-  export. Automatic sharing with the main iOS app is not configured.
-- Android plug-in standalone: a separate arm64 APK using the JUCE native engine,
-  mobile-style editor, cue banks and Android system media controls. It installs
-  alongside the main Android app, with its own sandboxed library and sessions.
-  Its WebView layout includes measured viewport/safe-area handling and a cue
-  workspace with visible performance controls in portrait and landscape.
-- Complete source ZIP/TAR.GZ and plug-in corresponding-source/dependency ZIP are
-  attached. The repository tag, source and final binaries must identify one SHA.
+- **New native cue standalone:** universal Mac `.app` ZIP and Windows x64 `.exe` ZIP.
+- **Native plug-ins:** universal Mac AU/VST3 and Windows x64 VST3 ZIPs.
+- **Full desktop studio:** Apple Silicon/Intel Mac DMGs and Windows x64 installer,
+  retaining the original stems, VJ, FX, sequencer and sidechain implementation.
+- **Mobile:** persistent-key-signed native Android arm64 APK; unsigned native iOS
+  IPA with embedded AUv3 extension. Personal development provisioning is kept local.
+- **Projects/source:** portable native iOS and Mac Xcode projects, complete source
+  ZIP/TAR.GZ, and corresponding source with pinned JUCE/Signalsmith dependencies.
+- **Verification:** per-platform build records, release inventory and SHA-256 sums.
 
 ## Changes
+
+Native sample pads work on desktop and mobile. Enable the music-note button beside
+MIDI, tap a pad and choose **Load sample…**, then turn editing off to perform.
+Loaded pads show **SMP** and play independent polyphonic one-shots, including
+without a song. They never mark/jump cues, including in Overwrite mode. Removing a
+sample restores normal cue behavior. Imports are retained in managed media
+storage; assignments survive restarts and DAW recall. The engine supports 32 voices
+and a 128 MiB decoded sample budget, with no callback loading/allocation.
+
+Hosted VST3/AU/AUv3 disable player and pad keyboard shortcuts so the DAW can use
+computer-keyboard MIDI/transport keys. Standalone shortcuts remain active.
+The shared native UI has real waveform editing, a rich playlist dock, bottom
+transport/navigation, directly visible SP-404 presets and whole-number rate controls.
+Android's browsing player uses native bottom insets, and the bright right-edge
+pixel is fixed. Its file picker uses document-provider streams to retain samples.
+Rate changes are smoothed, Signalsmith preload continuation is corrected, and
+Windows fallback decoding is locked across concurrent plug-in instances.
 
 Automatic library saves and backup recovery; concurrent plug-in library merging
 and separate sessions; stable track-ID caches; local audio import; native pad
@@ -55,7 +63,7 @@ See CHANGELOG.md and the per-platform build records for detail.
 ## Installation and migration
 
 Mac builds are ad-hoc signed and not notarized.
-iOS IPAs require your Apple signing account. The Android Setup APK uses the new
+iOS IPAs require your Apple signing account. The native Android APK uses the new
 persistent release key. The published 1.0.3 Android APK has a different key and
 cannot update in place: read `docs/android-1.0.4-migration.md` before uninstalling.
 Old library backups alone do not preserve separately stored mobile cue banks.
@@ -68,7 +76,7 @@ license is separate. Build and fork instructions are in `docs/build-from-source.
 
 Automated build/test success is recorded per platform, not a claim of universal
 host/device approval or zero physical latency. Record exact tested DAWs/devices
-before final publication. Desktop full-UI beta work is separate from the normal
+for hardware acceptance. Desktop full-UI beta work is separate from the normal
 plug-in and must be identified as beta with its own compatibility/feature status.
 
 Local Android API 35 arm64 emulator checks passed launch, the 500-track SOUL
@@ -82,4 +90,6 @@ Physical Android listening, Bluetooth and device-specific latency remain unverif
 The iOS main app and plug-in standalone/AUv3 were built and updated in place on
 an iPhone 17 Pro. Physical Lock Screen/headset acceptance and entitled App Group
 sharing still require device validation. No claim of complete native routing
-parity or universal DAW/device approval is made by this prerelease.
+parity or universal DAW/device approval is made by this release. The latest
+sample-pad iOS build is packaged; installing it on the previously connected phone
+was blocked by device availability.

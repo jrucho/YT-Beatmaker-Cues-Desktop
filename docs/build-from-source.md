@@ -38,18 +38,19 @@ pnpm installer:linux   # Linux x64/arm64 AppImage and Debian packages, on Linux
 Packages are copied into `release/`. Local Mac builds are ad-hoc signed and not
 notarized. Fork maintainers can configure their own distribution credentials.
 
-## Android
+## Android (native app)
 
 Install JDK 21 and Android command-line tools. Set `JAVA_HOME` and `ANDROID_HOME`.
-Install `platform-tools`, `platforms;android-36` and `build-tools;36.0.0` using
+Install `platform-tools`, `platforms;android-36`, `build-tools;36.0.0`,
+`ndk;28.1.13356709` and `cmake;3.31.6` using
 `sdkmanager`; Gradle may also install its required build-tools version.
 
 ```sh
-pnpm --filter @musike/mobile build
-sh mobile/android/gradlew -p mobile/android :app:assembleDebug --console=plain
+python3 plugin/Scripts/build_mobile_ui.py .
+sh mobile/android/gradlew -p mobile/android :pluginStandalone:assembleDebug -PbeatmakerStandaloneOnly=true --console=plain
 ```
 
-The test APK is at `mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
+The test APK is at `plugin/Android/app/build/outputs/apk/debug/pluginStandalone-debug.apk`.
 On Windows use `mobile\android\gradlew.bat -p mobile\android ...` instead of
 `sh mobile/android/gradlew ...`; when using the signing wrapper, invoke it as
 `cmd /c mobile\android\gradlew.bat ...`.
@@ -58,7 +59,7 @@ For persistent release signing, create your own key **outside the checkout**:
 ```sh
 node mobile/scripts/create-release-key.mjs /existing/private-parent/android-signing
 node mobile/scripts/with-release-key.mjs /existing/private-parent/android-signing/signing.json \
-  sh mobile/android/gradlew -p mobile/android :app:assembleRelease :app:bundleRelease --console=plain
+  sh mobile/android/gradlew -p mobile/android :pluginStandalone:assembleRelease -PbeatmakerStandaloneOnly=true --console=plain
 ```
 
 Build web/native assets before release Gradle tasks as well. Never commit private
@@ -66,7 +67,26 @@ keys/configs. A fork cannot update someone else's installed Android app without
 its original signing key. See `android-1.0.4-migration.md` for the old debug-key
 migration and cue-data limitations.
 
-## Main iOS
+## Native iOS and AUv3
+
+Use the portable native Xcode export from [v1.0.4 downloads](downloads-1.0.4.md),
+or generate the project from the complete checkout:
+
+```sh
+python3 plugin/Scripts/build_mobile_ui.py .
+cmake -S plugin -B plugin/build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS \
+  -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+  -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
+xcodebuild -project plugin/build-ios/BeatmakerCuesPrototype.xcodeproj \
+  -scheme BeatmakerCues_Standalone -configuration Release \
+  -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+python3 plugin/Scripts/package_ios.py --build-dir plugin/build-ios
+python3 plugin/Scripts/export_xcode.py --build-dir plugin/build-ios
+```
+
+For installation select your own signing team for the standalone and AUv3 targets.
+
+## Historical Capacitor iOS project
 
 Use a full Xcode 26+ supporting Capacitor 8. Select it with `DEVELOPER_DIR` if
 the system default points at Command Line Tools.
@@ -134,3 +154,10 @@ sources and generated inputs; choose your own team for both targets.
   or Linux runtime test.
 - Candidate jobs upload artifacts. Draft creation is a separate manual input;
   final public publication follows recorded device/DAW acceptance.
+- The full development matrix runs manually or on `candidate/**` branches.
+  `Windows native and desktop builds` produces both Windows standalone editions
+  and VST3 artifacts from the selected source ref.
+- The public v1.0.4 inventory is Mac/Windows/Android/iOS. After clean source export
+  and platform builds, `scripts/prepare-public-release.py` verifies the exact
+  source SHA, archives, native standalone binaries and checksums before staging
+  GitHub assets. It does not publish or include personal iOS provisioning.

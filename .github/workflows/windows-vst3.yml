@@ -1,4 +1,4 @@
-name: Windows VST3 build
+name: Windows native and desktop builds
 
 on:
   push:
@@ -9,6 +9,36 @@ permissions:
   contents: read
 
 jobs:
+  desktop-studio:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - name: Build full desktop studio installer
+        run: pnpm installer:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify full desktop studio
+        run: |
+          pnpm exec playwright install chromium
+          pnpm test:app --shared-library
+      - run: node scripts/record-build.mjs Windows
+        env:
+          RELEASE_CHECKS: typecheck,native-packaging,desktop-regression
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Beatmaker-Cues-Full-Desktop-Windows-x64
+          path: |
+            release/YT-Beatmaker-Cues-Desktop-*-Windows.exe
+            release/Main-Build-Windows-*.json
+          if-no-files-found: error
   windows-vst3:
     runs-on: windows-latest
     timeout-minutes: 50

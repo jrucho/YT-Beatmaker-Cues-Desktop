@@ -1,9 +1,10 @@
-# Beatmaker Cues — native apps and plug-ins, 1.0.4 development candidate
+# Beatmaker Cues — native apps and plug-ins, 1.0.4
 
 The native iOS and Android app shells are named **Beatmaker Cues** and use the
 original iOS icon. The native VST3/AU edition uses the same responsive interface.
-Desktop 1.0.3 remains the official full desktop standalone. Publication is on hold;
-a separate Windows build branch is authorized for test artifacts only.
+The separate full desktop studio retains the original stems/VJ/FX implementation.
+Download native apps, plug-ins, portable projects and source from the
+[v1.0.4 release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.4).
 
 ## Unified portrait/landscape workspace
 

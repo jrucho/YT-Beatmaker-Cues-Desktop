@@ -6,6 +6,7 @@ its existing Copy Files phase; recipients do not need Node or CMake to run it.
 """
 from pathlib import Path
 import argparse,hashlib,json,os,plistlib,re,shutil,subprocess,tempfile,zipfile
+from source_info import source_info
 parser=argparse.ArgumentParser();parser.add_argument('--build-dir',required=True);parser.add_argument('--output');parser.add_argument('--platform',choices=['iOS','macOS'],default='iOS');args=parser.parse_args()
 root=Path(__file__).resolve().parent.parent;build=Path(args.build_dir).resolve()
 version=json.loads((root.parent/'package.json').read_text())['version']
@@ -19,6 +20,7 @@ for name in ['Source','Assets','Web','Scripts','Tests','README.md','CMakeLists.t
     else:shutil.copy2(source,output/name)
 shutil.copy2(root.parent/'THIRD_PARTY_NOTICES.md',output/'THIRD_PARTY_NOTICES.md')
 shutil.copy2(root.parent/'LICENSE',output/'APPLICATION-LICENSE.txt')
+(output/'SOURCE-INFO.json').write_text(json.dumps({'version':version,'platform':args.platform,**source_info(root.parent)},indent=2)+'\n')
 mappings=[]
 for dep,name in [('juce','JUCE'),('signalsmithstretch','SignalsmithStretch'),('signalsmithlinear','SignalsmithLinear')]:
     cache=(build/'CMakeCache.txt').read_text()
