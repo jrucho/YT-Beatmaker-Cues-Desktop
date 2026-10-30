@@ -4,6 +4,9 @@
 #endif
 #include <cstdlib>
 #include <iostream>
+#if JUCE_MAC
+bool checkHostedKeyboardRouting();
+#endif
 
 int main(int argc,char** argv) {
     std::cout<<std::unitbuf;
@@ -146,8 +149,14 @@ int main(int argc,char** argv) {
         }
        #if !BEATMAKER_DESKTOP_BETA
         evaluate("document.querySelector('a[href=\"/cues\"]')?.click();true");pump(200);
-        if(!(bool)evaluate("(()=>{if(window.__JUCE__.initialisationData.hostedPlugin?.[0]!==true||window.__pluginHosted!==true)return false;const p=window.__pluginStores.player,c=window.__pluginStores.cues;const snapshot=()=>{const s=p.getState();return JSON.stringify({shuffle:s.shuffle,repeat:s.repeat,volume:s.volume,muted:s.muted,loop:s.loop,cues:c.getState().cues});};const before=snapshot();for(const key of [...'awsedftgzhjikol0123456789',' ','ArrowLeft','ArrowUp','/','?']){if(!window.dispatchEvent(new KeyboardEvent('keydown',{key,code:/^[0-9]$/.test(key)?'Digit'+key:key===' '?'Space':'Key'+key.toUpperCase(),bubbles:true,cancelable:true})))return false;}return snapshot()===before;})()")){std::cerr<<"Hosted WebView captured DAW/player keyboard shortcuts\n";return 1;}
-        std::cout<<"PASS: native hosted flag disables player and pad keyboard shortcuts without cancelling DAW key events\n";
+        if(!(bool)evaluate("(()=>{if(window.__JUCE__.initialisationData.hostedPlugin?.[0]!==true||window.__pluginHosted!==true)return false;const p=window.__pluginStores.player,c=window.__pluginStores.cues;const snapshot=()=>{const s=p.getState();return JSON.stringify({shuffle:s.shuffle,repeat:s.repeat,volume:s.volume,muted:s.muted,loop:s.loop,cues:c.getState().cues});};const before=snapshot();for(const key of [...'awsedftgzhjikol',' ','ArrowLeft','ArrowUp','/','?']){if(!window.dispatchEvent(new KeyboardEvent('keydown',{key,code:key===' '?'Space':'Key'+key.toUpperCase(),bubbles:true,cancelable:true})))return false;}return snapshot()===before;})()")){std::cerr<<"Hosted WebView captured DAW/player keyboard shortcuts\n";return 1;}
+        const auto keyboardPadBefore=processor.padStates[0].load()>>1;
+        evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'1',code:'Digit1',bubbles:true,cancelable:true}));true");pump(50);
+        if((processor.padStates[0].load()>>1)!=keyboardPadBefore+1){std::cerr<<"Hosted number-key cue shortcut did not reach native playback exactly once\n";return 1;}
+        std::cout<<"PASS: hosted letter/transport isolation with number-key pads restored\n";
+       #if JUCE_MAC
+        if(!checkHostedKeyboardRouting())return 1;
+       #endif
         processor.importPadSample(0,15,juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));
         for(int i=0;i<100&&!(bool)evaluate("Boolean(document.querySelector('button[aria-label^=\"Pad 16: Sample\"]'))");++i)pump(50);
         if(!(bool)evaluate("Boolean(document.querySelector('button[aria-label^=\"Pad 16: Sample\"]'))")){std::cerr<<"Sample assignment did not reach the native WebView pad\n";return 1;}

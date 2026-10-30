@@ -373,7 +373,7 @@ try {
         panel:ui.panelOpen, drawer:ui.drawerOpen, shortcuts:ui.shortcutsOpen, theater:ui.theater, route:location.href });
     };
     const before = snapshot(), cancelled = [];
-    for (const key of [...'abcdefghijklmnopqrstuvwxyz-0123456789', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '/', '?']) {
+    for (const key of [...'abcdefghijklmnopqrstuvwxyz-', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '/', '?']) {
       for (const modifiers of [{}, {shiftKey:true}, {ctrlKey:true}]) {
         const event = new KeyboardEvent('keydown', {key, code:key === ' ' ? 'Space' : /^[0-9]$/.test(key) ? `Digit${key}` : `Key${key.toUpperCase()}`, bubbles:true, cancelable:true, ...modifiers});
         if (!window.dispatchEvent(event)) cancelled.push(key);
@@ -381,8 +381,17 @@ try {
     }
     return {before, after:snapshot(), cancelled};
   });
-  assert.equal(hostedKeys.after, hostedKeys.before, 'DAW keyboard notes, transport and numbers do not alter player/UI/cues in hosted mode');
+  assert.equal(hostedKeys.after, hostedKeys.before, 'DAW letter/transport keys do not alter player/UI/cues in hosted mode');
   assert.deepEqual(hostedKeys.cancelled, [], 'Hosted player never prevents DAW keyboard shortcuts');
+  await position(21.125);await page.keyboard.press('1');
+  await page.waitForFunction(()=>window.nativeFixture.position===5.125);
+  await position(18.75);await page.keyboard.press('3');
+  await page.waitForFunction(()=>window.fixture.cues.getState().cues[3]===18.75);
+  await position(24.125);await page.keyboard.press('Control+3');
+  await page.waitForFunction(()=>window.fixture.cues.getState().cues[3]===24.125);
+  await page.keyboard.press('Shift+4');
+  await page.waitForFunction(()=>window.fixture.cues.getState().cues[14]===24.125);
+  await page.evaluate(()=>{window.fixture.cues.getState().clearCue(3);window.fixture.cues.getState().clearCue(14);});
   await pad(1).tap();
   await page.waitForFunction(() => window.nativeFixture.calls.some(c => c.method === 'cue' && c.to === 5.125));
   await position(12);

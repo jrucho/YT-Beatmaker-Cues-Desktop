@@ -50,6 +50,26 @@
     backend.emitEvent('__juce__invoke', {name,params,resultId});
   });
   window.__pluginInvoke = invoke;
+  // Native Mac hosted editors route musical keyboard presses directly to the
+  // host responder. Tell that router when keys must instead stay in text/UI.
+  if(window.__pluginHosted){
+    let lastFocus='',queued=false;
+    const syncKeyboardFocus=()=>{
+      queued=false;
+      const active=document.activeElement;
+      const editing=!!document.querySelector('[role="dialog"]')||!!(active&&(active.isContentEditable||active.matches('input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),textarea,select,[role="textbox"],[role="combobox"]')));
+      const state={editing,padsActive:!!document.querySelector('.cue-pad-grid,.bm-pads')};
+      window.__pluginKeyboardFocus=state;
+      const encoded=JSON.stringify(state);if(encoded===lastFocus)return;
+      invoke('keyboardFocus',state).then(()=>{lastFocus=encoded;}).catch(console.error);
+    };
+    // WKWebView can defer native messages emitted during DOM mutation delivery.
+    // Send after that delivery and only deduplicate acknowledged native state.
+    const schedule=()=>{if(!queued){queued=true;setTimeout(syncKeyboardFocus,0);}};
+    document.addEventListener('focusin',schedule,true);document.addEventListener('focusout',schedule,true);
+    new MutationObserver(schedule).observe(document,{childList:true,subtree:true,attributes:true,attributeFilter:['role','contenteditable']});
+    document.addEventListener('DOMContentLoaded',schedule);schedule();
+  }
   if (window.__JUCE__.getAndroidUserScripts) {
     const applyPlatform = state => {
       const scale = window.devicePixelRatio || 1;

@@ -1,7 +1,8 @@
 # v1.0.4 downloads and source
 
 All exports are attached to the [v1.0.4 GitHub release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.4).
-The source is on `main`, the `release/1.0.4` branch, and tag `v1.0.4`.
+The refreshed source is on `main` and `release/1.0.4`; tag `v1.0.4` preserves the
+initial release. Asset build records identify the later plug-in keyboard refresh.
 Build artifacts live in GitHub Releases; this index keeps every app accessible from the main branch.
 
 ## Apps and plug-ins
@@ -22,6 +23,8 @@ The native standalone, plug-ins and mobile apps share the responsive cue/sample-
 Enable the music-note button beside MIDI, tap a pad and load a sample; disable editing to perform.
 Sample pads play one-shots and never mark/jump cues. Empty sample slots retain normal cue behavior.
 Hosted VST3/AU/AUv3 disable player keyboard shortcuts so the DAW can use those keys for MIDI/transport.
+Number-key pads remain active in focused plug-in editors. Mac hosted letter
+key-down/key-up routing avoids duplicate browser/native computer-MIDI paths.
 
 The full desktop studio contains the original stems/VJ/FX/sequencer/sidechain implementation.
 The native cue app is a separate, smaller edition. See [product lineup](official-product-lineup.md).

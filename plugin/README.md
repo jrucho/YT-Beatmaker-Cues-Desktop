@@ -16,8 +16,16 @@ tab bar and the wide sidebar. Audio stays in the same native engine across views
 The waveform spans the workspace above the banks: drag markers, double-click to
 erase, and Cmd/Ctrl-click to mark visually. In standalone apps, number keys mark
 empty pads and play saved cues; Cmd/Ctrl+number replaces marks. In hosted VST3/AU/
-AUv3 mode, player and pad keyboard shortcuts are disabled so the DAW retains its
-computer-keyboard MIDI and transport keys. Mouse/touch and MIDI still work.
+AUv3 mode, letter/player shortcuts are disabled so the DAW retains its
+computer-keyboard MIDI and transport keys. **Number keys remain active for pads**
+when the Cues workspace is focused: 1–9/0 for pads 1–10, Shift+1–6 for 11–16,
+Cmd/Ctrl+number to mark/replace. Sample pads always trigger their sample.
+Mac hosted editors route plain musical keys directly to the host responder once,
+including key-up, suppress held-key repeat and release held notes on focus loss
+or editor close. Text-entry fields/dialogs keep normal typing. This avoids the
+competing WebKit/native responder paths with Ableton Live's computer MIDI keyboard.
+The Cocoa host fixture verifies routing/timing; real Live acceptance remains a
+separate user check. Mouse/touch and external MIDI still work.
 Presets are directly visible outside
 the MIDI dialog. A rich, collapsible playlist dock uses the same song rows as the
 library. Full transport sits at the bottom above the four navigation buttons.

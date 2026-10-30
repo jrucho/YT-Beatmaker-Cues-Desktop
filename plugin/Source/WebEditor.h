@@ -1,6 +1,7 @@
 #pragma once
 #include "Processor.h"
 #include <juce_gui_extra/juce_gui_extra.h>
+#include "HostedKeyboard.h"
 
 class MobileWebEditor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
@@ -23,6 +24,7 @@ private:
     juce::MemoryInputStream webBytes;
     juce::ZipFile archive;
     juce::WebBrowserComponent browser;
+    std::unique_ptr<HostedKeyboard> hostedKeyboard;
     juce::ThreadPool requests{4};
     juce::ThreadPool storageWorker{1};
     std::shared_ptr<std::atomic<bool>> cancelled=std::make_shared<std::atomic<bool>>(false);

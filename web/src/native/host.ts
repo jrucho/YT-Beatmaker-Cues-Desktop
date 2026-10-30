@@ -5,5 +5,5 @@ declare global {
   }
 }
 
-/** Leave the computer keyboard to the DAW's transport and virtual MIDI keyboard. */
+/** Letter/transport shortcuts belong to the DAW; number-pad shortcuts stay active. */
 export const playerShortcutsEnabled = () => window.__pluginHosted !== true;

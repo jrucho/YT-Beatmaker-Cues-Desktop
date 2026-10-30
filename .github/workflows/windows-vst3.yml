@@ -4,12 +4,18 @@ on:
   push:
     branches: ['build/windows-vst3-*']
   workflow_dispatch:
+    inputs:
+      native_only:
+        description: Build native plug-ins/standalone only; retain existing full desktop installer
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   desktop-studio:
+    if: ${{ !inputs.native_only }}
     runs-on: windows-latest
     timeout-minutes: 30
     steps:

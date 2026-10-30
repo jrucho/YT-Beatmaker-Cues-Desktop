@@ -2,9 +2,15 @@
 
 ## 1.0.4
 
+### Plug-in keyboard refresh
+
+- Restored number-key pads in focused VST3/AU editors, retaining the existing standalone shortcuts. Letter/player shortcuts remain disabled in hosted mode.
+- Added direct Mac hosted key-down/key-up routing to the host responder, with auto-repeat suppression and note-release cleanup on focus loss/editor close. Number pads use one native trigger path; text fields keep typing. A Cocoa host/WebView fixture verifies one event pair and sample-offset MIDI playback; Ableton Live hardware/user acceptance is pending.
+- Refreshed native Mac/Windows archives, portable projects and source in the existing v1.0.4 release. The original v1.0.4 tag and retained mobile/full-studio binaries keep their original baseline; build records identify the refreshed source separately.
+
 - Released the native cue standalone for Mac (universal) and Windows x64 alongside AU/VST3, native Android, and an unsigned iOS app with embedded AUv3. Full desktop studio installers remain separately labeled for Mac and Windows.
 - Added per-pad sample imports on native desktop/mobile: 32-voice one-shot playback, MIDI timing/velocity, app-local retained files and session persistence. Sample pads never mark/jump cues; unassigned pads retain normal cue behavior.
-- Disabled player and pad keyboard shortcuts in hosted VST3/AU/AUv3 mode so DAW computer-keyboard MIDI and transport keys remain available. Standalone shortcuts remain active.
+- Disabled letter/player keyboard shortcuts in hosted VST3/AU/AUv3 mode so DAW computer-keyboard MIDI and transport keys remain available. Number-pad and standalone shortcuts remain active.
 - Unified portrait/landscape native cue layouts with real waveform editing, a rich playlist dock, bottom transport/navigation and whole-number pitch/speed values.
 - Fixed Android browsing-player safe-area placement and the one-pixel native window edge; imported samples use document-provider streams rather than inaccessible file paths.
 - Added on-demand Android AAC decoding, rate-transition smoothing and Windows multi-instance decoder-cache locking. Verified uncached next-track playback with the Android emulator screen off.

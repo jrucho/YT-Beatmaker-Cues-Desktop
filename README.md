@@ -136,7 +136,7 @@ Installers are provided for macOS Apple Silicon/Intel, Windows x64 and Linux x64
 
 ## Build from source
 
-Complete [v1.0.4 source ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.4/Beatmaker-Cues-Source-1.0.4.zip), [source TAR.GZ](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.4/Beatmaker-Cues-Source-1.0.4.tar.gz), and [native corresponding source with pinned dependencies](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.4/Beatmaker-Cues-Plugin-Source-1.0.4.zip) are attached to the release. `main`, `release/1.0.4` and tag `v1.0.4` identify the release source. [Detailed build instructions](docs/build-from-source.md).
+Complete [v1.0.4 source ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.4/Beatmaker-Cues-Source-1.0.4.zip), [source TAR.GZ](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.4/Beatmaker-Cues-Source-1.0.4.tar.gz), and [native corresponding source with pinned dependencies](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.4/Beatmaker-Cues-Plugin-Source-1.0.4.zip) are attached to the release. `main` and `release/1.0.4` contain the plug-in keyboard refresh; tag `v1.0.4` preserves the initial release. Per-asset build records identify their source. [Detailed build instructions](docs/build-from-source.md).
 
 Requires **Node.js 22.19+** (Node 24 recommended) and **pnpm 10**. Build each installer on its target operating system; GitHub Actions builds all three platforms.
 

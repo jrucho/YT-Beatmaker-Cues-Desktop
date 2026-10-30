@@ -1,6 +1,7 @@
 # Beatmaker Cues 1.0.4
 
-Source is available on `main`, `release/1.0.4` and tag `v1.0.4`.
+Refreshed source is available on `main` and `release/1.0.4`. Tag `v1.0.4` preserves
+the initial release baseline; attached source/build records identify the keyboard refresh.
 See [all exports](downloads-1.0.4.md) and the [release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.4).
 This release covers Mac, Windows, Android and iOS. The complete source includes
 the other development targets; Linux installers remain at v1.0.3.
@@ -27,8 +28,16 @@ sample restores normal cue behavior. Imports are retained in managed media
 storage; assignments survive restarts and DAW recall. The engine supports 32 voices
 and a 128 MiB decoded sample budget, with no callback loading/allocation.
 
-Hosted VST3/AU/AUv3 disable player and pad keyboard shortcuts so the DAW can use
-computer-keyboard MIDI/transport keys. Standalone shortcuts remain active.
+**Plug-in keyboard refresh:** focused VST3/AU windows again accept number-key pad
+shortcuts (1–9/0, Shift+1–6, Cmd/Ctrl+number to mark). Hosted letter/player shortcuts
+remain disabled for DAW MIDI/transport. Standalone shortcuts remain active.
+Mac hosted editors route musical key-down/key-up once to the host responder,
+suppress auto-repeat, and release outstanding keys on focus loss/editor close.
+Number pads use one native path, and text fields/dialogs retain typing.
+A real Cocoa host/WebView fixture checks duplicate/release handling and MIDI sample
+offsets; the specific Ableton Live installation still needs user confirmation.
+The release manifest distinguishes refreshed native/source/project exports from
+retained mobile/full-studio binaries at the original v1.0.4 source baseline.
 The shared native UI has real waveform editing, a rich playlist dock, bottom
 transport/navigation, directly visible SP-404 presets and whole-number rate controls.
 Android's browsing player uses native bottom insets, and the bright right-edge
@@ -91,5 +100,4 @@ The iOS main app and plug-in standalone/AUv3 were built and updated in place on
 an iPhone 17 Pro. Physical Lock Screen/headset acceptance and entitled App Group
 sharing still require device validation. No claim of complete native routing
 parity or universal DAW/device approval is made by this release. The latest
-sample-pad iOS build is packaged; installing it on the previously connected phone
-was blocked by device availability.
+sample-pad iOS build was subsequently installed and launched on the user's iPhone.

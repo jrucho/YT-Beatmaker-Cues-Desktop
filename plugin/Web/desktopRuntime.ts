@@ -76,7 +76,8 @@ export async function loadBeatmaker() {
   useCueStore.subscribe((state,previous)=>{mirror();notify();if(state.bank!==previous.bank&&!syncing){syncing=true;try{window.dispatchEvent(new CustomEvent('beatmaker-bank',{detail:state.bank}));}finally{syncing=false;}}});
   usePlayer.subscribe(notify);
   window.addEventListener('keydown',event=>{
-    if(host.__pluginHosted||!host.musikeBeatmakerHost?.active||event.repeat||(event.target as HTMLElement)?.closest('input,textarea,select,[role=dialog]'))return;
+    if(!host.musikeBeatmakerHost?.active||event.repeat||(event.target as HTMLElement)?.closest('input,textarea,select,[role=dialog]'))return;
+    if(host.__pluginHosted&&!/^[0-9]$/.test(event.key))return;
     try {if(event.code==='Space'){event.preventDefault();usePlayer.getState().toggle();}
       else if(/^[0-9]$/.test(event.key)){event.preventDefault();host.musikeBeatmakerEngine.cue(event.key,event.shiftKey);}
       else if(event.key.toLowerCase()==='i')usePlayer.getState().setLoopFrom();else if(event.key.toLowerCase()==='o')usePlayer.getState().setLoopTo();}

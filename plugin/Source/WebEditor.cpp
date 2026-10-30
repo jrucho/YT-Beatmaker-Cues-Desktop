@@ -53,10 +53,11 @@ MobileWebEditor::MobileWebEditor(CueProcessor& processor, bool offline)
     engine.openEditors.fetch_add(1);
     previousRestoreRevision=engine.restoreRevision.load();
     addAndMakeVisible(browser);
+    if(!standalone&&engine.wrapperType!=juce::AudioProcessor::wrapperType_Undefined)hostedKeyboard=createHostedKeyboard(engine,*this);
     browser.goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
     startTimerHz(60);
 }
-MobileWebEditor::~MobileWebEditor(){stopTimer();cancelled->store(true);requests.removeAllJobs(true,-1);storageWorker.removeAllJobs(false,-1);engine.openEditors.fetch_sub(1);}
+MobileWebEditor::~MobileWebEditor(){hostedKeyboard.reset();stopTimer();cancelled->store(true);requests.removeAllJobs(true,-1);storageWorker.removeAllJobs(false,-1);engine.openEditors.fetch_sub(1);}
 void MobileWebEditor::parentHierarchyChanged(){
    #if JUCE_IOS || JUCE_ANDROID
     // Logical-to-physical rounding may leave the last device pixel to the JUCE
@@ -90,6 +91,8 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withUserScript(juce::String::fromUTF8(MobileWebAssets::bridge_js,MobileWebAssets::bridge_jsSize))
         .withResourceProvider([this](const auto& path){return resource(path);})
         .withNativeFunction("audio",[this](const auto& args,auto complete){complete(audio(args[0]));})
+        .withNativeFunction("keyboardFocus",[this](const auto& args,auto complete){if(hostedKeyboard&&!args.isEmpty())hostedKeyboard->setUiState((bool)args[0]["editing"],(bool)args[0]["padsActive"]);complete(true);})
+        .withNativeFunction("keyboardDiagnostics",[this](const auto&,auto complete){complete(hostedKeyboard?hostedKeyboard->diagnostics():juce::var{});})
         .withNativeFunction("store",[this](const auto& args,auto complete){
             if(engine.backgroundPlayback.load()||uiStateIsStale()){complete(true);return;}
             engine.setWebState(args[0].toString());

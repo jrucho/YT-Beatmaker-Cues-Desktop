@@ -15,7 +15,6 @@ import { CUE_BANKS, useCueStore } from "../mobile/cueStore";
 import { midi, midiAvailable, type MidiDevice, type MidiMessage } from "../native/midi";
 import { CONTROLLER_PRESETS, mapControllerMessage, readControllerPreset, saveControllerPreset } from "../native/controllerMapping";
 import { padFeedback, usePadFeedback } from "../mobile/padFeedback";
-import { playerShortcutsEnabled } from "../native/host";
 import { changePadSample, hasPadSample, padSamplesAvailable, playPadSample, refreshPadSamples, usePadSamples, type PadSample } from "../mobile/padSamples";
 import { toast } from "../stores/ui";
 
@@ -93,7 +92,6 @@ export default function Cues() {
   }, []);
 
   useEffect(()=>{
-    if(!playerShortcutsEnabled())return;
     const onKey=(event:KeyboardEvent)=>{
       const target=event.target;
       if(event.repeat||event.altKey||target instanceof HTMLElement&&(target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)||!!target.closest('[role="dialog"]'))||document.querySelector('[role="dialog"]'))return;
