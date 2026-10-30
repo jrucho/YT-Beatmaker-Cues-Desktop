@@ -13,7 +13,7 @@ version=json.loads((root.parent/'package.json').read_text())['version']
 release=Path(args.output).resolve() if args.output else root.parent/'release';release.mkdir(parents=True,exist_ok=True)
 stage=tempfile.TemporaryDirectory(prefix='beatmaker-xcode-export-')
 output=Path(stage.name)/(f'Beatmaker-Cues-Plugin-Xcode-{version}'+('-macOS' if args.platform=='macOS' else ''));output.mkdir()
-ignore=shutil.ignore_patterns('xcuserdata','.DS_Store','__pycache__','.git','build','packages')
+ignore=shutil.ignore_patterns('xcuserdata','.DS_Store','__pycache__','.git','build','packages','*.keystore','*.jks','*.mobileprovision','keystore.properties')
 for name in ['Source','Assets','Web','Scripts','Tests','README.md','CMakeLists.txt','AGPL-3.0.txt']:
     source=root/name
     if source.is_dir():shutil.copytree(source,output/name,dirs_exist_ok=True,ignore=ignore)

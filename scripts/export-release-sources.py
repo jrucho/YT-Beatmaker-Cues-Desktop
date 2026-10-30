@@ -74,16 +74,24 @@ for repository, directory in [('juce-framework/JUCE', 'JUCE'), ('Signalsmith-Aud
     with urllib.request.urlopen(url, timeout=120) as response:
         payload = response.read()
     pins.append({'repository': repository, 'commit': commit, 'downloadSha256': hashlib.sha256(payload).hexdigest()})
+    omitted = []
     with tarfile.open(fileobj=io.BytesIO(payload), mode='r:gz') as dependency, zipfile.ZipFile(plugin_archive, 'a') as archive:
         for member in dependency.getmembers():
             relative = PurePosixPath(member.name).parts[1:]
             if not relative or '..' in relative:
+                continue
+            # Upstream JUCE ships demo Android signing assets. They are unrelated
+            # to these native targets and are not part of the public app export.
+            if member.name.endswith(('.jks', '.keystore', '.mobileprovision', 'keystore.properties')):
+                omitted.append('/'.join(relative))
                 continue
             destination = plugin_name + '/Frameworks/' + directory + '/' + '/'.join(relative)
             if member.isfile():
                 add(archive, destination, dependency.extractfile(member).read(), bool(member.mode & 0o111))
             elif member.issym():
                 add(archive, destination, member.linkname.encode(), symlink=True)
+    if omitted:
+        pins[-1]['omittedExampleSigningAssets'] = omitted
 metadata = output / f'Source-Build-{version}.json'
 metadata.write_text(json.dumps({'version': version, 'sourceCommit': sha, 'workingTreeDirty': False, 'dependencies': pins}, indent=2) + '\n')
 files = [output / (name + '.zip'), output / (name + '.tar.gz'), plugin_archive, metadata]
