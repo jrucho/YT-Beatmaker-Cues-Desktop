@@ -54,6 +54,61 @@ static void effectRoutingTests(){
     std::cout<<"PASS: native effect kernel host-bus placement/stereo, validation, compatible state recall and exact bypass; no callback allocation\n";
 }
 
+static void padSampleTests(){
+    const auto folder=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("beatmaker-pad-samples",{});folder.createDirectory();
+    struct Cleanup{juce::File folder;~Cleanup(){folder.deleteRecursively();}}cleanup{folder};
+    const auto source=folder.getChildFile("Stereo sample.wav");
+    {juce::WavAudioFormat format;std::unique_ptr<juce::AudioFormatWriter> writer(format.createWriterFor(source.createOutputStream().release(),24000,2,24,{},0));check(writer!=nullptr,"Cannot create pad fixture");
+        juce::AudioBuffer<float> data(2,12000);for(int i=0;i<12000;++i){data.setSample(0,i,.2f);data.setSample(1,i,-.1f);}check(writer->writeFromAudioSampleBuffer(data,0,12000),"Cannot write pad fixture");}
+    CueProcessor processor;processor.prepareToPlay(48000,512);
+    processor.importPadSample(0,0,source);processor.importPadSample(1,1,source);
+    check(processor.hasPadSample(0,0)&&processor.hasPadSample(1,1)&&!processor.hasPadSample(0,1),"Sample assignments leaked between banks/pads");
+    juce::AudioBuffer<float> audio(2,512);juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1,48,(juce::uint8)127),127);renderChecked(processor,audio,midi);
+    check(audio.getMagnitude(0,0,127)==0&&std::abs(audio.getSample(0,511)-.16f)<1e-5f&&std::abs(audio.getSample(1,511)+.08f)<1e-5f,"Sample MIDI offset, stereo, resampling or output gain failed");
+    check(!processor.playing.load()&&processor.playhead.load()==0&&processor.getCue(0,0)<0,"Sample without a song changed transport or marked a cue");
+    midi.addEvent(juce::MidiMessage::noteOn(2,49,(juce::uint8)64),0);renderChecked(processor,audio,midi);
+    check(audio.getSample(0,511)>.23f,"Independent bank samples did not overlap with MIDI velocity");
+    for(int i=0;i<80;++i){midi.addEvent(juce::MidiMessage::noteOn(1,48,(juce::uint8)100),i%128);renderChecked(processor,audio,midi);}
+    midi.addEvent(juce::MidiMessage::allSoundOff(1),0);renderChecked(processor,audio,midi);check(audio.getMagnitude(0,64,448)==0,"All Sound Off did not stop sample voices");
+    bool rejected=false;try{processor.importPadSample(0,0,folder.getChildFile("missing.wav"));}catch(const std::exception&){rejected=true;}
+    check(rejected&&processor.hasPadSample(0,0),"Failed replacement discarded the existing sample");
+    processor.installSampleForTest(sample());renderChecked(processor,audio,midi);processor.submit({CueProcessor::Action::seek,0,0,2.0});renderChecked(processor,audio,midi);
+    processor.overwrite.store(true);midi.addEvent(juce::MidiMessage::noteOn(1,48,(juce::uint8)127),0);renderChecked(processor,audio,midi);
+    check(processor.getCue(0,0)<0&&processor.playhead.load()==2.0&&!processor.playing.load(),"Sample pad in overwrite mode marked/jumped the song");
+    processor.submit({CueProcessor::Action::markNext});renderChecked(processor,audio,midi);check(processor.getCue(0,0)<0&&processor.getCue(0,1)==2.0,"Mark Next did not skip the sample pad");
+    juce::MemoryBlock saved;processor.getStateInformation(saved);source.deleteFile();
+    CueProcessor recalled;recalled.prepareToPlay(48000,512);recalled.setStateInformation(saved.getData(),(int)saved.getSize());
+    for(int i=0;i<1000;++i){const auto pads=recalled.padSamples();if(pads.size()==2&&(bool)pads[0]["ready"]&&(bool)pads[1]["ready"])break;juce::Thread::sleep(2);}
+    check(recalled.padSamples().size()==2&&(bool)recalled.padSamples()[0]["ready"],"DAW recall lost app-local samples after the original file was removed");
+    renderChecked(recalled,audio,midi);midi.addEvent(juce::MidiMessage::noteOn(1,48,(juce::uint8)127),0);renderChecked(recalled,audio,midi);check(audio.getMagnitude(0,512)>.1f,"Recalled sample did not render");
+    processor.removePadSample(0,0);renderChecked(processor,audio,midi);check(audio.getMagnitude(0,64,448)==0,"Removing a sample did not stop its existing voices");
+    processor.submit({CueProcessor::Action::pad,0,0,0,true});renderChecked(processor,audio,midi);check(processor.getCue(0,0)==2.0,"Removing a sample did not restore normal cue marking");
+    auto legacy=juce::AudioProcessor::getXmlFromBinary(saved.getData(),(int)saved.getSize());legacy->deleteAllChildElementsWithTagName("PadSamples");juce::MemoryBlock old;juce::AudioProcessor::copyXmlToBinary(*legacy,old);
+    recalled.setStateInformation(old.getData(),(int)old.getSize());check(!recalled.hasPadSample(0,0),"Old DAW sessions inherited sample assignments");
+    std::cout<<"PASS: native sample pads without a song, sample-accurate MIDI, stereo/rate/velocity/polyphony, no cue overwrite, cue fallback, retained files, isolated state recall and allocation-free rendering\n";
+}
+
+static void rateTransitionTests(){
+    CueProcessor processor;processor.prepareToPlay(48000,512);
+    auto fixture=std::make_unique<CueProcessor::Sample>();fixture->rate=48000;fixture->path="demo:";fixture->audio.setSize(2,48000*8);
+    for(int i=0;i<fixture->audio.getNumSamples();++i)for(int c=0;c<2;++c)fixture->audio.setSample(c,i,.5f*std::sin(juce::MathConstants<double>::twoPi*80*i/48000.0));
+    processor.installSampleForTest(std::move(fixture));juce::AudioBuffer<float> audio(2,512);juce::MidiBuffer midi;
+    renderChecked(processor,audio,midi);processor.submit({CueProcessor::Action::play});
+    for(int i=0;i<40;++i)renderChecked(processor,audio,midi);
+    float previous=audio.getSample(0,511),largest=0;
+    struct Change{float rate,tuning;bool stretch;};
+    for(const auto change:{Change{1.4f,0,true},Change{.7f,5,true},Change{1,0,true},Change{1.8f,0,false},Change{.6f,0,false},Change{1,0,true}}){
+        float transitionLargest=0;int edgeAt=0;
+        processor.preservePitch.store(change.stretch);processor.semitones.store(change.tuning);
+        auto* speed=processor.parameters.getParameter("speed");speed->setValueNotifyingHost(speed->convertTo0to1(change.rate));
+        for(int block=0;block<40;++block){renderChecked(processor,audio,midi);for(int i=0;i<512;++i){const auto value=audio.getSample(0,i);check(std::isfinite(value),"Rate transition produced non-finite audio");if(std::abs(value-previous)>transitionLargest){transitionLargest=std::abs(value-previous);edgeAt=block*512+i;}largest=juce::jmax(largest,std::abs(value-previous));previous=value;}}
+        std::cout<<"Rate transition "<<change.rate<<" tune "<<change.tuning<<" stretch "<<change.stretch<<" largest step "<<transitionLargest<<" at "<<edgeAt<<"\n";
+    }
+    check(largest<.1f,"Speed/stretch transition introduced a click-like discontinuity");
+    std::cout<<"PASS: smoothed whole-percent speed/stretch/tuning transitions; largest sample step "<<largest<<"; no callback allocation\n";
+}
+
 static void fxGraphRoutingTests(){
     CueProcessor processor;processor.prepareToPlay(48000,512);auto fixture=sample();fixture->path="demo:";processor.installSampleForTest(std::move(fixture));
     juce::AudioBuffer<float> audio(2,512);juce::MidiBuffer midi;renderChecked(processor,audio,midi);processor.submit({CueProcessor::Action::play});renderChecked(processor,audio,midi);
@@ -203,6 +258,9 @@ static void longTrackTests(){
     const double frequency=crossings*48000.0/frames;
     check(std::abs(frequency-880)<35,"Paged pitch/speed processing changed the expected frequency");
     processor.semitones.store(0);processor.parameters.getParameter("speed")->setValueNotifyingHost(processor.parameters.getParameter("speed")->convertTo0to1(1.0f));
+    // The exact-PCM cache checks start after the intentional rate/tuning ramp
+    // and stretch pipeline have settled; transitions are checked separately.
+    for(int i=0;i<20;++i)renderChecked(processor,output,midi);
     processor.setNonRealtime(true);
     for(int jump=0;jump<12;++jump){
         const double target=jump*49.123;
@@ -435,6 +493,8 @@ int main() {
             std::cout<<"PASS: obsolete prefetch cancels without retries or publishing a partial cache\n";
         }
         effectRoutingTests();
+        padSampleTests();
+        rateTransitionTests();
         fxGraphRoutingTests();
         remoteTransportTests();
         longTrackTests();

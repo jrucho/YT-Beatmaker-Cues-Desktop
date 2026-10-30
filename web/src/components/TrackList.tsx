@@ -117,14 +117,15 @@ interface ListProps {
   playlistId?: string;
   showAlbum?: boolean;
   header?: boolean;
+  onSelect?: (index:number)=>void;
 }
 
-export function TrackList({ tracks, context, playlistId, showAlbum: albumWanted = true, header = true }: ListProps) {
+export function TrackList({ tracks, context, playlistId, showAlbum: albumWanted = true, header = true, onSelect }: ListProps) {
   const playList = usePlayer((s) => s.playList);
   const t = useT();
   // Pages ask for the album column where it makes sense; Settings can turn it off everywhere.
   const showAlbum = useAppearance((s) => s.albumColumn) && albumWanted;
-  const onPlay=useCallback((index:number)=>playList(context??tracks,index),[playList,context,tracks]);
+  const onPlay=useCallback((index:number)=>onSelect?onSelect(index):playList(context??tracks,index),[playList,context,tracks,onSelect]);
   return (
     <div>
       {header && (

@@ -1,4 +1,4 @@
-import { DatabaseIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Cover, type CoverKind } from "../components/Cover";
@@ -8,10 +8,8 @@ import { PageHeader } from "../components/Page";
 import { useT } from "../i18n";
 import { paths } from "../lib/routes";
 import type { Playlist, Track } from "../lib/types";
-import { IconButton } from "../components/IconButton";
 import { useLibrary } from "../stores/library";
 import { useUi } from "../stores/ui";
-import { desktop } from "../lib/desktop";
 
 function Entry({ to, name, kind, tracks, sub, onDelete, deleteLabel }: { to: string; name: string; kind: CoverKind; tracks: Track[]; sub: string; onDelete?: () => void; deleteLabel?: string }) {
   return (
@@ -50,7 +48,6 @@ export default function Library() {
   const { favorites, playlists, history, createPlaylist, deletePlaylist } = useLibrary();
   const [creating, setCreating] = useState(false);
   const [pending, setPending] = useState<Playlist | null>(null);
-  const setSettingsOpen = useUi((s) => s.setSettingsOpen);
   const navigate = useNavigate();
   const t = useT();
 
@@ -65,13 +62,6 @@ export default function Library() {
         title={t.nav.library}
         actions={
           <>
-          {desktop?.importAudio && <button type="button" className="rounded-full bg-surface-2 px-3 py-2 text-sm" onClick={async()=>{
-            try{const track=await desktop?.importAudio?.();if(track)await useLibrary.getState().addFavorites([track]);}
-            catch(error){useUi.getState().toast((error as Error).message,'error');}
-          }}>Import audio</button>}
-          <IconButton label={t.library.backup} onClick={() => setSettingsOpen(true)}>
-            <DatabaseIcon size={20} />
-          </IconButton>
           <button
             type="button"
             onClick={() => setCreating(true)}

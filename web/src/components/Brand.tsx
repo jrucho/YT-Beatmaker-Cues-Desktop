@@ -19,7 +19,7 @@ export function Logo({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-1.5", className)}>
       <LogoMark className="size-7 text-[#c3ec52]" />
-      <span className="text-[17px] font-semibold tracking-tight">musike</span>
+      <span className="text-[17px] font-semibold tracking-tight">{document.documentElement.hasAttribute('data-plugin-editor') ? 'Beatmaker Cues' : 'musike'}</span>
     </span>
   );
 }

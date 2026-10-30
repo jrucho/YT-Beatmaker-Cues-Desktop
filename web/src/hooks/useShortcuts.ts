@@ -5,15 +5,17 @@ import { selectCurrent, usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { useUi } from "../stores/ui";
 import { isTvMode } from "../tv/tvMode";
+import { playerShortcutsEnabled } from "../native/host";
 
 const isTyping = (el: EventTarget | null) =>
-  el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+  el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || !!el.closest('[role="slider"]'));
 
 /** Desktop keyboard shortcuts. Listed in the "?" dialog. */
 export function useShortcuts() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!playerShortcutsEnabled()) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
       if (useUi.getState().menu || useUi.getState().addToPlaylist) return;

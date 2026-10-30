@@ -1,0 +1,61 @@
+name: Windows VST3 build
+
+on:
+  push:
+    branches: ['build/windows-vst3-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-vst3:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - name: Windows WebView2 SDK
+        run: nuget install Microsoft.Web.WebView2 -Version 1.0.3485.44 -OutputDirectory plugin/build-deps -NonInteractive
+      - name: AAC decoding dependency
+        shell: pwsh
+        run: if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg --yes --no-progress }
+      - name: Build shared cue interface
+        run: python plugin/Scripts/build_mobile_ui.py .
+      - name: Verify standalone shortcuts and DAW keyboard isolation
+        run: |
+          pnpm exec playwright install chromium
+          node scripts/check-android-cues.mjs
+      - name: Configure Windows x64
+        run: cmake -S plugin -B plugin/build-windows -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DJUCE_WEBVIEW2_PACKAGE_LOCATION="${{ github.workspace }}/plugin/build-deps"
+      - run: cmake --build plugin/build-windows --config Release --parallel 3
+      - name: Native engine and persistent library tests
+        run: ctest --test-dir plugin/build-windows -C Release --output-on-failure
+      - name: Real offline WebView and hosted keyboard check
+        shell: pwsh
+        run: '& plugin/build-windows/WebIntegration_artefacts/Release/WebIntegration.exe --shared-offline'
+      - name: Real VST3 MIDI, audio, state and editor check
+        shell: pwsh
+        run: '& plugin/build-windows/PluginProbe_artefacts/Release/PluginProbe.exe "plugin/build-windows/BeatmakerCues_artefacts/Release/VST3/Beatmaker Cues.vst3"'
+      - name: Verify installer
+        run: python plugin/Tests/InstallReleaseTests.py
+      - name: Package Windows binaries
+        run: python plugin/Scripts/package_release.py --build-dir plugin/build-windows --platform Windows --arch x64 --checks engine,persistence,concurrency,vst3-host,webview-offline,hosted-keyboard
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Beatmaker-Cues-Windows-x64
+          path: |
+            release/Beatmaker-Cues-Plug-ins-*-Windows-x64.zip
+            release/Beatmaker-Cues-Plugin-Standalone-*-Windows-x64.zip
+            release/Plugin-Build-*-Windows-x64.json
+            release/SHA256SUMS-Plugins-*-Windows-x64.txt
+          if-no-files-found: error

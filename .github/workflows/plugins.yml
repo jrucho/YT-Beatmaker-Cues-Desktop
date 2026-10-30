@@ -22,21 +22,21 @@ jobs:
             arch: universal
             edition: main
             beta: 'OFF'
-            product: Beatmaker Cues Plug-in
+            product: Beatmaker Cues
             ui_arg: ''
           - os: windows-latest
             platform: Windows
             arch: x64
             edition: main
             beta: 'OFF'
-            product: Beatmaker Cues Plug-in
+            product: Beatmaker Cues
             ui_arg: ''
           - os: ubuntu-24.04
             platform: Linux
             arch: x64
             edition: main
             beta: 'OFF'
-            product: Beatmaker Cues Plug-in
+            product: Beatmaker Cues
             ui_arg: ''
           - os: macos-15
             platform: macOS
@@ -112,6 +112,9 @@ jobs:
       - name: Native engine/library tests in Linux display server
         if: runner.os == 'Linux'
         run: xvfb-run -a ctest --test-dir plugin/build-release -C Release --output-on-failure
+      - name: Verify rename-safe native installer
+        # Installer checks use temporary directories, never the runner's real plug-ins.
+        run: python3 plugin/Tests/InstallReleaseTests.py
       - name: Install browser for original Web Audio reference comparisons
         run: pnpm exec playwright install chromium
       - name: Compare native FX with the original browser graph
@@ -206,7 +209,7 @@ jobs:
         with:
           name: native-standalone-Android-arm64
           path: |
-            release/Beatmaker-Cues-Plugin-Standalone-*-Android-arm64.apk
+            release/Beatmaker-Cues-*-Android-arm64.apk
             release/Plugin-Build-*-Android-arm64.json
             release/SHA256SUMS-Plugins-*-Android-arm64.txt
           if-no-files-found: error
@@ -246,7 +249,7 @@ jobs:
         with:
           name: native-auv3-ios
           path: |
-            release/Beatmaker-Cues-AUv3-*.ipa
+            release/Beatmaker-Cues-*-iOS-unsigned.ipa
             release/Beatmaker-Cues-Plugin-Xcode-*.zip
             release/AUv3-Build-*.json
             release/SHA256SUMS-AUv3-*.txt

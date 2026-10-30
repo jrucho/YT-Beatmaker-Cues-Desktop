@@ -10,17 +10,22 @@ const bundle = await build({
     contents: `
       import React from 'react';
       import { createRoot } from 'react-dom/client';
+      import { MemoryRouter } from 'react-router';
       import Cues from './src/views/Cues';
       import { usePlayer } from './src/player/player';
       import { useCueStore } from './src/mobile/cueStore';
-      window.fixture = { player: usePlayer, cues: useCueStore };
-      createRoot(document.getElementById('root')).render(<Cues />);
+      import { useUi } from './src/stores/ui';
+      import { useShortcuts } from './src/hooks/useShortcuts';
+      import { usePadSamples } from './src/mobile/padSamples';
+      window.fixture = { player: usePlayer, cues: useCueStore, ui: useUi, samples:usePadSamples };
+      function Keyboard() { useShortcuts(); return null; }
+      createRoot(document.getElementById('root')).render(<MemoryRouter><Keyboard /><Cues /></MemoryRouter>);
     `,
     resolveDir: fileURLToPath(new URL("../web", import.meta.url)),
     loader: "tsx",
   },
   bundle: true, write: false, format: "esm", platform: "browser", jsx: "automatic",
-  define: { __APP_VERSION__: '"test"', "process.env.NODE_ENV": '"development"' },
+  define: { __APP_VERSION__: '"test"', "process.env.NODE_ENV": '"development"', 'import.meta.env.VITE_TV': '"0"' },
 });
 const platform = process.env.MUSIKE_TEST_PLATFORM ?? "android";
 const server = createServer((req, res) => {
@@ -46,10 +51,22 @@ try {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript((platform) => {
+    window.__pluginHosted = new URL(location.href).searchParams.get('hosted') === '1';
     if (platform === "android") window.androidBridge = {};
     const listeners = {};
     window.emitMidi = message => listeners.MusikeMidi?.(message);
     window.nativeFixture = { calls: [], position: 0, sourceId: 0, queue: { tracks: [], index: 0, repeat: "off" }, eventsEnabled: true };
+    window.sampleFixture = [];
+    window.__pluginInvoke = async (name, request) => {
+      if(name === 'waveform') return {peaks:Array.from({length:1024},(_,i)=>.1+(i%20)/20),progress:1};
+      if(name === 'padSamples') return window.sampleFixture;
+      if(name !== 'padSample') throw Error(`Unexpected native method ${name}`);
+      window.nativeFixture.calls.push({method:'padSample',...request});
+      if(request.cmd === 'trigger') return true;
+      window.sampleFixture=window.sampleFixture.filter(p=>p.bank!==request.bank||p.pad!==request.pad);
+      if(request.cmd === 'load') window.sampleFixture.push({bank:request.bank,pad:request.pad,name:'Kick fixture',duration:.5,ready:true});
+      return window.sampleFixture;
+    };
     window.emitAudio = (event, data = {}) => {
       if (!window.nativeFixture.eventsEnabled) return;
       const payload = { sourceId: window.nativeFixture.sourceId, ...data };
@@ -153,6 +170,16 @@ try {
   await page.waitForFunction(() => document.querySelector('[aria-label^="Pad 1:"]')?.dataset.padState !== "pressed");
   assert.equal(await page.evaluate(() => window.nativeFixture.position), 5.125, "Cue lands on its saved fractional timestamp");
   assert.equal(await page.evaluate(() => window.nativeFixture.calls.filter(c => c.method === "setSource").length), loadCount, "Cue does not reload the track");
+  await position(17.25);
+  await page.keyboard.press('3');
+  await page.waitForFunction(()=>window.fixture.cues.getState().cues[3]===17.25);
+  await page.evaluate(()=>window.fixture.cues.getState().clearCue(3));
+  await page.keyboard.press('Meta+2');
+  await page.waitForFunction(()=>window.fixture.cues.getState().cues[2]===17.25);
+  await position(25);
+  await page.keyboard.press('2');
+  await page.waitForFunction(()=>window.nativeFixture.position===17.25);
+  await page.evaluate(()=>window.fixture.cues.getState().clearCue(2));
 
   await position(7.375, 7.1);
   await page.getByRole("button", { name: "Set IN", exact: true }).tap();
@@ -214,7 +241,7 @@ try {
   await page.waitForFunction(() => document.querySelector('[aria-label^="Pad 1:"]')?.dataset.padState !== "pressed");
   assert.equal(await page.evaluate(() => window.fixture.player.getState().status), "playing", "Note Off preserves one-shot cue playback");
 
-  const fader = page.getByRole("slider");
+  const fader = page.locator('input[type="range"]');
   await page.evaluate(() => window.fixture.player.getState().setSpeed(0));
   await fader.focus();
   await fader.press("ArrowRight");
@@ -289,7 +316,7 @@ try {
   await page.evaluate(() => window.fixture.player.getState().toggle());
   await page.waitForFunction(() => window.fixture.player.getState().status === "playing");
   assert.equal(await page.evaluate(() => window.nativeFixture.calls.find(c => c.method === "setSource")?.startAt), 23.75, "First Play after reopen loads the song at its saved position");
-  await page.getByLabel("MIDI controller preset", { exact: true }).selectOption("legacy12");
+  await page.getByLabel("Pad layout preset", { exact: true }).selectOption("legacy12");
   assert.equal(await page.getByRole("button", { name: /^Pad \d+: (?:Empty|\d)/ }).count(), 12, "Legacy preset displays twelve pads");
   assert(await pad(1).evaluate(button => button.parentElement.parentElement.classList.contains("grid-cols-3")), "Legacy mobile grid selects three-column layout");
   assert.deepEqual(await page.getByRole("button", { name: /^Pad \d+: (?:Empty|\d)/ }).evaluateAll(pads => pads.map(pad => Number(pad.getAttribute("aria-label").match(/^Pad (\d+)/)[1]))), Array.from({ length: 12 }, (_, i) => i + 1), "Legacy pads follow row-major order 1–3, 4–6, 7–9, 10–12");
@@ -303,14 +330,92 @@ try {
   await page.waitForFunction(() => window.fixture.cues.getState().bank === "I" && window.fixture.cues.getState().cues[1] === 31.25);
   await page.reload();
   await page.waitForFunction(() => window.fixture);
-  assert.equal(await page.getByLabel("MIDI controller preset", { exact: true }).inputValue(), "legacy12", "Controller preset survives reopening");
+  assert.equal(await page.getByLabel("Pad layout preset", { exact: true }).inputValue(), "legacy12", "Controller preset survives reopening");
   assert.equal(await page.getByRole("button", { name: /^Pad \d+: (?:Empty|\d)/ }).count(), 12, "Reopened legacy grid still has twelve pads");
-  await page.getByLabel("MIDI controller preset", { exact: true }).selectOption("sp404mkii-a");
+  await page.getByLabel("Pad layout preset", { exact: true }).selectOption("sp404mkii-a");
   await page.evaluate(() => window.fixture.cues.getState().setBank("H"));
   assert.equal(await page.getByRole("button", { name: /^Pad \d+: (?:Empty|\d)/ }).count(), 16);
   assert.equal(await page.evaluate(() => window.fixture.cues.getState().cues[13]), 44, "Hidden extended cues survive legacy mode");
+  await page.evaluate(()=>window.fixture.player.getState().playList([{id:'testaudio00',title:'First playlist song',artist:'Test',duration:60,kind:'song',thumb:'',art:''},{id:'testaudio01',title:'Second playlist song',artist:'Test',duration:60,kind:'song',thumb:'',art:''}]));
+  await page.getByRole('button',{name:'Toggle playlist',exact:true}).click();
+  assert.equal(await page.getByRole('region',{name:'Playlist songs',exact:true}).locator('li').count(),2);
+  await page.getByRole('region',{name:'Playlist songs',exact:true}).getByRole('button',{name:'Play Second playlist song',exact:true}).click();
+  await page.waitForFunction(()=>window.fixture.player.getState().index===1);
+  assert.equal(await page.evaluate(()=>window.fixture.player.getState().queue.length),2,'Song selection retains the selected playlist');
+  await page.addStyleTag({content:'.cue-waveform{position:relative;width:360px;height:80px}.cue-waveform canvas{width:100%;height:80px}.cue-wave-marker{position:absolute;top:0;height:70px;width:16px;transform:translateX(-50%)}'});
+  await page.evaluate(()=>{window.__pluginInvoke=async()=>({peaks:Array.from({length:1024},(_,i)=>.1+(i%20)/20),progress:1});window.fixture.cues.getState().setBank('A');window.fixture.cues.getState().setCue(1,10);window.fixture.cues.getState().setCue(2,20);});
+  await page.getByRole('slider',{name:'Move cue A1',exact:true}).waitFor();
+  const wave=await page.getByLabel('Song waveform',{exact:true}).boundingBox();
+  const marker=await page.getByRole('slider',{name:'Move cue A1',exact:true}).boundingBox();
+  await page.mouse.move(marker.x+marker.width/2,marker.y+30);await page.mouse.down();await page.mouse.move(wave.x+wave.width/2,wave.y+30);await page.mouse.up();
+  await page.waitForFunction(()=>Math.abs(window.fixture.cues.getState().cues[1]-30)<.1);
+  await page.getByRole('slider',{name:'Move cue A2',exact:true}).dblclick();
+  assert.equal(await page.evaluate(()=>window.fixture.cues.getState().cues[2]),undefined,'Double-click erases a waveform cue');
+  assert(await page.evaluate(() => {
+    window.fixture.ui.setState({menu:null,addToPlaylist:null});
+    const before = window.fixture.player.getState().shuffle;
+    window.dispatchEvent(new KeyboardEvent('keydown', {key:'s',code:'KeyS',bubbles:true,cancelable:true}));
+    return window.fixture.player.getState().shuffle !== before;
+  }), 'Standalone keeps player keyboard shortcuts');
+
+  await page.goto(`http://127.0.0.1:${server.address().port}/?hosted=1`);
+  await page.waitForFunction(() => window.fixture);
+  await page.evaluate(() => window.fixture.player.getState().playList([
+    { id: 'hostedtest0', title: 'DAW keyboard fixture', artist: 'Test', duration: 60, kind: 'song', thumb: '', art: '' },
+  ]));
+  await page.waitForFunction(() => window.fixture.player.getState().status === 'playing');
+  await page.evaluate(() => { window.fixture.cues.getState().setBank('A'); window.fixture.cues.getState().setCue(1, 5.125); });
+  const hostedKeys = await page.evaluate(() => {
+    const snapshot = () => {
+      const p = window.fixture.player.getState(), ui = window.fixture.ui.getState();
+      return JSON.stringify({ shuffle:p.shuffle, repeat:p.repeat, muted:p.muted, volume:p.volume, position:p.position,
+        status:p.status, preferVideo:p.preferVideo, loop:p.loop, cues:window.fixture.cues.getState().cues,
+        panel:ui.panelOpen, drawer:ui.drawerOpen, shortcuts:ui.shortcutsOpen, theater:ui.theater, route:location.href });
+    };
+    const before = snapshot(), cancelled = [];
+    for (const key of [...'abcdefghijklmnopqrstuvwxyz-0123456789', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '/', '?']) {
+      for (const modifiers of [{}, {shiftKey:true}, {ctrlKey:true}]) {
+        const event = new KeyboardEvent('keydown', {key, code:key === ' ' ? 'Space' : /^[0-9]$/.test(key) ? `Digit${key}` : `Key${key.toUpperCase()}`, bubbles:true, cancelable:true, ...modifiers});
+        if (!window.dispatchEvent(event)) cancelled.push(key);
+      }
+    }
+    return {before, after:snapshot(), cancelled};
+  });
+  assert.equal(hostedKeys.after, hostedKeys.before, 'DAW keyboard notes, transport and numbers do not alter player/UI/cues in hosted mode');
+  assert.deepEqual(hostedKeys.cancelled, [], 'Hosted player never prevents DAW keyboard shortcuts');
+  await pad(1).tap();
+  await page.waitForFunction(() => window.nativeFixture.calls.some(c => c.method === 'cue' && c.to === 5.125));
+  await position(12);
+  await page.evaluate(() => window.emitMidi({type:'noteon',channel:0,note:48,velocity:100}));
+  await page.waitForFunction(() => window.nativeFixture.position === 5.125);
+  await page.getByRole('button',{name:'Manage pad samples',exact:true}).click();
+  await pad(2).tap();
+  await page.getByRole('button',{name:'Load sample…',exact:true}).click();
+  const samplePad = page.getByRole('button',{name:'Pad 2: Sample Kick fixture',exact:true});
+  await samplePad.waitFor();
+  await page.getByRole('button',{name:'Manage pad samples',exact:true}).click();
+  await position(19.25);
+  await samplePad.tap();
+  await page.waitForFunction(() => window.nativeFixture.calls.some(c=>c.method==='padSample'&&c.cmd==='trigger'&&c.pad===2));
+  assert.equal(await page.evaluate(()=>window.nativeFixture.position),19.25,'Sample pad does not seek the song');
+  assert.equal(await page.evaluate(()=>window.fixture.cues.getState().cues[2]),undefined,'Sample pad never marks a cue');
+  await page.locator('.cue-overwrite-row>button:last-child').click();
+  await page.evaluate(()=>window.emitMidi({type:'noteon',channel:0,note:49,velocity:100}));
+  await page.waitForFunction(()=>window.nativeFixture.calls.filter(c=>c.method==='padSample'&&c.cmd==='trigger'&&c.pad===2).length>=2);
+  assert.equal(await page.evaluate(()=>window.fixture.cues.getState().cues[2]),undefined,'MIDI overwrite does not mark sample pads');
+  await page.evaluate(()=>window.fixture.player.setState({queue:[],index:0,status:'idle',position:0,duration:0}));
+  await samplePad.tap();
+  await page.waitForFunction(()=>window.nativeFixture.calls.filter(c=>c.method==='padSample'&&c.cmd==='trigger'&&c.pad===2).length>=3);
+  await page.getByRole('button',{name:'Manage pad samples',exact:true}).click();
+  await samplePad.tap();
+  await page.getByRole('button',{name:'Remove sample',exact:true}).click();
+  await page.getByRole('button',{name:'Manage pad samples',exact:true}).click();
+  await page.evaluate(()=>window.fixture.player.getState().playList([{id:'cuefallback',title:'Cue fallback',artist:'Test',duration:60,kind:'song',thumb:'',art:''}]));
+  await page.waitForFunction(()=>window.fixture.player.getState().status==='playing');
+  await position(12.25);await pad(2).tap();
+  await page.waitForFunction(()=>window.fixture.cues.getState().cues[2]===12.25);
   assert.deepEqual(errors, []);
-  console.log(`PASS (${platform} bridge): cue marking/jumps, IN/OUT, 1% faders/tuning/reset, native playlist changes without JS reloads, suspended-event recovery, and stale-source events.`);
+  console.log(`PASS (${platform} bridge): cue editing/transport, standalone shortcuts, hosted DAW keyboard isolation, sample loading/touch/MIDI without a song or cue marking, removal and cue fallback.`);
 } finally {
   await browser?.close();
   await new Promise(resolve => server.close(resolve));

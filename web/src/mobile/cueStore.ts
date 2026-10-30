@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { readControllerPreset } from "../native/controllerMapping";
+import { hasPadSample } from "./padSamples";
 
 export const CUE_BANKS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"] as const;
 export const CUE_PAD_COUNT = 16;
@@ -69,6 +70,7 @@ export const useCueStore = create<CueState>((set, get) => ({
   setCue: (pad, seconds, targetBank) => {
     const { trackId } = get();
     const bank = targetBank ?? get().bank;
+    if (hasPadSample(bank, pad)) return;
     const cues = bank === get().bank ? get().cues : bankCues(trackId, bank);
     if (!trackId || !Number.isFinite(seconds) || !Number.isInteger(pad) || pad < 1 || pad > CUE_PAD_COUNT) return;
     const next = { ...cues, [pad]: Math.max(0, seconds) };
@@ -85,7 +87,7 @@ export const useCueStore = create<CueState>((set, get) => ({
     for (const candidate of CUE_BANKS.slice(Math.max(0, CUE_BANKS.indexOf(bank as typeof CUE_BANKS[number])))) {
       const cues = candidate === bank ? get().cues : all[candidate] ?? {};
       for (let pad = 1; pad <= readControllerPreset().padToNote.length; pad++) {
-        if (cues[pad] == null) return { bank: candidate, pad };
+        if (cues[pad] == null && !hasPadSample(candidate, pad)) return { bank: candidate, pad };
       }
     }
     return null;

@@ -12,6 +12,7 @@
 #include "dsp/EffectKernels.h"
 #include "dsp/FxGraph.h"
 #include "StandaloneNowPlaying.h"
+#include "PadSampler.h"
 
 class CueProcessor final : public juce::AudioProcessor {
 public:
@@ -42,7 +43,7 @@ public:
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return fxTailSeconds.load(); }
+    double getTailLengthSeconds() const override { return juce::jmax(fxTailSeconds.load(),padSampleTail.load()); }
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
@@ -58,6 +59,11 @@ public:
     void loadRemote(const juce::String& url, double startAt, juce::String trackId = {},bool prefetch=false,bool preservePlayIntent=false);
     juce::var cachedTrack(const juce::String&);
     juce::var importLocalFile(const juce::File&);
+    juce::var importPadSample(int bank,int pad,const juce::File&);
+    juce::var removePadSample(int bank,int pad);
+    juce::var padSamples() const {return padSampler.snapshot();}
+    bool hasPadSample(int bank,int pad) const {return bank>=0&&bank<10&&pad>=0&&pad<16&&padSampler.assigned(bank*16+pad);}
+    std::atomic<int>& padSampleRevision() {return padSampler.revision;}
     void setWebState(const juce::String&);
     juce::String getWebState() const;
     juce::String getSessionId() const {std::lock_guard<std::mutex> lock(metadataMutex);return sessionId;}
@@ -71,6 +77,7 @@ public:
     bool performRemoteAction(RemoteAction,double position=0);
     juce::String getStatus() const;
     juce::var loadDiagnostics() const;
+    juce::var waveformSnapshot();
     void setEffectKernel(const juce::var&);
     juce::var effectKernelState() const;
     void setFxGraph(const juce::var&);
@@ -84,6 +91,12 @@ public:
     juce::AudioProcessorValueTreeState parameters;
     LibraryStore libraryStore;
     juce::ThreadPool networkWorkers{4};
+    juce::ThreadPool waveformWorkers{1};
+    std::mutex waveformMutex;
+    juce::String waveformPath;
+    std::vector<float> waveformPeaks;
+    juce::int64 waveformReadFrames=0,waveformTotalFrames=0;
+    bool waveformLoading=false;
     std::atomic<int> selectedBank{0}, preset{0}, activePad{-1};
     std::atomic<bool> overwrite{false}, playing{false}, loopEnabled{false};
     std::atomic<double> playhead{0}, loopIn{-1}, loopOut{-1};
@@ -126,6 +139,13 @@ private:
     std::array<Command, 256> commandData;
     const AudioTransport audioTransport;
     juce::ThreadPool loaders{2};
+    juce::ThreadPool padSampleLoaders{1};
+    PadSampler padSampler;
+    std::atomic<double> padSampleTail{0};
+    std::mutex padSamplePersistenceMutex;
+    void restorePadSamples(const juce::var&);
+    void persistPadSamples();
+    juce::File padSampleManifest() const;
     std::atomic<int> loadGeneration{0};
     std::atomic<int> measuredLoadGeneration{0};
     std::atomic<double> loadStartedMs{0},loadDecoderMs{0},loadPcmReadMs{0},loadDownloadMs{0},loadPublishedMs{0},loadFirstRenderMs{0};
@@ -156,6 +176,8 @@ private:
     float cueFadeIn() const { return fadeRemaining > 0 ? cueFade[(size_t)(fadeLength-fadeRemaining)] : 1.0f; }
     std::atomic<double> restorePosition{0};
     juce::SmoothedValue<float> outputGain{0.8f};
+    juce::SmoothedValue<float> smoothedSpeed{1.0f},smoothedTuning{0.0f};
+    double stretchReadPosition=0;
     std::atomic<float>* gainValue=nullptr;
     std::atomic<float>* speedValue=nullptr;
     signalsmith::stretch::SignalsmithStretch<float> stretch;

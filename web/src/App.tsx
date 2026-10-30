@@ -70,6 +70,7 @@ function MusicApp({ onStudio, cues }: { onStudio?: () => void; cues?: boolean })
   const isMd = useMediaQuery(MD);
   const panelOpen = useUi((s) => s.panelOpen);
   const hasTrack = usePlayer((s) => s.queue.length > 0);
+  const cueWorkspace = !!cues && location.pathname === paths.cues && document.documentElement.hasAttribute('data-plugin-editor');
   const loadLibrary = useLibrary((s) => s.load);
   const loadSystem = useSystem((s) => s.load);
   const main = useRef<HTMLElement>(null);
@@ -136,16 +137,17 @@ function MusicApp({ onStudio, cues }: { onStudio?: () => void; cues?: boolean })
   };
 
   return (
-    <div className={cn("music-app grain flex h-dvh flex-col bg-bg md:gap-2 md:p-2", desktop && "md:pt-0")}>
+    <div className={cn("music-app grain flex h-dvh flex-col bg-bg md:gap-2 md:p-2", desktop && "md:pt-0", cueWorkspace && "cue-workspace-active")}>
       {desktop && <TitleBar />}
       <div className="flex min-h-0 flex-1 md:gap-2">
-        <Rail onStudio={onStudio} />
+        {!cueWorkspace&&<Rail onStudio={onStudio} cues={cues} />}
         <main
           ref={main}
           className={cn(
             "scroll-area relative min-w-0 flex-1 overflow-y-auto md:rounded-[20px] md:bg-surface-1 md:ring-1 md:ring-line",
             hasTrack ? "pb-[calc(152px+env(safe-area-inset-bottom))]" : "pb-[calc(88px+env(safe-area-inset-bottom))]",
             "md:pb-0",
+            cueWorkspace && "cue-workspace-main",
           )}
         >
           {legacy ? (
@@ -167,15 +169,14 @@ function MusicApp({ onStudio, cues }: { onStudio?: () => void; cues?: boolean })
             </Routes>
           )}
         </main>
-        {panelOpen && hasTrack && <SidePanel />}
+        {panelOpen && hasTrack && !cueWorkspace && <SidePanel />}
       </div>
 
-      {isMd ? (
-        <PlayerBar />
+      {cueWorkspace ? <TabBar cues/> : isMd ? (
+        !cueWorkspace && <PlayerBar />
       ) : (
         <>
-          <MiniPlayer />
-          <TabBar onStudio={onStudio} cues={cues} />
+          {!cueWorkspace&&<><MiniPlayer /><TabBar onStudio={onStudio} cues={cues} /></>}
         </>
       )}
 

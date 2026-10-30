@@ -4,12 +4,20 @@
   const backend = window.__JUCE__.backend;
   // Some Android WebViews embedded by JUCE resolve vh/dvh to zero even while
   // innerHeight is correct. Use measured pixels for the app and dialog bounds.
-  if (window.__JUCE__.getAndroidUserScripts) {
-    const root = document.documentElement;
-    root.dataset.pluginAndroid = '';
+  {
+    const android = !!window.__JUCE__.getAndroidUserScripts;
     const updateViewport = () => {
+      const root = document.documentElement;
+      if (!root) return;
       const height = window.innerHeight;
       if (height > 0) {
+        const landscape = window.innerWidth > height;
+        root.dataset.pluginLayout = landscape ? 'landscape' : 'portrait';
+        root.dataset.pluginCompact = height <= (landscape ? 600 : 680) ? 'true' : 'false';
+        root.dataset.pluginDense = height <= 360 ? 'true' : 'false';
+        if (android) root.dataset.pluginAndroid = '';
+        root.dataset.pluginDesktop = window.__JUCE__.initialisationData.desktopPlatform?.[0]===true ? 'true' : 'false';
+        root.dataset.pluginLowHeight = height < 540 ? 'true' : 'false';
         root.style.setProperty('--plugin-viewport-height', height + 'px');
         root.style.setProperty('--plugin-vh', (height / 100) + 'px');
       }
@@ -18,8 +26,10 @@
     addEventListener('resize', updateViewport);
     addEventListener('pageshow', updateViewport);
     document.addEventListener('visibilitychange', updateViewport);
+    document.addEventListener('DOMContentLoaded', updateViewport);
     window.visualViewport?.addEventListener('resize', updateViewport);
   }
+  window.__pluginHosted=window.__JUCE__.initialisationData.hostedPlugin?.[0]===true;
   window.__pluginDesktopBeta=window.__JUCE__.initialisationData.desktopBeta?.[0]===true;
   backend.addEventListener('__juce__complete', ({promiseId, result}) => {
     const job = pending.get(promiseId);
@@ -40,6 +50,17 @@
     backend.emitEvent('__juce__invoke', {name,params,resultId});
   });
   window.__pluginInvoke = invoke;
+  if (window.__JUCE__.getAndroidUserScripts) {
+    const applyPlatform = state => {
+      const scale = window.devicePixelRatio || 1;
+      for (const edge of ['top', 'left', 'right', 'bottom']) {
+        document.documentElement.style.setProperty('--plugin-safe-' + edge, Math.max(0, state[edge] || 0) / scale + 'px');
+      }
+      window.__pluginAndroidPlatform = state;
+    };
+    backend.addEventListener('pluginAndroidPlatform', applyPlatform);
+    invoke('androidPlatform').then(applyPlatform).catch(console.error);
+  }
   addEventListener('error',event=>{invoke('diagnostic','error: '+event.message).catch(()=>{});});
   addEventListener('unhandledrejection',event=>{invoke('diagnostic','promise: '+String(event.reason?.message||event.reason)).catch(()=>{});});
   invoke('diagnostic','Beatmaker Cues 1.0.4 plug-in bridge started').catch(()=>{});
@@ -132,7 +153,11 @@
     }
   };
   window.fetch=window.fetch.bind(window);
-  window.__pluginAudioBridge={postMessage:message=>invoke('audio',message)};
+  window.__pluginAudioBridge={
+    postMessage:message=>invoke('audio',message),
+    position:sourceId=>invoke('audio',{cmd:'position',sourceId}).then(state=>state.position),
+    snapshot:()=>invoke('audio',{cmd:'snapshot'})
+  };
   window.__pluginResolveBridge={postMessage:message=>{
       resolveTrack(message.id,message.lang,message.region).then(payload=>window.__musikeResolve?.(message.req,payload),error=>window.__musikeResolve?.(message.req,{error:error.message}));
     }};
@@ -185,6 +210,7 @@
   addEventListener('pagehide',persist);
   backend.addEventListener('pluginAudio',({event,payload})=>window.__musikeAudioEvent?.(event,payload));
   backend.addEventListener('pluginParameters',state=>window.__pluginStores?.player.setState(state));
+  backend.addEventListener('pluginPadSamples',pads=>window.dispatchEvent(new CustomEvent('plugin-pad-samples',{detail:pads})));
   backend.addEventListener('pluginPads',events=>{
     for(const event of events){
       if(event.triggered){

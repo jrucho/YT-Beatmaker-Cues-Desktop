@@ -1,5 +1,9 @@
 #include "WebEditor.h"
 #include "MobileWebAssets.h"
+#if JUCE_ANDROID
+#include "AndroidStandalone.h"
+#include "AndroidCodec.h"
+#endif
 #if JUCE_MAC || JUCE_IOS
 #include "AppleHttp.h"
 #endif
@@ -36,8 +40,16 @@ MobileWebEditor::MobileWebEditor(CueProcessor& processor, bool offline)
       webBytes(MobileWebAssets::mobileui_zip,MobileWebAssets::mobileui_zipSize,false), archive(webBytes), browser(options()) {
     const int defaultWidth=440,defaultHeight=800;
      #endif
-    const int width=engine.editorWidth.load()>0?engine.editorWidth.load():defaultWidth,height=engine.editorHeight.load()>0?engine.editorHeight.load():defaultHeight;
-    setResizable(true,resizeGripSize>0);setResizeLimits(320,400,4096,4096);setSize(width,height);
+    const bool standalone=engine.wrapperType==juce::AudioProcessor::wrapperType_Standalone;
+    const int width=!standalone&&engine.editorWidth.load()>0?engine.editorWidth.load():defaultWidth,height=!standalone&&engine.editorHeight.load()>0?engine.editorHeight.load():defaultHeight;
+    setResizable(true,resizeGripSize>0);
+   #if JUCE_IOS || JUCE_ANDROID
+    // A desktop minimum height clips a phone's landscape viewport.
+    setResizeLimits(240,240,4096,4096);
+   #else
+    setResizeLimits(320,480,4096,4096);
+   #endif
+    setSize(width,height);
     engine.openEditors.fetch_add(1);
     previousRestoreRevision=engine.restoreRevision.load();
     addAndMakeVisible(browser);
@@ -61,6 +73,12 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withInitialisationData("desktopBeta",true)
        #endif
         .withInitialisationData("pluginStorage",engine.sessionUiState())
+        .withInitialisationData("hostedPlugin",engine.wrapperType!=juce::AudioProcessor::wrapperType_Standalone&&engine.wrapperType!=juce::AudioProcessor::wrapperType_Undefined)
+       #if JUCE_IOS || JUCE_ANDROID
+        .withInitialisationData("desktopPlatform",false)
+       #else
+        .withInitialisationData("desktopPlatform",true)
+       #endif
         .withUserScript(juce::String::fromUTF8(MobileWebAssets::bridge_js,MobileWebAssets::bridge_jsSize))
         .withResourceProvider([this](const auto& path){return resource(path);})
         .withNativeFunction("audio",[this](const auto& args,auto complete){complete(audio(args[0]));})
@@ -81,6 +99,29 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withNativeFunction("libraryCommit",[this](const auto& args,auto complete){const auto baseline=args[0]["base"].toString(), next=args[0]["next"].toString();storageTask([this,baseline,next]{return juce::var(engine.libraryStore.commitLibrary(baseline,next));},std::move(complete));})
         .withNativeFunction("cachedTrack",[this](const auto& args,auto complete){const auto id=args[0].toString();storageTask([this,id]{return engine.cachedTrack(id);},std::move(complete));})
         .withNativeFunction("loadDiagnostics",[this](const auto&,auto complete){complete(engine.loadDiagnostics());})
+        .withNativeFunction("waveform",[this](const auto&,auto complete){complete(engine.waveformSnapshot());})
+        .withNativeFunction("padSamples",[this](const auto&,auto complete){complete(engine.padSamples());})
+        .withNativeFunction("padSample",[this](const auto& args,auto complete){
+            const auto request=args.isEmpty()?juce::var{}:args[0];const auto bank=request["bank"].toString();const int pad=(int)request["pad"]-1;
+            if(bank.length()!=1||bank[0]<'A'||bank[0]>'J'||pad<0||pad>=16){complete(failure("Invalid sample pad"));return;}
+            const int bankIndex=(int)bank[0]-'A';const auto command=request["cmd"].toString();
+            if(command=="trigger"){complete(engine.submit({CueProcessor::Action::pad,bankIndex,pad}));return;}
+            if(command=="remove"){storageTask([this,bankIndex,pad]{return engine.removePadSample(bankIndex,pad);},std::move(complete));return;}
+            if(command!="load"){complete(failure("Unknown sample command"));return;}
+            exporter=std::make_unique<juce::FileChooser>("Load sample into "+bank+juce::String(pad+1),juce::File{},"*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.ogg");
+            juce::Component::SafePointer<MobileWebEditor> safe(this);
+            exporter->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe,bankIndex,pad,complete=std::move(complete)](const auto& chooser){
+                if(!safe)return;const auto file=chooser.getResult();
+                if(!file.existsAsFile()){complete(safe->engine.padSamples());return;}
+                safe->storageTask([safe,bankIndex,pad,file]{return safe?safe->engine.importPadSample(bankIndex,pad,file):juce::var{};},std::move(complete));
+            });
+        })
+       #if JUCE_ANDROID
+        .withNativeFunction("androidPlatform",[](const auto&,auto complete){complete(androidPlatformState());})
+       #if JUCE_DEBUG
+        .withNativeFunction("androidDecoderCheck",[this](const auto& args,auto complete){const auto input=juce::File(args[0]["encoded"].toString()),reference=juce::File(args[0]["pcm"].toString());storageTask([input,reference]{return checkAndroidReaderPCM(input,reference);},std::move(complete));})
+       #endif
+       #endif
         .withNativeFunction("effectKernel",[this](const auto& args,auto complete){
             try{if(!args.isEmpty())engine.setEffectKernel(args[0]);complete(engine.effectKernelState());}
             catch(const std::exception& error){complete(failure(error.what()));}
@@ -221,7 +262,6 @@ juce::var MobileWebEditor::audio(const juce::var& message) {
     else if(command=="position")return object({{"position",engine.playhead.load()}});
     else if(command=="snapshot") {
         auto snapshot=engine.nativeSnapshot();snapshot.getDynamicObject()->setProperty("sourceId",sourceId);
-        if((bool)snapshot["ready"])announced=true;
         return snapshot;
     }
     else if(command=="volume") {
@@ -250,6 +290,13 @@ void MobileWebEditor::timerCallback() {
     // Native playback/Now Playing continues independently while the app is
     // backgrounded. Reconcile the latest revisions when its WebView returns.
     if(engine.backgroundPlayback.load())return;
+    if(previousSampleRevision!=engine.padSampleRevision().load()){
+        previousSampleRevision=engine.padSampleRevision().load();browser.emitEventIfBrowserIsVisible("pluginPadSamples",engine.padSamples());
+    }
+   #if JUCE_ANDROID
+    const auto platform=androidPlatformState();const auto encodedPlatform=juce::JSON::toString(platform,true);
+    if(encodedPlatform!=previousAndroidPlatform){previousAndroidPlatform=encodedPlatform;browser.emitEventIfBrowserIsVisible("pluginAndroidPlatform",platform);}
+   #endif
     previousRemoteRevision=engine.remoteTransportRevision.load();
     if(previousRestoreRevision!=engine.restoreRevision.load()){
         previousRestoreRevision=engine.restoreRevision.load();announced=false;pendingLoad=false;
@@ -271,7 +318,7 @@ void MobileWebEditor::timerCallback() {
     }
     if(!padEvents.isEmpty())browser.emitEventIfBrowserIsVisible("pluginPads",juce::var(padEvents));
     if(++timerTicks%6!=0)return; // 60 Hz pad feedback, 10 Hz playhead/metadata.
-    const auto parameters=object({{"speed",(engine.parameters.getRawParameterValue("speed")->load()-1.0f)*100.0f},{"volume",engine.parameters.getRawParameterValue("gain")->load()},
+    const auto parameters=object({{"speed",std::round((engine.parameters.getRawParameterValue("speed")->load()-1.0f)*100.0f)},{"volume",engine.parameters.getRawParameterValue("gain")->load()},
         {"speedMode",engine.preservePitch.load()?"speed":"pitch"},{"tuning",engine.semitones.load()}});
     const auto encoded=juce::JSON::toString(parameters,true);
     if(encoded!=previousParameters){previousParameters=encoded;browser.emitEventIfBrowserIsVisible("pluginParameters",parameters);}

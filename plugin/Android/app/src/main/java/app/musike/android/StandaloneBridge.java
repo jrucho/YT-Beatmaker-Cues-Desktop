@@ -14,6 +14,7 @@ public final class StandaloneBridge {
     private static int interruptedRevision;
     private static AudioFocusRequest focus;
     public static native void bind(Context context);
+    static native void setInsets(int left, int top, int right, int bottom);
     private static native void background(boolean value);
     public static native boolean transport(String action, double position);
     private static native String snapshot();

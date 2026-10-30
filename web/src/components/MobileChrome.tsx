@@ -119,7 +119,7 @@ export function MiniPlayer() {
   const pct = duration > 0 ? Math.min(100, (position / duration) * 100) : 0;
 
   return (
-    <div className="fixed inset-x-2 bottom-[calc(72px+env(safe-area-inset-bottom))] z-20">
+    <div className="mini-player fixed inset-x-2 bottom-[calc(72px+env(safe-area-inset-bottom))] z-20">
       <div className="island p-1! shadow-[0_10px_30px_rgb(0_0_0/0.35)]">
         <div className="island-core relative flex h-14 items-center gap-3 overflow-hidden pr-1 pl-1.5">
           <button

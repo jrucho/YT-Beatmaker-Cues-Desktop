@@ -15,7 +15,7 @@ const completeInventory = [
   `YT-Beatmaker-Cues-Desktop-${version}-Windows.exe`,
   ...['x64', 'arm64'].flatMap(arch => ['AppImage', 'deb'].map(ext => `YT-Beatmaker-Cues-Desktop-${version}-Linux-${arch}.${ext}`)),
   `Beatmaker-Cues-Test-${version}-Android.apk`, `Beatmaker-Cues-Setup-${version}-Android.apk`, `Beatmaker-Cues-${version}-Android.aab`,
-  `Beatmaker-Cues-Plugin-Standalone-${version}-Android-arm64.apk`, `Plugin-Build-${version}-Android-arm64.json`,
+  `Beatmaker-Cues-${version}-Android-arm64.apk`, `Plugin-Build-${version}-Android-arm64.json`,
   `Beatmaker-Cues-Test-${version}-iOS.ipa`, `Beatmaker-Cues-Xcode-${version}.zip`,
   ...[['macOS', 'universal'], ['Windows', 'x64'], ['Linux', 'x64']].flatMap(([platform, arch]) => [
     `Beatmaker-Cues-Plug-ins-${version}-${platform}-${arch}.zip`, `Beatmaker-Cues-Plugin-Standalone-${version}-${platform}-${arch}.zip`,
@@ -28,7 +28,7 @@ const completeInventory = [
   ]),
   `Beatmaker-Cues-Desktop-Beta-Plug-ins-${version}-Linux-x64.deb`,
   `Beatmaker-Cues-Plug-ins-${version}-Linux-x64.deb`,
-  `Beatmaker-Cues-AUv3-${version}-iOS-unsigned.ipa`, `Beatmaker-Cues-Plugin-Xcode-${version}.zip`,
+  `Beatmaker-Cues-${version}-iOS-unsigned.ipa`, `Beatmaker-Cues-Plugin-Xcode-${version}.zip`,
   `Beatmaker-Cues-Source-${version}.zip`, `Beatmaker-Cues-Source-${version}.tar.gz`, `Beatmaker-Cues-Plugin-Source-${version}.zip`,
   `Source-Build-${version}.json`, `iOS-Build-${version}.json`, `AUv3-Build-${version}.json`,
   ...['macOS', 'Windows', 'Linux', 'Android'].map(platform => `Main-Build-${platform}-${version}.json`),

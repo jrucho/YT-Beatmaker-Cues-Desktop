@@ -93,7 +93,7 @@ function RailLink({ to, label, sub, end, children }: { to: string; label: string
   );
 }
 
-export function Rail({ onStudio }: { onStudio?: () => void }) {
+export function Rail({ onStudio, cues }: { onStudio?: () => void; cues?: boolean }) {
   const t = useT();
   const sidebarPlaylists = useAppearance((s) => s.sidebarPlaylists);
   const playlists = useLibrary((s) => s.playlists);
@@ -113,7 +113,7 @@ export function Rail({ onStudio }: { onStudio?: () => void }) {
         </div>
 
         <nav aria-label={t.nav.main} className="flex flex-col gap-1 px-2">
-          {nav.map(({ to, key, Icon, end }) => (
+          {[...nav,...(cues?[{to:paths.cues,key:'cues' as const,Icon:WaveformIcon,end:false}]:[])].map(({ to, key, Icon, end }) => (
             <NavLink
               key={to}
               to={to}

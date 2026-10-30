@@ -36,7 +36,9 @@ private:
     int timerTicks=0;
     int previousTrackRevision=0,previousErrorRevision=0;
     int previousRestoreRevision=0;
+    int previousSampleRevision=-1;
     int previousRemoteRevision=0;
     juce::String previousParameters;
+    juce::String previousAndroidPlatform;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MobileWebEditor)
 };

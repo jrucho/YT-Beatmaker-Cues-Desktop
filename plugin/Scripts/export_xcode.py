@@ -5,13 +5,13 @@ phases are removed. Xcode compiles the same native targets and embeds AUv3 using
 its existing Copy Files phase; recipients do not need Node or CMake to run it.
 """
 from pathlib import Path
-import argparse,hashlib,json,os,plistlib,shutil,subprocess,tempfile,zipfile
-parser=argparse.ArgumentParser();parser.add_argument('--build-dir',required=True);parser.add_argument('--output');args=parser.parse_args()
+import argparse,hashlib,json,os,plistlib,re,shutil,subprocess,tempfile,zipfile
+parser=argparse.ArgumentParser();parser.add_argument('--build-dir',required=True);parser.add_argument('--output');parser.add_argument('--platform',choices=['iOS','macOS'],default='iOS');args=parser.parse_args()
 root=Path(__file__).resolve().parent.parent;build=Path(args.build_dir).resolve()
 version=json.loads((root.parent/'package.json').read_text())['version']
 release=Path(args.output).resolve() if args.output else root.parent/'release';release.mkdir(parents=True,exist_ok=True)
 stage=tempfile.TemporaryDirectory(prefix='beatmaker-xcode-export-')
-output=Path(stage.name)/f'Beatmaker-Cues-Plugin-Xcode-{version}';output.mkdir()
+output=Path(stage.name)/(f'Beatmaker-Cues-Plugin-Xcode-{version}'+('-macOS' if args.platform=='macOS' else ''));output.mkdir()
 ignore=shutil.ignore_patterns('xcuserdata','.DS_Store','__pycache__','.git','build','packages')
 for name in ['Source','Assets','Web','Scripts','Tests','README.md','CMakeLists.txt','AGPL-3.0.txt']:
     source=root/name
@@ -21,7 +21,9 @@ shutil.copy2(root.parent/'THIRD_PARTY_NOTICES.md',output/'THIRD_PARTY_NOTICES.md
 shutil.copy2(root.parent/'LICENSE',output/'APPLICATION-LICENSE.txt')
 mappings=[]
 for dep,name in [('juce','JUCE'),('signalsmithstretch','SignalsmithStretch'),('signalsmithlinear','SignalsmithLinear')]:
-    source=build/'_deps'/f'{dep}-src'
+    cache=(build/'CMakeCache.txt').read_text()
+    override=re.search(r'^FETCHCONTENT_SOURCE_DIR_'+dep.upper()+r':[^=]+=(.+)$',cache,re.MULTILINE)
+    source=Path(override.group(1)) if override and override.group(1).strip() else build/'_deps'/f'{dep}-src'
     if not source.is_dir():raise RuntimeError(f'Export requires the fetched {dep} source under {build}/_deps (use a fresh CI configure).')
     destination=output/'Frameworks'/name
     shutil.copytree(source,destination,dirs_exist_ok=True,ignore=ignore)
@@ -69,10 +71,10 @@ projectFile.write_text(json.dumps(data))
 subprocess.run(['plutil','-convert','xml1',str(projectFile)],check=True)
 # Xcode reads XML property lists as native pbxproj files too.
 notes=output/'OPEN-IN-XCODE.md'
-notes.write_text('Open BeatmakerCuesPrototype.xcodeproj. Select BeatmakerCues_Standalone and your connected iPhone/iPad. Choose your Apple development team for the standalone and AUv3 targets; if the bundle ID is unavailable, set a unique container ID and matching child extension ID. App Groups are opt-in: sharing requires the same configured group and entitled provisioning profiles for the main app, container and AUv3. Unconfigured builds retain private storage. The legacy internal project/bundle IDs are retained for saved-state/data compatibility. See README.md for architecture and verification limitations.\n')
+notes.write_text(('Open BeatmakerCuesPrototype.xcodeproj. Select BeatmakerCues_Standalone, BeatmakerCues_AU or BeatmakerCues_VST3 for My Mac. Set your Mac signing settings, or CODE_SIGNING_ALLOWED=NO for a local unsigned build. ' if args.platform=='macOS' else 'Open BeatmakerCuesPrototype.xcodeproj. Select BeatmakerCues_Standalone and your connected iPhone/iPad. Choose your Apple development team for the standalone and AUv3 targets; if the bundle ID is unavailable, set a unique container ID and matching child extension ID. App Groups are opt-in: sharing requires the same configured group and entitled provisioning profiles for the main app, container and AUv3. Unconfigured builds retain private storage. ')+'The legacy internal project/bundle IDs are retained for saved-state/data compatibility. See README.md for architecture and verification limitations.\n')
 archive=release/(output.name+'.zip')
 subprocess.run(['ditto','-c','-k','--keepParent',str(output),str(archive)],check=True)
-manifest=release/f'SHA256SUMS-AUv3-{version}.txt'
+manifest=release/(f'SHA256SUMS-Xcode-macOS-{version}.txt' if args.platform=='macOS' else f'SHA256SUMS-AUv3-{version}.txt')
 previous=manifest.read_text().splitlines() if manifest.exists() else []
 previous=[line for line in previous if not line.endswith('  '+archive.name)]
 manifest.write_text('\n'.join(previous+[hashlib.sha256(archive.read_bytes()).hexdigest()+'  '+archive.name])+'\n')

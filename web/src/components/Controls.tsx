@@ -32,7 +32,7 @@ export function PlayPauseIcon({ size = 22 }: { size?: number }) {
   return status === "playing" ? <PauseIcon size={size} weight="fill" /> : <PlayIcon size={size} weight="fill" />;
 }
 
-export function Transport({ big = false }: { big?: boolean }) {
+export function Transport({ big = false, compact = false }: { big?: boolean; compact?: boolean }) {
   const t = useT();
   const p = usePlayer(
     useShallow((s) => ({
@@ -53,7 +53,7 @@ export function Transport({ big = false }: { big?: boolean }) {
   const iconSize = big ? 26 : 19;
 
   return (
-    <div className={cn("flex items-center", big ? "justify-between" : "gap-2")}>
+    <div className={cn("flex items-center", big ? "justify-between" : compact ? "gap-1" : "gap-2")}>
       <IconButton
         label={p.shuffle ? t.player.shuffleOn : t.player.shuffleOff}
         active={p.shuffle}
@@ -64,18 +64,18 @@ export function Transport({ big = false }: { big?: boolean }) {
         <ShuffleIcon size={big ? 22 : 17} />
         {p.shuffle && <span className="absolute bottom-0.5 size-1 rounded-full bg-accent-text" />}
       </IconButton>
-      <IconButton label={t.player.previous} size={big ? "lg" : "md"} onClick={p.prev} disabled={!hasTrack} className="text-fg">
+      <IconButton label={t.player.previous} size={big ? "lg" : compact ? "sm" : "md"} onClick={p.prev} disabled={!hasTrack} className="text-fg">
         <SkipBackIcon size={iconSize} weight="fill" />
       </IconButton>
       <PlayDisc
         label={p.status === "playing" ? t.common.pause : t.common.play}
-        px={big ? 72 : 40}
+        px={big ? 72 : compact ? 32 : 40}
         onClick={p.toggle}
         disabled={!hasTrack}
       >
         <PlayPauseIcon size={big ? 30 : 20} />
       </PlayDisc>
-      <IconButton label={t.player.next} size={big ? "lg" : "md"} onClick={p.next} disabled={!hasTrack} className="text-fg">
+      <IconButton label={t.player.next} size={big ? "lg" : compact ? "sm" : "md"} onClick={p.next} disabled={!hasTrack} className="text-fg">
         <SkipForwardIcon size={iconSize} weight="fill" />
       </IconButton>
       <IconButton

@@ -17,7 +17,7 @@ juce::var post(const juce::String& endpoint,const juce::var& body,const char* cl
     if(response.status!=200)throw std::runtime_error("YouTube did not return a player response");
     return juce::JSON::parse(juce::String::fromUTF8((const char*)response.data.getData(),(int)response.data.getSize()));
    #else
-    int status=0;auto stream=juce::URL(url).withPOSTData(payload).createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress).withExtraHeaders(headers).withConnectionTimeoutMs(12000).withStatusCode(&status));
+    int status=0;auto stream=juce::URL::createWithoutParsing(url).withPOSTData(payload).createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inPostData).withHttpRequestCmd("POST").withExtraHeaders(headers).withConnectionTimeoutMs(12000).withStatusCode(&status));
     if(!stream||status!=200)throw std::runtime_error("YouTube did not return a player response");
     return juce::JSON::parse(stream->readEntireStreamAsString());
    #endif

@@ -60,6 +60,10 @@ LibraryStore::LibraryStore():LibraryStore(defaultDirectory(),defaultSharedDirect
 LibraryStore::LibraryStore(juce::File directory,juce::File shared):folder(directory),file(folder.getChildFile("library-v1.json")),backup(folder.getChildFile("library-v1.backup.json")),
     processLock(directory.getChildFile("library.lock").getFullPathName().toStdString()){
     if(!folder.createDirectory()&&!folder.isDirectory())throw std::runtime_error("Cannot create library directory");
+   #if JUCE_IOS
+    appleAllowBackgroundFileAccess(folder);
+    for(const auto& saved:folder.findChildFiles(juce::File::findFiles,true,"*"))appleAllowBackgroundFileAccess(saved);
+   #endif
     if(shared!=juce::File{}&&shared!=directory)sharedStore=std::make_unique<LibraryStore>(shared);
 }
 void LibraryStore::ensureSharedMigration(){
@@ -217,6 +221,9 @@ void LibraryStore::writePreferences(const juce::String& value,const juce::String
     const juce::ScopedLock local(localLock);Lock lock(processLock);
     const auto savedFile=folder.getChildFile("Sessions/"+session+".json");
     if(!savedFile.getParentDirectory().createDirectory())throw std::runtime_error("Cannot create session storage");
+   #if JUCE_IOS
+    appleAllowBackgroundFileAccess(savedFile.getParentDirectory());
+   #endif
     if(savedFile.existsAsFile()){
         const auto previous=savedFile.loadFileAsString();if(previous==value)return;
         if(juce::JSON::parse(previous).isObject()){

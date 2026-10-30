@@ -9,12 +9,12 @@ export default async (environment) => {
   const config = await original({ ...environment, mode: 'native' });
   config.root = path.join(root, 'web');
   config.base = './';
-   config.define = { ...config.define, __APP_VERSION__: JSON.stringify((desktopBeta ? 'Desktop beta ' : 'Plug-in ')+JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version) };
+   config.define = { ...config.define, __APP_VERSION__: JSON.stringify((desktopBeta ? 'Desktop beta ' : '')+JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version) };
   config.build = { ...config.build, outDir: process.env.BEATMAKER_PLUGIN_WEB_OUTPUT, emptyOutDir: true };
   config.plugins.push({
     name: 'beatmaker-plugin-adapter',
      enforce: 'pre',
-     transformIndexHtml(html){return html.replace('<html ',`<html data-plugin-editor="${desktopBeta?'desktop':'vanilla'}" `);},
+     transformIndexHtml(html){return html.replace('<html ',`<html data-plugin-editor="${desktopBeta?'desktop':'vanilla'}" `).replace(/<title>[^<]*<\/title>/,'<title>Beatmaker Cues</title>');},
      transform(code, id) {
        if(desktopBeta && id.endsWith('/web/src/beatmaker/runtime.ts'))return readFileSync(new URL('./desktopRuntime.ts',import.meta.url),'utf8');
        if(desktopBeta && id.endsWith('/web/src/App.tsx'))return code
@@ -34,10 +34,6 @@ export default async (environment) => {
          .replace('ADVANCED</button>','NATIVE CONTROLS</button>');
       if(id.endsWith('/web/src/player/player.ts'))return code.replaceAll('Math.max(-50','Math.max(-75');
        if(id.endsWith('/web/src/native/storage.ts'))return code.replace('const previous = await readText(FILE);','const previous: string | null = null; // Native store owns atomic backup and three-way merge.');
-      if(id.endsWith('/web/src/views/Library.tsx'))return code.replace('<IconButton label={t.library.backup}',`<button type="button" className="rounded-full bg-surface-2 px-3 py-2 text-sm" onClick={async()=>{
-        try{const track=await (window as any).__pluginInvoke('importAudio');if(track){await (window as any).__pluginStores.api.addFavorite(track);await useLibrary.getState().load();}}
-        catch(error){(window as any).__pluginStores.ui.getState().toast((error as Error).message,'error');}
-      }}>Import audio</button><IconButton label={t.library.backup}`);
       if (id.endsWith('/web/src/views/Search.tsx')) return code
         .replace('const timer = setTimeout(() => setQuery(text, playlistLink ? "playlist" : kind), 380);', 'const timer = setTimeout(() => {}, 0); // Plug-in searches only on explicit submit, keeping typing independent of networking.')
         .replace('if (!term || linkId) return setSuggestions([]);', 'if (!term || linkId || (window as any).__pluginReady) return setSuggestions([]);');
@@ -54,7 +50,8 @@ import {useCueStore as pluginCues} from './mobile/cueStore';
 import {api as pluginApi} from './lib/api';
 import {useUi as pluginUi} from './stores/ui';
 import {useLibrary as pluginLibrary} from './stores/library';
-window.__pluginStores = {player:pluginPlayer,cues:pluginCues,api:pluginApi,ui:pluginUi,library:pluginLibrary};
+import {usePadSamples as pluginSamples} from './mobile/padSamples';
+window.__pluginStores = {player:pluginPlayer,cues:pluginCues,api:pluginApi,ui:pluginUi,library:pluginLibrary,samples:pluginSamples};
 pluginPlayer.subscribe(state => pluginCues.getState().setTrack(state.queue[state.index]?.id ?? null));
 pluginCues.getState().setTrack(pluginPlayer.getState().queue[pluginPlayer.getState().index]?.id ?? null);
 window.dispatchEvent(new Event('plugin-stores-ready'));

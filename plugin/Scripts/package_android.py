@@ -35,9 +35,9 @@ with zipfile.ZipFile(apk) as archive:
 version = json.loads((root / 'package.json').read_text())['version']
 output = Path(args.output).resolve()
 output.mkdir(parents=True, exist_ok=True)
-target = output / f'Beatmaker-Cues-Plugin-Standalone-{version}-Android-arm64.apk'
+target = output / f'Beatmaker-Cues-{version}-Android-arm64.apk'
 shutil.copy2(apk, target)
-info = dict(version=version, platform='Android', architecture='arm64-v8a', edition='main',
+info = dict(version=version, productName='Beatmaker Cues', platform='Android', architecture='arm64-v8a', edition='main',
             applicationId='app.owaega.beatmakercuesstandalone', formats=['Standalone'],
             signing='persistent-release-key', certificateSha256=certificate.group(1),
             checks=args.checks.split(','), **source_info(root))

@@ -1,8 +1,10 @@
-# Beatmaker Cues 1.0.4 — public prerelease
+# Beatmaker Cues 1.0.4 — unpublished development notes
 
-This is a prerelease. The attached build manifest identifies the source commit
-and exact download inventory. Automated checks and device acceptance are
-reported separately below.
+Publication and further pushes are on hold at the user's request. See
+`docs/official-product-lineup.md` for the current product direction: the native
+iOS and Android apps and responsive native plug-ins use the original iOS icon;
+desktop 1.0.3 remains the official full desktop standalone. The inventory below
+describes development build targets, not a published 1.0.4 release.
 
 ## Downloads
 
@@ -19,8 +21,8 @@ reported separately below.
 - Android plug-in standalone: a separate arm64 APK using the JUCE native engine,
   mobile-style editor, cue banks and Android system media controls. It installs
   alongside the main Android app, with its own sandboxed library and sessions.
-  Its WebView layout includes a measured-viewport fix for the black/empty
-  content region seen with zero-height CSS viewport units.
+  Its WebView layout includes measured viewport/safe-area handling and a cue
+  workspace with visible performance controls in portrait and landscape.
 - Complete source ZIP/TAR.GZ and plug-in corresponding-source/dependency ZIP are
   attached. The repository tag, source and final binaries must identify one SHA.
 
@@ -72,8 +74,9 @@ plug-in and must be identified as beta with its own compatibility/feature status
 Local Android API 35 arm64 emulator checks passed launch, the 500-track SOUL
 SAMPLES catalog, native AAC playback of the 645-second Jean Carn track,
 mid-track cueing, and system play/pause with playback progressing while the app
-was backgrounded. Initial full-file AAC conversion took about 75–79 seconds on
-that emulator; its disk PCM cache avoids repeating conversion on warm loads.
+was backgrounded. On-demand AAC page decoding replaces the old 75–79-second
+full-file conversion: the long song reached first render in about 2.39 seconds
+including a fresh download, or 0.18–0.31 seconds from its encoded cache.
 Physical Android listening, Bluetooth and device-specific latency remain unverified.
 
 The iOS main app and plug-in standalone/AUv3 were built and updated in place on

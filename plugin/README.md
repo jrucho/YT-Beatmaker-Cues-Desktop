@@ -1,8 +1,46 @@
-# Beatmaker Cues Plug-in — 1.0.4
+# Beatmaker Cues — native apps and plug-ins, 1.0.4 development candidate
 
-## Separate desktop-layout beta
+The native iOS and Android app shells are named **Beatmaker Cues** and use the
+original iOS icon. The native VST3/AU edition uses the same responsive interface.
+Desktop 1.0.3 remains the official full desktop standalone. Publication is on hold;
+a separate Windows build branch is authorized for test artifacts only.
 
-The normal product keeps the mobile-style editor. A separate **Beatmaker Cues
+## Unified portrait/landscape workspace
+
+The cue workspace keeps pads, transport, banks, speed, tuning and IN/OUT controls
+visible together without page scrolling. It adapts between portrait and landscape;
+MIDI/controller settings and compact-layout cue deletion are available in the MIDI
+dialog. **Library** returns to browsing, and **Cues** is available in both the phone
+tab bar and the wide sidebar. Audio stays in the same native engine across views.
+The waveform spans the workspace above the banks: drag markers, double-click to
+erase, and Cmd/Ctrl-click to mark visually. In standalone apps, number keys mark
+empty pads and play saved cues; Cmd/Ctrl+number replaces marks. In hosted VST3/AU/
+AUv3 mode, player and pad keyboard shortcuts are disabled so the DAW retains its
+computer-keyboard MIDI and transport keys. Mouse/touch and MIDI still work.
+Presets are directly visible outside
+the MIDI dialog. A rich, collapsible playlist dock uses the same song rows as the
+library. Full transport sits at the bottom above the four navigation buttons.
+
+## Sample pads (native desktop and mobile)
+
+Enable the **music-note button** beside MIDI, then tap a pad and choose **Load
+sample…**. Switch the music-note button off to perform. A sample pad shows **SMP**
+and its filename; it plays a polyphonic one-shot by touch, mouse or MIDI, with or
+without a song loaded. It never marks or jumps to a song cue, even in Overwrite
+mode. Other pads retain normal cue behavior, and sequential Mark skips sample
+pads. Enable sample editing again to replace or remove a sample. Removing one
+restores the pad's normal cue behavior without changing other pads.
+
+Assignments cover banks A–J, survive app restarts and are stored in DAW state.
+Imports are copied into managed `Media/PadSamples` storage; keep that folder when
+moving a DAW project. Audio is not embedded in the DAW state. The native engine
+mixes up to 32 one-shot voices, follows MIDI sample offsets and velocity, and
+loads/reclaims samples off the audio thread. Decoded pad audio has a combined
+128 MiB budget; song playback retains its separate bounded streaming cache.
+
+## Legacy desktop-layout development target
+
+The normal product uses the unified responsive editor. A separate **Beatmaker Cues
 Desktop Beta** uses the desktop studio layout with native cue/loop/speed/pitch
 playback into the host bus. It has its own plug-in code `BmDB`, bundle ID
 `app.owaega.beatmakercues.desktopbeta` and `Beatmaker Cues/DesktopBetaLibrary`
@@ -33,6 +71,7 @@ require the Electron desktop app or its server.
 | Windows | VST3, standalone | x64; WebView2 Runtime; FFmpeg on PATH for formats without native decoding |
 | Linux | VST3, standalone | x64; WebKitGTK 4.1, GTK3, ALSA, CURL, FFmpeg |
 | iOS/iPadOS 15+ | AUv3 instrument and standalone container | Own Apple signing account for the unsigned IPA/Xcode export |
+| Android 7/API 24+ | Native standalone app | arm64; see `docs/android-plugin-standalone.md` |
 
 Unpack a native plug-in ZIP and run `python3 install.py` (Windows: `python
 install.py`). This installs AU/VST3 in your user's plug-in directory. Restart or
@@ -40,6 +79,12 @@ rescan the DAW, create a software-instrument track, and select **Owaega → Beat
 Cues Plug-in**. The `Standalone` directory contains the separate plug-in app.
 Windows hosts may require adding `%LOCALAPPDATA%/Programs/Common/VST3` to their
 scan paths. Linux also has a `.deb` package with runtime dependencies.
+
+On Mac, the installer identifies existing copies by bundle ID, including the
+older `Beatmaker Cues Plug-in` filenames. Matching bundles are backed up under
+`~/Library/Application Support/Beatmaker Cues/PluginBackups` outside DAW scan
+folders before installing the new name. Failed copies restore the previous
+bundle; unrelated products are not replaced.
 
 Mac packages are ad-hoc signed, without Apple notarization. Windows/Linux packages
 are unsigned. The iOS container embeds the AUv3 extension; open the container once,
@@ -83,7 +128,7 @@ rather than embedding complete audio in the project.
 
 ### iOS standalone background player
 
-Start a track in **Beatmaker Cues Plug-in**, then leave the app or lock the screen.
+Start a track in **Beatmaker Cues**, then leave the app or lock the screen.
 The standalone provides native Now Playing metadata/artwork and play/pause,
 previous/next and seek controls in the system player. These commands work through
 the native engine while the WebView is suspended. The controller is linked only

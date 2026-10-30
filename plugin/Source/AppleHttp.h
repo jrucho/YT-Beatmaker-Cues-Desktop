@@ -7,4 +7,5 @@ struct AppleHttpResult {
 };
 juce::File appleSharedLibraryDirectory();
 juce::String appleLibraryIdentity();
+void appleAllowBackgroundFileAccess(const juce::File&);
 AppleHttpResult appleHttp(const juce::String& url,const juce::String& method,const juce::String& headers,const juce::String& body,int timeoutSeconds,std::function<bool()> shouldCancel = {});

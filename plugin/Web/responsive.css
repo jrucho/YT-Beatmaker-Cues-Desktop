@@ -3,11 +3,193 @@
 :root[data-plugin-android] body,
 :root[data-plugin-android] #root {height:100%;}
 :root[data-plugin-android] .music-app {height:var(--plugin-viewport-height,100%);}
+:root[data-plugin-android] .safe-top {padding-top:calc(var(--plugin-safe-top,24px) + 6px);padding-left:var(--plugin-safe-left,0px);padding-right:var(--plugin-safe-right,0px);}
+:root[data-plugin-android] .safe-bottom {padding-bottom:var(--plugin-safe-bottom,0px);}
+:root[data-plugin-android] {overflow:hidden;background:var(--bg,#000);}
+:root[data-plugin-android] body,
+:root[data-plugin-android] #root {width:100%;max-width:100%;overflow:hidden;background:var(--bg,#000);}
+/* Native insets are not exposed through CSS env() by Android's embedded WebView. */
+:root[data-plugin-android] .mini-player {bottom:calc(72px + var(--plugin-safe-bottom,0px));left:calc(8px + var(--plugin-safe-left,0px));right:calc(8px + var(--plugin-safe-right,0px));}
+:root[data-plugin-android] .music-app:not(.cue-workspace-active) main {padding-bottom:calc(152px + var(--plugin-safe-bottom,0px));}
+/* Keep touch scrolling, without a persistent light scrollbar along the screen edge. */
+:root[data-plugin-android] * {scrollbar-width:none;}
+:root[data-plugin-android] *::-webkit-scrollbar {display:none;width:0;height:0;}
+@media(min-width:768px){:root[data-plugin-android] .music-app:not(.cue-workspace-active) main {padding-bottom:0;}}
 :root[data-plugin-android] [class~="max-h-[45dvh]"] {max-height:calc(var(--plugin-vh)*45);}
 :root[data-plugin-android] [class~="max-h-[55dvh]"] {max-height:calc(var(--plugin-vh)*55);}
 :root[data-plugin-android] [class~="max-h-[70dvh]"] {max-height:calc(var(--plugin-vh)*70);}
 :root[data-plugin-android] [class~="h-[min(52dvh,560px)]"] {height:min(calc(var(--plugin-vh)*52),560px);}
 :root[data-plugin-android] [class~="max-w-[min(100%,46dvh)]"] {max-width:min(100%,calc(var(--plugin-vh)*46));}
+
+/* A single native performance workspace in portrait, landscape and DAW windows.
+   Pads and performance controls share the available height; MIDI/options live
+   in a dialog rather than pushing the speed fader below the fold. */
+:root[data-plugin-editor] .music-app>.min-h-0 {padding-left:var(--plugin-safe-left,env(safe-area-inset-left));padding-right:var(--plugin-safe-right,env(safe-area-inset-right));}
+:root[data-plugin-editor] .music-app .safe-top {padding-left:0;padding-right:0;}
+:root[data-plugin-editor] [role="dialog"] {width:calc(100% - var(--plugin-safe-left,env(safe-area-inset-left)) - var(--plugin-safe-right,env(safe-area-inset-right)));max-height:calc(var(--plugin-viewport-height,100dvh) - var(--plugin-safe-top,env(safe-area-inset-top)) - var(--plugin-safe-bottom,env(safe-area-inset-bottom)) - 12px);overflow-y:auto;}
+:root[data-plugin-editor] .cue-workspace-main {overflow:hidden;padding-bottom:calc(64px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));}
+:root[data-plugin-editor] .cue-workspace {height:100%;min-height:0;display:flex;flex-direction:column;padding-bottom:0;}
+:root[data-plugin-editor] .cue-workspace>header {flex:none;}
+:root[data-plugin-editor] .cue-workspace>header>div {height:46px;gap:8px;padding-left:12px;padding-right:12px;}
+:root[data-plugin-editor] .cue-workspace>header h1 {font-size:16px;}
+:root[data-plugin-editor] .cue-body {display:flex;flex:1;min-height:0;flex-direction:column;gap:8px;padding:6px 12px 8px;}
+:root[data-plugin-editor] .cue-intro {display:none;}
+:root[data-plugin-editor] .cue-transport {flex:none;min-width:0;min-height:44px;margin:0;padding:6px 8px;gap:6px;border-radius:12px;}
+:root[data-plugin-editor] .cue-transport {display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:4px 6px;}
+:root[data-plugin-editor] .cue-song-browser {display:flex;flex-direction:column;min-width:0;}
+:root[data-plugin-editor] .cue-song-list {height:44px;min-width:0;padding:2px 5px;font-size:10px;line-height:14px;}
+:root[data-plugin-editor] .cue-playback-transport {grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;min-width:0;}
+:root[data-plugin-editor] .cue-mark {grid-column:3;grid-row:1;}
+:root[data-plugin-editor] .cue-playback-transport>div:first-child {gap:2px;}
+:root[data-plugin-editor] .cue-scrubber {min-width:0;}
+:root[data-plugin-editor] .cue-scrubber .w-10 {width:32px;font-size:9px;}
+:root[data-plugin-editor] .cue-artwork {width:32px;height:32px;flex-shrink:0;}
+:root[data-plugin-editor] .cue-track-label p:first-child {font-size:12px;}
+:root[data-plugin-editor] .cue-track-label p:last-child {font-size:10px;}
+:root[data-plugin-editor] .cue-transport .font-mono {font-size:10px;}
+:root[data-plugin-editor] .cue-transport-buttons {flex:none;gap:0;}
+:root[data-plugin-editor] .cue-transport-buttons button {display:grid;place-items:center;width:28px;height:32px;border-radius:50%;touch-action:manipulation;}
+:root[data-plugin-editor] .cue-transport-buttons button:nth-child(2) {width:34px;background:var(--surface-3);}
+:root[data-plugin-editor] .cue-mark {height:32px;padding:0 9px;font-size:10px;}
+:root[data-plugin-editor] .cue-performance {display:grid;flex:1;min-height:0;grid-template-rows:minmax(0,1fr) auto;gap:8px;}
+:root[data-plugin-editor] .cue-pads-panel {display:flex;min-height:0;min-width:0;flex-direction:column;gap:5px;}
+:root[data-plugin-editor] .cue-bankbar {display:block;margin:0;}
+:root[data-plugin-editor] .cue-bankbar>span {display:none;}
+:root[data-plugin-editor] .cue-bank-buttons {display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:3px;overflow:visible;}
+:root[data-plugin-editor] .cue-bank-buttons button {width:auto;height:28px;font-size:11px;}
+:root[data-plugin-editor] .cue-overwrite-row {margin:0;gap:5px;min-height:26px;}
+:root[data-plugin-editor] .cue-overwrite-row p {flex:1;font-size:9px;line-height:1.1;}
+:root[data-plugin-editor] .cue-overwrite-row p {display:none;}
+:root[data-plugin-editor] .cue-preset {flex:1;min-width:64px;width:100px;height:28px;font-size:10px;}
+:root[data-plugin-editor] .cue-overwrite-row button {min-height:26px;padding:3px 8px;font-size:10px;}
+:root[data-plugin-editor] .cue-pad-grid {flex:1;min-height:0;margin:0;grid-template-rows:repeat(4,minmax(0,1fr));gap:6px;}
+:root[data-plugin-editor] .cue-pad-grid>div {min-width:0;min-height:0;}
+:root[data-plugin-editor] .cue-pad-grid>div>button:first-child {height:100%;min-height:24px;aspect-ratio:auto;padding:7px;border-radius:11px;}
+:root[data-plugin-editor] .cue-pad-grid>div>button:last-child:not(:first-child) {width:20px;height:20px;top:3px;right:3px;}
+:root[data-plugin-editor] .cue-controls-panel {display:grid;min-width:0;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;align-content:start;}
+:root[data-plugin-editor] .cue-controls-panel>section {min-width:0;margin:0;padding:8px;border-radius:12px;}
+:root[data-plugin-editor] .cue-controls-panel .cue-speed-modes>div button {font-size:11px;}
+:root[data-plugin-editor] .cue-controls-panel h2 {font-size:11px;}
+:root[data-plugin-editor] .cue-label-long {display:none;}
+:root[data-plugin-editor] .cue-label-short {display:inline;}
+:root[data-plugin-editor] .cue-speed-modes>div button {font-size:11px;}
+:root[data-plugin-editor] .cue-speed {position:relative;}
+:root[data-plugin-editor] .cue-speed>div:first-child {padding-right:23px;gap:3px;}
+:root[data-plugin-editor] .cue-speed>div:first-child .text-sm {font-size:11px;}
+:root[data-plugin-editor] .cue-speed input[type=range] {display:block;width:100%;height:24px;margin:2px 0 0;}
+:root[data-plugin-editor] .cue-tuning {margin-top:2px;gap:0;}
+:root[data-plugin-editor] .cue-tuning>p {display:none;}
+:root[data-plugin-editor] .cue-tuning>div {width:100%;justify-content:space-between;padding:0;gap:0;}
+:root[data-plugin-editor] .cue-tuning button {height:28px;padding:0 7px;font-size:10px;}
+:root[data-plugin-editor] .cue-tuning button {min-width:28px;}
+:root[data-plugin-editor] .cue-tuning span {min-width:32px;font-size:10px;}
+:root[data-plugin-editor] .cue-speed-modes {margin-top:4px;gap:0;}
+:root[data-plugin-editor] .cue-speed-modes>div {padding:2px;gap:2px;}
+:root[data-plugin-editor] .cue-speed-modes>div button {height:30px;padding:0 3px;font-size:9px;line-height:1.1;overflow-wrap:anywhere;}
+:root[data-plugin-editor] .cue-reset {position:absolute;top:5px;right:5px;display:grid;place-items:center;width:24px;height:24px;padding:0;}
+:root[data-plugin-editor] .cue-reset-text {display:none;}
+:root[data-plugin-editor] .cue-loop>div:first-child {flex-wrap:wrap;gap:2px;}
+:root[data-plugin-editor] .cue-loop>div:first-child>span {font-size:10px;}
+:root[data-plugin-editor] .cue-loop>p {display:none;}
+:root[data-plugin-editor] .cue-loop>div:last-child {grid-template-columns:repeat(2,minmax(0,1fr));margin-top:6px;gap:5px;}
+:root[data-plugin-editor] .cue-loop button {height:32px;font-size:10px;}
+@media(min-width:768px){
+  :root[data-plugin-editor] .cue-workspace-main {padding-bottom:0;}
+}
+:root[data-plugin-layout="landscape"] .cue-performance {grid-template-columns:minmax(0,1.15fr) minmax(230px,1fr);grid-template-rows:minmax(0,1fr);}
+:root[data-plugin-layout="landscape"] .cue-controls-panel {align-self:start;}
+:root[data-plugin-layout="landscape"] .cue-transport {grid-template-columns:24px minmax(90px,1fr) minmax(220px,1.6fr) auto;}
+:root[data-plugin-layout="landscape"] .cue-playback-transport {grid-column:auto;}
+:root[data-plugin-layout="landscape"] .cue-mark {grid-column:4;}
+:root[data-plugin-layout="landscape"] .cue-song-list {height:40px;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .cue-workspace-active>nav ul {height:40px;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .cue-workspace-active>nav a {flex-direction:row;gap:5px;font-size:10px;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .cue-workspace-active>nav svg {width:18px;height:18px;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .cue-workspace-main {padding-bottom:calc(40px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));}
+:root[data-plugin-compact="true"] .cue-workspace>header>div {height:38px;}
+:root[data-plugin-compact="true"] .cue-pad-grid {grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));}
+:root[data-plugin-compact="true"] .cue-pad-grid[data-pad-count="12"] {grid-template-columns:repeat(6,minmax(0,1fr));}
+:root[data-plugin-compact="true"] .cue-pad-grid>div>button:last-child:not(:first-child) {display:none;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .cue-overwrite-row p {display:none;}
+:root[data-plugin-dense="true"] .cue-workspace>header>div {height:32px;}
+:root[data-plugin-dense="true"] .cue-workspace>header button {height:32px;width:32px;}
+:root[data-plugin-dense="true"] .cue-workspace-active>nav ul {height:32px;}
+:root[data-plugin-dense="true"] .cue-workspace-main {padding-bottom:calc(32px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));}
+:root[data-plugin-dense="true"] .cue-body {padding-top:4px;padding-bottom:4px;gap:4px;}
+:root[data-plugin-dense="true"] .cue-transport {height:34px;min-height:34px;padding:2px 6px;}
+:root[data-plugin-dense="true"] .cue-transport {grid-template-columns:minmax(90px,1fr) minmax(280px,2fr) auto;}
+:root[data-plugin-dense="true"] .cue-mark {grid-column:3;}
+:root[data-plugin-dense="true"] .cue-artwork,
+:root[data-plugin-dense="true"] .cue-song-caption {display:none;}
+:root[data-plugin-dense="true"] .cue-song-list {height:28px;}
+:root[data-plugin-dense="true"] .cue-playback-transport button {width:28px!important;height:28px!important;}
+:root[data-plugin-dense="true"] .cue-artwork {width:24px;height:24px;}
+:root[data-plugin-dense="true"] .cue-track-label p {line-height:1.1;}
+:root[data-plugin-dense="true"] .cue-transport-buttons button,
+:root[data-plugin-dense="true"] .cue-mark {height:28px;}
+
+/* Playlist dock: a real selectable song list on the left of wide cue views. */
+:root[data-plugin-editor] .cue-transport {grid-template-columns:32px minmax(0,1fr) auto;}
+:root[data-plugin-editor] .cue-mark {grid-column:3;grid-row:1;}
+:root[data-plugin-editor] .cue-bottom-playback {flex:none;grid-column:auto;min-height:36px;padding:2px 6px;border-radius:10px;background:var(--surface-2);}
+:root[data-plugin-editor] .cue-workspace-active .cue-workspace-main {padding-bottom:calc(64px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));}
+:root[data-plugin-compact="true"][data-plugin-editor] .cue-waveform {height:44px;}
+:root[data-plugin-dense="true"][data-plugin-editor] .cue-waveform {height:32px;}
+:root[data-plugin-dense="true"][data-plugin-editor] .cue-workspace-active>nav ul {height:32px;}
+:root[data-plugin-dense="true"][data-plugin-editor] .cue-transport {grid-template-columns:minmax(0,1fr) auto;}
+:root[data-plugin-dense="true"][data-plugin-editor] .cue-mark {grid-column:2;}
+:root[data-plugin-compact="true"] .cue-controls-panel>section {padding:6px;}
+:root[data-plugin-compact="true"] .cue-speed input[type=range] {height:20px;}
+:root[data-plugin-compact="true"] .cue-tuning button {height:24px;}
+:root[data-plugin-compact="true"] .cue-speed-modes>div button {height:24px;}
+:root[data-plugin-compact="true"] .cue-loop button {height:26px;}
+:root[data-plugin-compact="true"] .cue-body {gap:6px;padding-top:4px;padding-bottom:4px;}
+:root[data-plugin-dense="true"] .cue-bankbar {display:none;}
+:root[data-plugin-dense="true"] .cue-bank-compact {display:block;min-width:28px;max-width:34px;height:24px;}
+:root[data-plugin-dense="true"] .cue-overwrite-row {gap:3px;}
+:root[data-plugin-dense="true"] .cue-overwrite-row button {padding:2px 4px;font-size:9px;min-height:22px;}
+:root[data-plugin-dense="true"] .cue-preset {min-width:56px;width:64px;font-size:9px;height:24px;}
+:root[data-plugin-dense="true"] .cue-controls-panel>section {padding:4px;}
+:root[data-plugin-dense="true"] .cue-tuning button {height:22px;}
+:root[data-plugin-dense="true"] .cue-speed input[type=range] {height:20px;}
+:root[data-plugin-dense="true"] .cue-speed-modes>div button {height:22px;}
+:root[data-plugin-dense="true"] .cue-loop button {height:24px;}
+:root[data-plugin-dense="true"] .cue-bottom-playback {min-height:28px;}
+:root[data-plugin-dense="true"][data-plugin-editor] .cue-transport {display:none;}
+:root[data-plugin-dense="true"][data-plugin-editor] .cue-header-mark {display:inline-flex;align-items:center;justify-content:center;width:auto;min-width:48px;}
+:root[data-plugin-dense="true"][data-plugin-editor] .cue-waveform {height:24px;}
+:root[data-plugin-dense="true"] .cue-bottom-playback button {width:28px!important;height:28px!important;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .cue-workspace-active .cue-workspace-main {padding-bottom:calc(40px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));}
+:root[data-plugin-dense="true"][data-plugin-editor] .cue-workspace-active .cue-workspace-main {padding-bottom:calc(32px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));}
+:root[data-plugin-editor] .cue-waveform {position:relative;flex:none;height:72px;min-height:0;border-radius:10px;overflow:hidden;background:var(--surface-2);touch-action:none;}
+:root[data-plugin-editor] .cue-waveform canvas {width:100%;height:100%;opacity:.8;}
+:root[data-plugin-editor] .cue-waveform-caption {position:absolute;bottom:2px;left:6px;font-size:8px;color:var(--fg-3);pointer-events:none;}
+:root[data-plugin-editor] .cue-wave-marker {position:absolute;top:0;bottom:0;width:16px;transform:translateX(-50%);color:var(--accent);touch-action:none;cursor:ew-resize;}
+:root[data-plugin-editor] .cue-wave-marker::before {content:"";position:absolute;top:0;bottom:0;left:50%;border-left:1px solid var(--accent);pointer-events:none;}
+:root[data-plugin-editor] .cue-wave-marker span {display:block;background:var(--surface-3);border-radius:4px;padding:2px;font:10px monospace;}
+:root[data-plugin-low-height="true"] .cue-waveform {height:44px;}
+:root[data-plugin-dense="true"] .cue-waveform {height:36px;}
+:root[data-plugin-editor] .cue-stage {position:relative;display:grid;grid-template-columns:minmax(0,1fr);flex:1;min-height:0;gap:10px;}
+:root[data-plugin-editor] .cue-performance {grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;}
+:root[data-plugin-editor] .cue-queue-panel {position:absolute;inset:0 auto 0 0;width:min(280px,85%);z-index:30;display:flex;min-height:0;padding:8px;border-radius:12px;background:var(--surface-2);box-shadow:6px 0 24px #0006;}
+:root[data-plugin-editor] .cue-queue-panel .cue-song-browser {height:100%;gap:6px;}
+:root[data-plugin-editor] .cue-queue-panel .cue-song-list {height:100%;flex:1;min-height:0;font-size:11px;line-height:1.6;}
+:root[data-plugin-editor] .cue-queue-panel option {padding:8px 6px;}
+:root[data-plugin-editor] .cue-song-list li {grid-template-columns:20px 44px minmax(0,1fr) 28px;gap:7px;padding:6px;min-height:56px;}
+:root[data-plugin-editor] .cue-song-list li>span:first-of-type {display:flex;font-size:10px;}
+:root[data-plugin-editor] .cue-song-list li>div.z-10 {display:none;}
+:root[data-plugin-editor] .cue-song-list li>button:last-child {width:28px;height:28px;}
+:root[data-plugin-editor] .cue-song-list p {font-size:12px;}
+:root[data-plugin-editor] .cue-song-list p+p {font-size:10px;}
+@media(min-width:768px){
+  :root[data-plugin-editor] .cue-stage[data-queue-open="true"] {grid-template-columns:minmax(150px,22%) minmax(0,1fr);}
+  :root[data-plugin-editor] .cue-queue-panel {position:static;width:auto;box-shadow:none;}
+}
+:root[data-plugin-layout="landscape"][data-plugin-low-height="true"] .cue-performance {grid-template-columns:minmax(0,1.15fr) minmax(230px,1fr);grid-template-rows:minmax(0,1fr);}
+@media(min-width:768px) and (max-height:600px){
+  :root[data-plugin-layout="landscape"][data-plugin-compact="true"] .cue-workspace-main {padding-bottom:0;}
+  :root[data-plugin-dense="true"] .cue-workspace-main {padding-bottom:0;}
+}
 :root[data-plugin-editor="desktop"] .bm-app {height:100dvh;min-height:0;overflow:hidden;padding:0 12px;}
 :root[data-plugin-editor="desktop"] .bm-header {flex-wrap:wrap;gap:10px;padding:10px 0;}
 :root[data-plugin-editor="desktop"] .bm-brand {min-width:0;flex:1 1 180px;}

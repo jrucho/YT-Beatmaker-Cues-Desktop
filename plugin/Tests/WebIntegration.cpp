@@ -23,7 +23,9 @@ int main(int argc,char** argv) {
      setenv("BEATMAKER_AUDIO_CACHE_DIR",testData.getChildFile("AudioCache").getFullPathName().toRawUTF8(),1);
    #endif
     struct Cleanup{juce::File file;~Cleanup(){file.deleteRecursively();}}cleanup{testData};
+    juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_VST3);
     CueProcessor processor;processor.prepareToPlay(48000,512);
+    juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_Undefined);
     auto editor=std::make_unique<MobileWebEditor>(processor,offline);
     editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);editor->setVisible(true);
     juce::AudioBuffer<float> output(2,512);juce::MidiBuffer midi;
@@ -144,6 +146,28 @@ int main(int argc,char** argv) {
         }
        #if !BEATMAKER_DESKTOP_BETA
         evaluate("document.querySelector('a[href=\"/cues\"]')?.click();true");pump(200);
+        if(!(bool)evaluate("(()=>{if(window.__JUCE__.initialisationData.hostedPlugin?.[0]!==true||window.__pluginHosted!==true)return false;const p=window.__pluginStores.player,c=window.__pluginStores.cues;const snapshot=()=>{const s=p.getState();return JSON.stringify({shuffle:s.shuffle,repeat:s.repeat,volume:s.volume,muted:s.muted,loop:s.loop,cues:c.getState().cues});};const before=snapshot();for(const key of [...'awsedftgzhjikol0123456789',' ','ArrowLeft','ArrowUp','/','?']){if(!window.dispatchEvent(new KeyboardEvent('keydown',{key,code:/^[0-9]$/.test(key)?'Digit'+key:key===' '?'Space':'Key'+key.toUpperCase(),bubbles:true,cancelable:true})))return false;}return snapshot()===before;})()")){std::cerr<<"Hosted WebView captured DAW/player keyboard shortcuts\n";return 1;}
+        std::cout<<"PASS: native hosted flag disables player and pad keyboard shortcuts without cancelling DAW key events\n";
+        processor.importPadSample(0,15,juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));
+        for(int i=0;i<100&&!(bool)evaluate("Boolean(document.querySelector('button[aria-label^=\"Pad 16: Sample\"]'))");++i)pump(50);
+        if(!(bool)evaluate("Boolean(document.querySelector('button[aria-label^=\"Pad 16: Sample\"]'))")){std::cerr<<"Sample assignment did not reach the native WebView pad\n";return 1;}
+        processor.submit({CueProcessor::Action::pause});pump(200);const double samplePosition=processor.playhead.load();renderedAudio=false;
+        evaluate("document.querySelector('button[aria-label^=\"Pad 16: Sample\"]').click();true");pump(100);
+        if(processor.getCue(0,15)>=0||processor.playhead.load()!=samplePosition||!renderedAudio){std::cerr<<"WebView sample pad did not play independently of paused cue transport: cue="<<processor.getCue(0,15)<<" position="<<processor.playhead.load()<<" expected="<<samplePosition<<" audible="<<renderedAudio<<"\n";return 1;}
+        processor.removePadSample(0,15);processor.submit({CueProcessor::Action::play});pump(100);
+        std::cout<<"PASS: real imported sample reaches WebView and plays native host-bus audio without marking/seeking the song\n";
+        for(int i=0;i<100&&!(bool)evaluate("document.querySelector('.cue-waveform')?.dataset.waveformProgress==='1'");++i)pump(50);
+        if(!(bool)evaluate("document.querySelector('.cue-waveform')?.dataset.peakCount==='1024'&&document.querySelector('.cue-waveform')?.dataset.waveformProgress==='1'")){std::cerr<<"Native waveform peaks did not finish from real local audio: "<<evaluate("JSON.stringify({visibility:document.visibilityState,wave:document.querySelector('.cue-waveform')?.dataset,route:location.href})").toString()<<" status: "<<processor.getStatus()<<"\n";return 1;}
+        if(!(bool)evaluate("(()=>{const marker=document.querySelector('.cue-wave-marker'),wave=document.querySelector('.cue-waveform');if(!marker||!wave)return false;const x=marker.getBoundingClientRect().left+parseFloat(getComputedStyle(marker,'::before').left);const expected=wave.getBoundingClientRect().left+Number(marker.getAttribute('aria-valuenow'))/Number(marker.getAttribute('aria-valuemax'))*wave.clientWidth;return Math.abs(x-expected)<1;})()")){std::cerr<<"Cue marker line is offset from its actual timestamp\n";return 1;}
+        for(const auto [width,height]:shapes){
+            editor->setSize(width,height);pump(250);
+            const auto report=evaluate("JSON.stringify((()=>{const main=document.querySelector('main'),nav=document.querySelector('.cue-workspace-active>nav');const limit=nav?nav.getBoundingClientRect().top:innerHeight;const nodes=[...document.querySelectorAll('.cue-pad-grid>div>button:first-child,.cue-speed input,.cue-speed-modes button,.cue-tuning button,.cue-loop button,.cue-library-back')];return {scroll:main.scrollHeight-main.clientHeight,pads:document.querySelectorAll('.cue-pad-grid>div>button:first-child').length,controls:nodes.map(e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,width:r.width,height:r.height};}),limit};})())").toString();
+            const auto data=juce::JSON::parse(report);bool visible=(int)data["scroll"]<=2&&(int)data["pads"]==16;
+            if(const auto* controls=data["controls"].getArray())for(const auto& control:*controls)visible=visible&&(double)control["top"]>=0&&(double)control["bottom"]<=(double)data["limit"]+2&&(double)control["width"]>=20&&(double)control["height"]>=20;
+            else visible=false;
+            if(!visible){std::cerr<<"Cue performance controls require scrolling or are clipped: "<<report<<"\n";return 1;}
+        }
+        std::cout<<"PASS: native portrait/landscape cue workspace keeps pads, speed, tuning and loop controls visible without scrolling\n";
        #endif
         std::cout<<"PASS: 500-track real WebView stays windowed across portrait, landscape, square, wide and tall sizes; native grip reachable\n";
         evaluate("window.__pluginStores.api.createPlaylist('Offline saved playlist',["+juce::JSON::toString(track)+"]).then(()=>window.__pluginTest.saved=true);true");

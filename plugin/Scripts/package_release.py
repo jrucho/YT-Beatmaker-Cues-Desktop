@@ -27,14 +27,18 @@ output=Path(args.output).resolve() if args.output else root.parent/'release'
 output.mkdir(parents=True,exist_ok=True)
 cache=(build/'CMakeCache.txt').read_text()
 desktop_beta=bool(re.search(r'^BEATMAKER_DESKTOP_BETA:BOOL=ON$',cache,re.MULTILINE))
-product='Beatmaker Cues Desktop Beta' if desktop_beta else 'Beatmaker Cues Plug-in'
+product='Beatmaker Cues Desktop Beta' if desktop_beta else 'Beatmaker Cues'
 package_prefix='Beatmaker-Cues-Desktop-Beta-Plug-ins' if desktop_beta else 'Beatmaker-Cues-Plug-ins'
 standalone_prefix='Beatmaker-Cues-Desktop-Beta-Standalone' if desktop_beta else 'Beatmaker-Cues-Plugin-Standalone'
 metadata_prefix='Desktop-Beta-Build' if desktop_beta else 'Plugin-Build'
 formats=['VST3','Standalone']+(['AU'] if args.platform=='macOS' else [])
+def native_target(kind):
+    suffix='.component' if kind=='AU' else '.vst3' if kind=='VST3' else '.app' if args.platform=='macOS' else '.exe' if args.platform=='Windows' else ''
+    return artifacts/kind/(product+suffix)
 for kind in formats:
     folder=artifacts/kind
     if not folder.is_dir() or not any(folder.iterdir()):raise RuntimeError(f'Missing native target: {folder}')
+    if not native_target(kind).exists():raise RuntimeError(f'Missing expected native product: {native_target(kind)}')
     if args.platform=='macOS':
         bundle=folder/(product+('.component' if kind=='AU' else '.vst3' if kind=='VST3' else '.app'))
         architectures=set(subprocess.check_output(['lipo','-archs',str(bundle/'Contents/MacOS'/product)],text=True).split())
@@ -50,7 +54,7 @@ for kind in formats:
 
 provenance=source_info(root.parent)
 source=provenance['sourceCommit']
-info={'version':version,'sourceCommit':source,'platform':args.platform,'architecture':args.arch,
+info={'version':version,'productName':product,'sourceCommit':source,'platform':args.platform,'architecture':args.arch,
       'edition':'desktop-beta' if desktop_beta else 'main',
       'formats':formats,'checks':args.checks.split(',') if args.checks else [],'signing':'ad-hoc' if args.platform=='macOS' else 'unsigned',
       'runURL':f"https://github.com/{os.environ.get('GITHUB_REPOSITORY')}/actions/runs/{os.environ.get('GITHUB_RUN_ID')}" if os.environ.get('GITHUB_RUN_ID') else None}
@@ -68,10 +72,17 @@ def add_tree(archive,folder,prefix):
     for file in folder.rglob('*'):
         if file.is_file():archive.write(file,str(Path(prefix)/file.relative_to(folder)))
 
+def add_native(archive,kind,prefix):
+    # Product renames may leave older outputs in a reused build directory.
+    # Package exactly the selected native product, never all historical outputs.
+    source=native_target(kind);destination=str(Path(prefix)/source.name)
+    if source.is_dir():add_tree(archive,source,destination)
+    else:archive.write(source,destination)
+
 name=f'{package_prefix}-{version}-{args.platform}-{args.arch}'
 target=output/(name+'.zip')
 with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as archive:
-    for kind in formats:add_tree(archive,artifacts/kind,name+'/'+kind)
+    for kind in formats:add_native(archive,kind,name+'/'+kind)
     archive.write(root/'README.md',name+'/README.md')
     archive.write(root/'AGPL-3.0.txt',name+'/Licenses/AGPL-3.0.txt')
     archive.write(root.parent/'LICENSE',name+'/Licenses/MIT-Application.txt')
@@ -83,7 +94,7 @@ with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as archive:
         for file in licenses:archive.write(file,name+'/Licenses/'+dependency+'-'+file.name)
 standalone=output/f'{standalone_prefix}-{version}-{args.platform}-{args.arch}.zip'
 with zipfile.ZipFile(standalone,'w',zipfile.ZIP_DEFLATED) as archive:
-    add_tree(archive,artifacts/'Standalone','Beatmaker-Cues-Standalone')
+    add_native(archive,'Standalone','Beatmaker-Cues-Standalone')
     archive.write(root/'README.md','Beatmaker-Cues-Standalone/README.md')
     archive.write(root/'AGPL-3.0.txt','Beatmaker-Cues-Standalone/Licenses/AGPL-3.0.txt')
     archive.write(root.parent/'LICENSE','Beatmaker-Cues-Standalone/Licenses/MIT-Application.txt')
@@ -101,9 +112,10 @@ for file in [target,standalone,metadata,manifest]:print(file)
 if args.platform=='Linux':
     with tempfile.TemporaryDirectory(prefix='beatmaker-plugin-deb-') as temp:
         stage=Path(temp)
-        shutil.copytree(artifacts/'VST3',stage/'usr/lib/vst3',dirs_exist_ok=True)
+        shutil.copytree(native_target('VST3'),stage/'usr/lib/vst3'/native_target('VST3').name,dirs_exist_ok=True)
         linux_name='beatmaker-cues-desktop-beta' if desktop_beta else 'beatmaker-cues-plugin'
-        shutil.copytree(artifacts/'Standalone',stage/'opt'/linux_name,dirs_exist_ok=True)
+        standalone=stage/'opt'/linux_name;standalone.mkdir(parents=True)
+        shutil.copy2(native_target('Standalone'),standalone/native_target('Standalone').name)
         licenses=stage/'usr/share/doc'/linux_name;licenses.mkdir(parents=True)
         for notice,filename in [(root/'AGPL-3.0.txt','AGPL-3.0.txt'),(root.parent/'LICENSE','MIT-Application.txt'),(root.parent/'THIRD_PARTY_NOTICES.md','copyright'),(root/'Source/dsp/WebKit-LICENSE.txt','WebKit-LICENSE.txt')]:shutil.copy2(notice,licenses/filename)
         for dependency,files in dependencies.items():

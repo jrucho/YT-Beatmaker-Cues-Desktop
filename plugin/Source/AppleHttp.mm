@@ -59,3 +59,15 @@ AppleHttpResult appleHttp(const juce::String& url,const juce::String& method,con
         return result;
     }
 }
+void appleAllowBackgroundFileAccess(const juce::File& file){
+   #if JUCE_IOS
+    @autoreleasepool {
+        NSString* path=[NSString stringWithUTF8String:file.getFullPathName().toRawUTF8()];
+        path=[path stringByResolvingSymlinksInPath];
+        if(![path hasPrefix:[[NSHomeDirectory() stringByResolvingSymlinksInPath] stringByAppendingString:@"/"]])return;
+        [[NSFileManager defaultManager] setAttributes:@{NSFileProtectionKey:NSFileProtectionCompleteUntilFirstUserAuthentication} ofItemAtPath:path error:nil];
+    }
+   #else
+    juce::ignoreUnused(file);
+   #endif
+}

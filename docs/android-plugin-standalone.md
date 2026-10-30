@@ -1,7 +1,7 @@
-# Android JUCE plug-in standalone
+# Beatmaker Cues — native Android app
 
-This is a separate Android application (`app.owaega.beatmakercuesstandalone`),
-using the native JUCE plug-in processor and the normal mobile-style editor.
+This is the new official Android implementation (`app.owaega.beatmakercuesstandalone`),
+using the native JUCE processor and the responsive portrait/landscape cue workspace.
 It is distinct from the Capacitor main Android app and uses private app data.
 The initial port targets arm64 devices, Android 7/API 24 or newer.
 
@@ -50,10 +50,13 @@ JUCE AGPLv3 option; distribute the corresponding-source/dependency archive.
   strip and left a large black region. Startup, resize and resume synchronize
   the measured bounds. Portrait (412×915 CSS pixels), landscape (732×412) and
   restored portrait layouts were checked on the API 35 emulator.
-- MediaExtractor/MediaCodec convert unsupported encoded inputs to disk PCM WAV
-  off the audio callback. The native processor then uses resident or bounded
-  paged playback. Full first-use AAC conversion can take substantial time;
-  the 645-second test song took 75–79 seconds on an API 35 emulator.
+- MediaExtractor/MediaCodec decode AAC pages on the load/page workers behind the
+  fixed-size native PCM cache. Full first-use PCM conversion is no longer required.
+  The 645-second test song reached first render in 2.39 seconds including a fresh
+  2.16-second download, or about 0.18–0.31 seconds from an encoded cache hit.
+- Native cutout/status-bar insets position the header below the camera. The
+  standalone chooses two supported audio bursts for cue playback rather than
+  JUCE's default 40/100 ms queue; physical output latency remains device-dependent.
 - Native media snapshots feed a MediaSession/foreground playback service;
   system play, pause, seek and navigation command the C++ engine independently
   of WebView event delivery. Audio focus loss pauses playback.
@@ -62,3 +65,7 @@ JUCE AGPLv3 option; distribute the corresponding-source/dependency archive.
   Bluetooth, unplug handling and API 24/36 device acceptance remain pending.
 - Native full desktop Advanced/stems/FX/sequencer/sidechain/VJ parity remains
   incomplete. This port uses the normal plug-in interface and core native engine.
+
+See `official-product-lineup.md` for the current official app/icon direction and
+the publication/push hold. Local candidates may identify an uncommitted working
+tree; they are not published 1.0.4 releases.

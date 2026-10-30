@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Beatmaker Cues Plug-in</string>
+    <string name="app_name">Beatmaker Cues</string>
     <string name="playback_channel">Music playback</string>
     <string name="playback_previous">Previous</string>
     <string name="playback_pause">Pause</string>

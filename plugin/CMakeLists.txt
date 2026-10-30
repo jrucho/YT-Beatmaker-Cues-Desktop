@@ -36,7 +36,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND BEATMAKER_APP_GROUP)
     endif()
     set(BEATMAKER_GROUPS_ENABLED TRUE)
 endif()
-set(BEATMAKER_PRODUCT "Beatmaker Cues Plug-in")
+set(BEATMAKER_PRODUCT "Beatmaker Cues")
+set(BEATMAKER_PLUGIN_NAME "Beatmaker Cues Plug-in")
 set(BEATMAKER_CODE BmCP)
 set(BEATMAKER_UI_ARCHIVE Assets/mobile-ui.zip)
 if(BEATMAKER_DESKTOP_BETA)
@@ -44,6 +45,7 @@ if(BEATMAKER_DESKTOP_BETA)
         message(FATAL_ERROR "The desktop-layout beta is only a desktop target")
     endif()
     set(BEATMAKER_PRODUCT "Beatmaker Cues Desktop Beta")
+    set(BEATMAKER_PLUGIN_NAME "Beatmaker Cues Desktop Beta")
     set(BEATMAKER_CODE BmDB)
     set(BEATMAKER_BETA_BUNDLE_ID "app.owaega.beatmakercues.desktopbeta" CACHE STRING "Desktop beta identity; separate from the normal plug-in")
     set(BEATMAKER_BUNDLE_ID "${BEATMAKER_BETA_BUNDLE_ID}")
@@ -55,8 +57,10 @@ juce_add_plugin(BeatmakerCues
     PLUGIN_MANUFACTURER_CODE Owga
     PLUGIN_CODE ${BEATMAKER_CODE}
     PRODUCT_NAME "${BEATMAKER_PRODUCT}"
-    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Assets/PluginIcon.png"
-    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Assets/PluginIcon.png"
+    # Preserve the plug-in/standalone settings identity when updating the shell's name.
+    PLUGIN_NAME "${BEATMAKER_PLUGIN_NAME}"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Assets/AppIcon.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Assets/AppIcon.png"
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
@@ -69,6 +73,7 @@ juce_add_plugin(BeatmakerCues
     BACKGROUND_AUDIO_ENABLED TRUE
     APP_GROUPS_ENABLED ${BEATMAKER_GROUPS_ENABLED}
     APP_GROUP_IDS "${BEATMAKER_APP_GROUP}"
+    IPHONE_SCREEN_ORIENTATIONS UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
     IPAD_SCREEN_ORIENTATIONS UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
     FORMATS ${PLUGIN_FORMATS}
     VST3_CATEGORIES Instrument Sampler

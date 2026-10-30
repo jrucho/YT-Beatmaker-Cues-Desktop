@@ -43,10 +43,11 @@ android {
 }
 def prepare = tasks.register('prepareStandaloneSources') {
     doLast {
+        delete layout.buildDirectory.file('generated/standaloneRes/drawable/plugin_icon.png')
         exec { workingDir repository; commandLine 'node','plugin/Scripts/prepare_android.mjs',juce.absolutePath }
         copy { from new File(repository,'mobile/android/app/src/main/java'); include 'app/musike/android/PlaybackService.java'; into layout.buildDirectory.dir('generated/standaloneJava') }
         copy { from new File(repository,'mobile/android/app/src/main/res'); include 'drawable/ic_media_*.xml','drawable/ic_stat_musike.xml'; into layout.buildDirectory.dir('generated/standaloneRes') }
-        copy { from new File(repository,'plugin/Assets/PluginIcon.png'); into layout.buildDirectory.dir('generated/standaloneRes/drawable'); rename { 'plugin_icon.png' } }
+        copy { from new File(repository,'plugin/Assets/AppIcon.png'); into layout.buildDirectory.dir('generated/standaloneRes/drawable'); rename { 'app_icon.png' } }
         copy { from new File(repository,'LICENSE'),new File(repository,'THIRD_PARTY_NOTICES.md'),new File(repository,'plugin/AGPL-3.0.txt'),new File(repository,'plugin/Source/dsp/WebKit-LICENSE.txt'); into layout.buildDirectory.dir('generated/standaloneAssets/licenses') }
         copy { from juce; include 'LICENSE*'; into layout.buildDirectory.dir('generated/standaloneAssets/licenses/JUCE') }
     }

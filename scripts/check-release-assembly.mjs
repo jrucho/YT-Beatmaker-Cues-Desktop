@@ -41,7 +41,7 @@ try {
   assert.equal(scoped().status,0,'Explicit Apple/Android prerelease should require exactly its scoped inventory');
   assert.equal(JSON.parse(await readFile(path.join(output,`Release-Build-${version}.json`),'utf8')).scope,'macOS-iOS-Android-prerelease');
   await rm(output,{recursive:true});
-  await rm(path.join(staging,`Beatmaker-Cues-Plugin-Standalone-${version}-Android-arm64.apk`));
+  await rm(path.join(staging,`Beatmaker-Cues-${version}-Android-arm64.apk`));
   assert.notEqual(scoped().status,0,'Scoped prerelease must include the new native Android standalone');
   console.log('PASS: complete matrix, missing target, mixed SHA, dirty source, tampered checksum and staging isolation gates');
 } finally {await rm(temporary,{recursive:true,force:true});}

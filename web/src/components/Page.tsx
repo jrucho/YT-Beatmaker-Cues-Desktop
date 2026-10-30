@@ -14,12 +14,14 @@ export function PageHeader({
   actions,
   mobileOnly,
   className,
+  alwaysSettings,
 }: {
   title?: ReactNode;
   actions?: ReactNode;
   /** Pages with their own large hero title only need the compact bar on phones. */
   mobileOnly?: boolean;
   className?: string;
+  alwaysSettings?: boolean;
 }) {
   const setSettingsOpen = useUi((s) => s.setSettingsOpen);
   const attention = useSystem((s) => needsAttention(s.info));
@@ -34,14 +36,14 @@ export function PageHeader({
       )}
     >
       <div className="flex h-14 items-center gap-3 px-4 md:h-16 md:px-6">
-        <LogoMark className="size-7 shrink-0 text-accent-text md:hidden" />
+        <LogoMark className={cn("size-7 shrink-0 text-accent-text",!alwaysSettings&&"md:hidden")} />
         {title && <h1 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight md:text-xl">{title}</h1>}
         {!title && <span className="flex-1" />}
         {actions}
         <IconButton
           label={attention ? t.nav.settingsUpdate : t.nav.settings}
           onClick={() => setSettingsOpen(true)}
-          className="-mr-2 md:hidden"
+          className={cn("-mr-2",!alwaysSettings&&"md:hidden")}
         >
           <GearSixIcon size={22} />
           {attention && <span className="absolute top-2 right-2 size-2 rounded-full bg-accent ring-2 ring-bg" />}
