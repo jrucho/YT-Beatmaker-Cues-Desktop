@@ -7,6 +7,7 @@ public:
     explicit MobileWebEditor(CueProcessor&, bool offlineSmoke = false);
     ~MobileWebEditor() override;
     void resized() override;
+    void parentHierarchyChanged() override;
     void evaluate(const juce::String& script, juce::WebBrowserComponent::EvaluationCallback callback) { browser.evaluateJavascript(script,std::move(callback)); }
     void paint(juce::Graphics& graphics) override { graphics.fillAll(juce::Colours::black); }
 private:

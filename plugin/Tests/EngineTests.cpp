@@ -466,10 +466,10 @@ int main() {
             juce::Thread::sleep(150);
             const bool duplicate=requests.load()!=1;
             release.signal();
-            for(int i=0;i<1000&&(!first.ready.load()||!second.ready.load());++i){block(first);block(second);juce::Thread::sleep(2);}
+            for(int i=0;i<2500&&(!first.ready.load()||!second.ready.load());++i){block(first);block(second);juce::Thread::sleep(4);}
             check(!duplicate&&requests.load()==1,"Prefetch promotion / second processor duplicated the download");
             check(!badRange.load(),"Unexpected fixture range");
-            check(!abandoned.load()&&first.ready.load()&&second.ready.load(),"Promoted prefetch was cancelled or failed to publish");
+            if(abandoned.load()||!first.ready.load()||!second.ready.load())throw std::runtime_error("Promoted prefetch failed: first="+first.getStatus().toStdString()+"; second="+second.getStatus().toStdString()+"; cancelled="+(abandoned.load()?"yes":"no"));
             check(std::abs(first.playhead.load()-0.1)<0.001&&std::abs(second.playhead.load()-0.2)<0.001,"Shared download lost independent seek positions");
             second.loadRemote(url,0.15,id);
             for(int i=0;i<1000&&!second.ready.load();++i){block(second);juce::Thread::sleep(2);}

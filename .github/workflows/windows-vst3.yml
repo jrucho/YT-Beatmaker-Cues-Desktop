@@ -24,6 +24,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - uses: actions/cache/restore@v4
+        id: native-cache
+        with:
+          path: |
+            plugin/build-deps
+            plugin/build-windows
+          key: windows-vst3-native-v1-${{ github.run_id }}
+          restore-keys: windows-vst3-native-v1-
       - name: Windows WebView2 SDK
         run: nuget install Microsoft.Web.WebView2 -Version 1.0.3485.44 -OutputDirectory plugin/build-deps -NonInteractive
       - name: AAC decoding dependency
@@ -38,6 +46,12 @@ jobs:
       - name: Configure Windows x64
         run: cmake -S plugin -B plugin/build-windows -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DJUCE_WEBVIEW2_PACKAGE_LOCATION="${{ github.workspace }}/plugin/build-deps"
       - run: cmake --build plugin/build-windows --config Release --parallel 3
+      - uses: actions/cache/save@v4
+        with:
+          path: |
+            plugin/build-deps
+            plugin/build-windows
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - name: Native engine and persistent library tests
         run: ctest --test-dir plugin/build-windows -C Release --output-on-failure
       - name: Real offline WebView and hosted keyboard check

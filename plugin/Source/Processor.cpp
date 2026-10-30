@@ -65,6 +65,17 @@ std::unique_ptr<juce::AudioFormatReader> mediaReader(juce::AudioFormatManager& f
    #if JUCE_LINUX || JUCE_WINDOWS
     const auto directory=LibraryStore::defaultDirectory().getChildFile("Decoded");directory.createDirectory();
     const auto decoded=directory.getChildFile(juce::String::toHexString((input.getFullPathName()+juce::String(input.getSize())+juce::String(input.getLastModificationTime().toMilliseconds())).hashCode64())+".wav");
+    // Multiple DAW instances can promote the same prefetched song at once.
+    // Serialize fallback decoding too: Windows cannot replace a WAV that the
+    // first instance has already opened for reading.
+    const auto mutex=mediaMutex(decoded.getFullPathName());std::unique_lock<std::timed_mutex> localLock(*mutex,std::defer_lock);
+    const auto lockDeadline=juce::Time::getMillisecondCounterHiRes()+60000;
+    const auto abort=[&]{return (cancelled&&cancelled())||juce::Time::getMillisecondCounterHiRes()>lockDeadline;};
+    while(!localLock.try_lock_for(std::chrono::milliseconds(50)))if(abort()){error="Audio decoding cancelled or timed out";return {};}
+    LibraryFileLock decodeLock(decoded.getFullPathName().toStdString()+".lock");
+    while(!decodeLock.enter(50))if(abort()){error="Audio decoder cache is busy or unavailable";return {};}
+    struct Unlock{LibraryFileLock& lock;~Unlock(){lock.exit();}}unlock{decodeLock};
+    if(abort()){error="Audio decoding cancelled or timed out";return {};}
     if(decoded.existsAsFile())return std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(decoded));
     const auto temporary=decoded.getSiblingFile(decoded.getFileName()+"-"+juce::Uuid().toString()+".partial");
     juce::ChildProcess process;
@@ -987,12 +998,28 @@ void CueProcessor::persistPadSamples(){
    #endif
 }
 juce::var CueProcessor::importPadSample(int bank,int pad,const juce::File& input){
+    return importPadSample(bank,pad,juce::URL(input));
+}
+juce::var CueProcessor::importPadSample(int bank,int pad,const juce::URL& input){
     if(bank<0||bank>=10||pad<0||pad>=16)throw std::runtime_error("Invalid sample pad");
     const int slot=bank*16+pad,ticket=padSampler.reserve(slot);
+    juce::String name=juce::URL::removeEscapeChars(input.getFileName());std::unique_ptr<juce::InputStream> source;
+   #if JUCE_ANDROID
+    if(input.getScheme()=="content"){
+        const auto document=juce::AndroidDocument::fromDocument(input);
+        if(document){name=document.getInfo().getName();source=document.createInputStream();}
+    }else
+   #endif
+    source=input.createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress));
+    if(!source)throw std::runtime_error("Cannot open the selected sample");
+    name=juce::File::createLegalFileName(name);if(name.isEmpty())name="Sample";
+    const auto extension=name.containsChar('.')?name.fromLastOccurrenceOf(".",true,false):juce::String{};
     const auto directory=libraryStore.mediaDirectory().getChildFile("PadSamples");
     if(!directory.createDirectory())throw std::runtime_error("Cannot create sample media storage");
-    const auto destination=directory.getChildFile(juce::Uuid().toString()+input.getFileExtension());
-    if(!input.copyFileTo(destination))throw std::runtime_error("Cannot retain an app-local copy of this sample");
+    const auto destination=directory.getChildFile(juce::Uuid().toString()+extension);
+    {auto output=destination.createOutputStream();if(!output)throw std::runtime_error("Cannot create the app-local sample copy");
+        const auto bytes=output->writeFromInputStream(*source,-1);output->flush();
+        if(bytes<=0||(source->getTotalLength()>0&&bytes!=source->getTotalLength())||output->getStatus().failed()){output.reset();destination.deleteFile();throw std::runtime_error("Cannot retain a complete app-local copy of this sample");}}
    #if JUCE_IOS
     appleAllowBackgroundFileAccess(directory);appleAllowBackgroundFileAccess(destination);
    #endif
@@ -1000,7 +1027,7 @@ juce::var CueProcessor::importPadSample(int bank,int pad,const juce::File& input
         juce::AudioFormatManager formats;formats.registerBasicFormats();juce::String error;
         auto reader=mediaReader(formats,destination,error);
         if(!reader)throw std::runtime_error(error.isNotEmpty()?error.toStdString():"Cannot decode this sample");
-        padSampler.load(slot,std::move(reader),destination.getFullPathName(),input.getFileNameWithoutExtension(),ticket);
+        padSampler.load(slot,std::move(reader),destination.getFullPathName(),name.upToLastOccurrenceOf(".",false,false),ticket);
     }catch(...){destination.deleteFile();throw;}
     persistPadSamples();return padSamples();
 }

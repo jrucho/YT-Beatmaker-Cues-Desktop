@@ -30,6 +30,18 @@ const call=(method,params)=>new Promise((resolve,reject)=>{
 const evaluate=expression=>call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true}).then(result=>result.result.value);
 const snapshot=()=>evaluate('__pluginInvoke("audio",{cmd:"snapshot"})');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const checkBrowsingChrome=async()=>{
+  for(const route of ['/','/search','/library']){
+    await evaluate(`(()=>{const links=[...document.querySelectorAll('a')];const link=links.find(link=>link.getAttribute('href')===${JSON.stringify(route)}&&link.getBoundingClientRect().width>0);if(!link)throw Error('Navigation link missing');link.click();return true;})()`);
+    await delay(150);
+    const chrome=await evaluate(`(()=>{const mini=document.querySelector('.mini-player'),nav=document.querySelector('.music-app>nav'),main=document.querySelector('main');return {width:innerWidth,scroll:document.documentElement.scrollWidth,app:document.querySelector('.music-app').getBoundingClientRect().toJSON(),mini:mini?.getBoundingClientRect().toJSON(),nav:nav?.getBoundingClientRect().toJSON(),scrollbars:getComputedStyle(main,'::-webkit-scrollbar').display};})()`);
+    assert(chrome.scroll<=chrome.width+1&&chrome.app.left===0&&chrome.app.right>=chrome.width,'Android content leaves a gap or overflows the screen edge: '+JSON.stringify(chrome));
+    assert.equal(chrome.scrollbars,'none','Touch scrolling must not leave a light scrollbar on the right edge');
+    if(chrome.nav)assert(chrome.mini&&chrome.mini.bottom<=chrome.nav.top-4&&chrome.mini.top>=0,'Browsing player overlaps the bottom menu: '+JSON.stringify(chrome));
+  }
+  await evaluate(`(()=>{const link=[...document.querySelectorAll('a[href="/cues"]')].find(link=>link.getBoundingClientRect().width>0);link.click();return true;})()`);
+  await delay(150);
+};
 try{
   for(let attempt=0;attempt<50;++attempt){if(await evaluate('Boolean(window.__pluginStores&&document.querySelector(".music-app main"))'))break;await delay(100);}
   const layout=await evaluate(`({viewport:innerHeight,root:document.documentElement.getBoundingClientRect().height,app:document.querySelector('.music-app')?.getBoundingClientRect().height,main:document.querySelector('main')?.getBoundingClientRect().height})`);
@@ -52,6 +64,7 @@ try{
   for(let i=0;i<100;++i){state=await snapshot();if(state.ready&&state.playing)break;await delay(1000);}
   assert(state.ready&&state.playing,'Native AAC playback did not start');
   assert(state.duration>640,'Long-track duration was truncated');
+  await checkBrowsingChrome();
   await evaluate(`document.querySelector('a[href="/cues"]')?.click();__pluginStores.cues.getState().setCue(1,320);__pluginStores.player.getState().cue(1);true`);
   await delay(1200); // Allow the newly marked cue's native page look-ahead to prime.
   const pad=await evaluate(`(async()=>{const button=document.querySelector('button[aria-label^="Pad 1:"]');if(!button)throw Error('Cue pad missing');button.scrollIntoView({block:'center'});await new Promise(requestAnimationFrame);const r=button.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
@@ -87,7 +100,7 @@ try{
           geometry=await evaluate(`(()=>{
             const nav=document.querySelector('.cue-workspace-active>nav'),main=document.querySelector('main'),page=document.querySelector('.cue-workspace');
             const limit=nav?nav.getBoundingClientRect().top:innerHeight;
-            const selectors=['.cue-pad-grid>div>button:first-child','.cue-bank-buttons button','.cue-speed input','.cue-speed-modes button','.cue-tuning button','.cue-loop button','.cue-library-back','.cue-midi-settings','.cue-playback-transport button','.cue-scrubber [role="slider"]','.cue-preset','.cue-queue-toggle','.cue-waveform'];
+            const selectors=['.cue-pad-grid>div>button:first-child','.cue-bank-buttons button','.cue-speed input','.cue-speed-modes button','.cue-tuning button','.cue-loop button','.cue-library-back','.cue-midi-settings','.cue-sample-edit','.cue-playback-transport button','.cue-scrubber [role="slider"]','.cue-preset','.cue-queue-toggle','.cue-waveform'];
             const controls=selectors.flatMap(selector=>[...document.querySelectorAll(selector)].filter(element=>element.getClientRects().length>0).map(element=>{const r=element.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return {selector,top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height,reachable:!!hit&&(element===hit||element.contains(hit))};}));
             const banks=[...document.querySelectorAll('.cue-bank-buttons button')].filter(e=>e.getClientRects().length>0).length,bankSelect=document.querySelector('.cue-bank-compact');
             return {viewport:[innerWidth,innerHeight],layout:document.documentElement.dataset.pluginLayout,pads:document.querySelectorAll('.cue-pad-grid>div>button:first-child').length,banks,compactBanks:!!bankSelect?.getClientRects().length,scroll:main.scrollHeight-main.clientHeight,pageHeight:page.clientHeight,limit,controls};
@@ -100,6 +113,7 @@ try{
         assert(geometry.scroll<=2,'Cue workspace must not require vertical scrolling: '+JSON.stringify(geometry));
         assert(geometry.controls.length>=30&&geometry.controls.every(c=>c.width>=20&&c.height>=20&&c.top>=0&&c.bottom<=geometry.limit+2&&c.left>=0&&c.right<=geometry.viewport[0]+2&&c.reachable),'Performance controls clipped or covered: '+JSON.stringify(geometry));
         layouts.push({viewport:geometry.viewport,layout:geometry.layout,pads:geometry.pads,scroll:geometry.scroll});
+        await checkBrowsingChrome();
         if(width>=768){
           assert(await evaluate(`(async()=>{document.querySelector('.cue-library-back').click();await new Promise(r=>setTimeout(r,150));const back=[...document.querySelectorAll('a[href="/cues"]')].find(e=>e.getBoundingClientRect().width>0);if(!back)return false;back.click();await new Promise(r=>setTimeout(r,150));return !!document.querySelector('.cue-workspace input[type=range]');})()`),'Wide library must provide a working return to the cue workspace');
         }

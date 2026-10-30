@@ -60,6 +60,7 @@ public:
     juce::var cachedTrack(const juce::String&);
     juce::var importLocalFile(const juce::File&);
     juce::var importPadSample(int bank,int pad,const juce::File&);
+    juce::var importPadSample(int bank,int pad,const juce::URL&);
     juce::var removePadSample(int bank,int pad);
     juce::var padSamples() const {return padSampler.snapshot();}
     bool hasPadSample(int bank,int pad) const {return bank>=0&&bank<10&&pad>=0&&pad<16&&padSampler.assigned(bank*16+pad);}

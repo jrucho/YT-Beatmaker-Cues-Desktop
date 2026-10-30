@@ -57,6 +57,14 @@ MobileWebEditor::MobileWebEditor(CueProcessor& processor, bool offline)
     startTimerHz(60);
 }
 MobileWebEditor::~MobileWebEditor(){stopTimer();cancelled->store(true);requests.removeAllJobs(true,-1);storageWorker.removeAllJobs(false,-1);engine.openEditors.fetch_sub(1);}
+void MobileWebEditor::parentHierarchyChanged(){
+   #if JUCE_IOS || JUCE_ANDROID
+    // Logical-to-physical rounding may leave the last device pixel to the JUCE
+    // standalone window. Its default blue-grey background looks like a bright
+    // vertical line beside the black WebView, even with full-width HTML.
+    if(auto* window=dynamic_cast<juce::ResizableWindow*>(getTopLevelComponent()))window->setBackgroundColour(juce::Colours::black);
+   #endif
+}
 void MobileWebEditor::resized(){
     // Native browser subviews can cover a software JUCE grip. Reserve its own hit area.
     browser.setBounds(getLocalBounds().withTrimmedBottom(resizeGripSize));
@@ -111,9 +119,9 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
             exporter=std::make_unique<juce::FileChooser>("Load sample into "+bank+juce::String(pad+1),juce::File{},"*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.ogg");
             juce::Component::SafePointer<MobileWebEditor> safe(this);
             exporter->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe,bankIndex,pad,complete=std::move(complete)](const auto& chooser){
-                if(!safe)return;const auto file=chooser.getResult();
-                if(!file.existsAsFile()){complete(safe->engine.padSamples());return;}
-                safe->storageTask([safe,bankIndex,pad,file]{return safe?safe->engine.importPadSample(bankIndex,pad,file):juce::var{};},std::move(complete));
+                if(!safe)return;const auto source=chooser.getURLResult();
+                if(source.isEmpty()){complete(safe->engine.padSamples());return;}
+                safe->storageTask([safe,bankIndex,pad,source]{return safe?safe->engine.importPadSample(bankIndex,pad,source):juce::var{};},std::move(complete));
             });
         })
        #if JUCE_ANDROID
