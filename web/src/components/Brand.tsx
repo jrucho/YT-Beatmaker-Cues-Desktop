@@ -5,7 +5,7 @@ export function LogoMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 48 48" className={className} aria-hidden="true">
       <rect x="7" y="7" width="15" height="15" rx="4.5" fill="currentColor" />
-      <path d="M12.6 10.9 L19.4 14.5 L12.6 18.1 Z" fill="#0b0b0b" />
+      <path d="M12.6 10.9 L19.4 14.5 L12.6 18.1 Z" fill="var(--accent-ink, #0b0b0b)" />
       <g fill="none" stroke="currentColor" strokeWidth="3.2">
         <rect x="26" y="7" width="15" height="15" rx="4.5" />
         <rect x="7" y="26" width="15" height="15" rx="4.5" />
@@ -18,7 +18,7 @@ export function LogoMark({ className }: { className?: string }) {
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-1.5", className)}>
-      <LogoMark className="size-7 text-[#c3ec52]" />
+      <LogoMark className="size-7 text-accent-text" />
       <span className="text-[17px] font-semibold tracking-tight">{document.documentElement.hasAttribute('data-plugin-editor') ? 'Beatmaker Cues' : 'musike'}</span>
     </span>
   );

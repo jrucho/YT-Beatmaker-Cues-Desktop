@@ -1,6 +1,6 @@
-# Build, modify or fork Beatmaker Cues 1.0.4
+# Build, modify or fork Beatmaker Cues 1.0.5
 
-Use the complete Git repository/tag or `Beatmaker-Cues-Source-1.0.4.zip`/`.tar.gz`.
+Use the complete Git repository/tag or `Beatmaker-Cues-Source-1.0.5.zip`/`.tar.gz`.
 Main app, web/server, Android/iOS and native plug-in projects are in the same
 source tree. Source downloads and release binaries must identify the same commit.
 Read `THIRD_PARTY_NOTICES.md`, particularly the JUCE-based binary license terms.
@@ -69,7 +69,7 @@ migration and cue-data limitations.
 
 ## Native iOS and AUv3
 
-Use the portable native Xcode export from [v1.0.4 downloads](downloads-1.0.4.md),
+Use the portable native Xcode export from [v1.0.5 downloads](downloads-1.0.5.md),
 or generate the project from the complete checkout:
 
 ```sh
@@ -157,7 +157,7 @@ sources and generated inputs; choose your own team for both targets.
 - The full development matrix runs manually or on `candidate/**` branches.
   `Windows native and desktop builds` produces both Windows standalone editions
   and VST3 artifacts from the selected source ref.
-- The public v1.0.4 inventory is Mac/Windows/Android/iOS. After clean source export
+- The public inventory is Mac/Windows/Android/iOS. After clean source export
   and platform builds, `scripts/prepare-public-release.py` verifies the exact
   source SHA, archives, native standalone binaries and checksums before staging
   GitHub assets. It does not publish or include personal iOS provisioning.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeftIcon, ArrowsClockwiseIcon, QueueIcon, MusicNotesIcon } from "@phosphor-icons/react";
 import { Link } from "react-router";
 import { Scrubber, Transport } from "../components/Controls";
@@ -20,11 +20,11 @@ import { toast } from "../stores/ui";
 
 const formatSemitones = (st: number) => `${st > 0 ? "+" : ""}${st} st`;
 
-function CueSongs() {
+function CueSongs({onSelected}:{onSelected?:()=>void}) {
   const queue = usePlayer(s=>s.queue);
   return <div className="cue-song-browser min-w-0 flex-1">
     <span className="cue-song-caption text-[10px] text-fg-3">Playlist songs · {queue.length}</span>
-    <div role="region" aria-label="Playlist songs" className="cue-song-list scroll-area w-full overflow-y-auto rounded-lg text-fg"><TrackList tracks={queue} header={false} showAlbum={false} onSelect={index=>usePlayer.getState().jumpTo(index)}/></div>
+    <div role="region" aria-label="Playlist songs" className="cue-song-list scroll-area w-full overflow-y-auto rounded-lg text-fg"><TrackList tracks={queue} header={false} showAlbum={false} onSelect={index=>{usePlayer.getState().jumpTo(index);onSelected?.();}}/></div>
   </div>;
 }
 
@@ -50,10 +50,10 @@ export default function Cues() {
   const [overwrite, setOverwrite] = useState(false);
   const [midiOpen, setMidiOpen] = useState(false);
   const [queuePreference,setQueuePreference]=useState<boolean|null>(null);
-  const [wide,setWide]=useState(()=>window.innerWidth>=768);
+  const [wide,setWide]=useState(()=>window.innerWidth>=960&&window.innerHeight>=500);
   const [short,setShort]=useState(()=>window.innerHeight<=360);
   const queueOpen=queuePreference??wide;
-  useEffect(()=>{const update=()=>{setWide(window.innerWidth>=768);setShort(window.innerHeight<=360);};window.addEventListener('resize',update);return()=>window.removeEventListener('resize',update);},[]);
+  useEffect(()=>{const update=()=>{setWide(window.innerWidth>=960&&window.innerHeight>=500);setShort(window.innerHeight<=360);};window.addEventListener('resize',update);return()=>window.removeEventListener('resize',update);},[]);
   const [devices, setDevices] = useState<MidiDevice[]>([]);
   /** What the finger on a pad is doing: a long press marks the cue instead of playing it. */
   const press = useRef({ timer: null as number | null, marked: false, played: false });
@@ -236,7 +236,7 @@ export default function Cues() {
 
             <CueWaveform padCount={mapping.padToNote.length}/>
             <div className="cue-stage" data-queue-open={queueOpen}>
-            {queueOpen&&<aside className="cue-queue-panel"><CueSongs/></aside>}
+            {queueOpen&&<><button type="button" className="cue-queue-backdrop hidden" aria-label="Close playlist" onClick={()=>setQueuePreference(false)}/><aside className="cue-queue-panel"><button type="button" className="cue-queue-close hidden" aria-label="Close playlist panel" onClick={()=>setQueuePreference(false)}>×</button><CueSongs onSelected={wide?undefined:()=>setQueuePreference(false)}/></aside></>}
             <div className="cue-performance">
             <div className="cue-pads-panel">
             <div className="cue-bankbar mt-5 flex items-center gap-2">
@@ -264,7 +264,7 @@ export default function Cues() {
               <select aria-label="Pad layout preset" title={mapping.label} value={mapping.id} className="cue-preset rounded-full bg-surface-2 px-2 py-1 text-xs" onChange={event=>{
                 const preset=CONTROLLER_PRESETS.find(preset=>preset.id===event.target.value)!;
                 saveControllerPreset(preset.id);setMapping(preset);setHeldPads({});event.currentTarget.blur();
-              }}>{CONTROLLER_PRESETS.map(preset=><option key={preset.id} value={preset.id}>{preset.id==='legacy12'?'12 pads':preset.id==='sp404mkii-b'?'SP-404 B':'SP-404 A'}</option>)}</select>
+              }}>{CONTROLLER_PRESETS.map(preset=><option key={preset.id} value={preset.id}>{preset.id==='linear16'?'16 pads':preset.id==='legacy12'?'12 pads':preset.id==='sp404mkii-b'?'SP-404 B':'SP-404 A'}</option>)}</select>
               <button type="button" aria-label={`${t.cues.midi} settings`} title={`${t.cues.midi} · ${mapping.label}`} className="cue-midi-settings shrink-0 rounded-full bg-surface-2 px-2 py-1.5 text-[11px] font-medium" onClick={()=>setMidiOpen(true)}>{t.cues.midi}</button>
               {sampleSupport&&<button type="button" aria-label="Manage pad samples" title={sampleEdit?'Finish sample editing':'Load or remove a sample: enable, then tap a pad'} aria-pressed={sampleEdit} className={cn('cue-sample-edit grid size-7 shrink-0 place-items-center rounded-full',sampleEdit?'bg-accent text-accent-ink':'bg-surface-2 text-fg-2')} onClick={()=>setSampleEdit(!sampleEdit)}><MusicNotesIcon size={16}/></button>}
               <button type="button" onClick={()=>useCueStore.getState().clearBank()} className="cue-clear-bank shrink-0 rounded-full bg-surface-2 px-2.5 py-1.5 text-[11px] text-fg-2 active:bg-surface-3">{t.cues.clearBank}</button>
@@ -304,12 +304,12 @@ export default function Cues() {
                       title={sample?.error||sample?.name||(sampleEdit?'Load a sample into this pad':undefined)}
                       data-pad-kind={sample?'sample':'cue'}
                       className={cn(
-                        "flex aspect-[1.45] w-full touch-none flex-col justify-between rounded-[14px] p-2.5 text-left transition-[transform,background-color] select-none active:scale-[0.97]",
+                        "cue-pad flex aspect-[1.45] w-full touch-none flex-col justify-between rounded-[14px] p-2.5 text-left transition-[transform,background-color] select-none active:scale-[0.97]",
                         time == null && !sample
-                          ? "bg-surface-2 ring-1 ring-line active:bg-surface-3"
-                          : "bg-accent-soft text-accent-text ring-1 ring-accent/30",
-                        heldPads[`${bank}:${pad}`] ? "brightness-150 ring-2 ring-accent" : "",
-                        feedback.pressed.has(`${bank}:${pad}`) || feedback.flashing.has(`${bank}:${pad}`) ? "brightness-150 ring-2 ring-accent scale-[0.97]" : "",
+                          ? "bg-surface-2 active:bg-surface-3"
+                          : "bg-accent-soft text-accent-text",
+                        heldPads[`${bank}:${pad}`] ? "brightness-150" : "",
+                        feedback.pressed.has(`${bank}:${pad}`) || feedback.flashing.has(`${bank}:${pad}`) ? "brightness-150 scale-[0.97]" : "",
                       )}
                     >
                       <span className={cn("text-xs font-semibold", time == null && !sample ? "text-fg-3" : "text-accent-text")}>
@@ -352,6 +352,7 @@ export default function Cues() {
                 max={100}
                 step={1}
                 value={speed}
+                style={{'--cue-speed-fill':`${(speed+50)/150*100}%`} as CSSProperties}
                 onChange={(e) => usePlayer.getState().setSpeed(Number(e.target.value))}
                 onDoubleClick={() => usePlayer.getState().setSpeed(0)}
                 onPointerDown={(e) => {

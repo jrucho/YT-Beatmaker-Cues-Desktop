@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.5
+
+- Fixed desktop Space-bar play/pause across Discover, Studio and music/cue views, including after pad/button/fader focus. Auto-repeat is suppressed; text entry and hosted DAW Space handling are preserved.
+- Simplified native cue/sample pads with no external border/ring; keyboard focus is drawn inside a pad.
+- Added the default hosted **16 pads** preset: ascending notes 36–51 on any MIDI channel, using the selected bank like Legacy 12. Saved project presets remain restorable.
+- Speed-fader track/thumb, brand marks, intro and waveform follow the selected accent colour.
+- Improved smaller iPad and iOS landscape layouts with a readable playlist dock/overlay, explicit close controls and compact collection headers. Long playlist titles wrap within their available width.
+- Stabilized artwork frames for loaded, missing and failed images. Recent-card titles are limited to two lines without resizing the artwork.
+- Added a persistent Recently Played list/grid selector on Home and desktop Discover.
+- Verified linear MIDI mappings, 12 native responsive shapes, 500-song queue end reachability, real Cocoa host key routing, native engine tests and desktop regression checks.
+
 ## 1.0.4
 
 ### Plug-in keyboard refresh

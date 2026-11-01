@@ -16,6 +16,7 @@ import { TrackMenu } from "./components/TrackMenu";
 import { FloatingVideo, Theater } from "./components/Video";
 import { MD, useMediaQuery } from "./hooks/useMediaQuery";
 import { useShortcuts } from "./hooks/useShortcuts";
+import { useTransportShortcut } from "./hooks/useTransportShortcut";
 import { getT } from "./i18n";
 import { capabilities } from "./lib/api";
 import { cn } from "./lib/format";
@@ -36,6 +37,7 @@ import Search from "./views/Search";
 const SHEET_HASH = `#${NOW_PLAYING_HASH}`;
 
 export default function App() {
+  useTransportShortcut();
   const navigate = useNavigate();
   const [studio, setStudio] = useState(!!desktop || (!capabilities.retryOnError && new URLSearchParams(window.location.search).get("workspace") === "beatmaker"));
   const [discover, setDiscover] = useState(true);

@@ -45,7 +45,7 @@ CueEditor::CueEditor(CueProcessor& processor) : AudioProcessorEditor(processor),
    #if JUCE_IOS
     videoId.setVisible(false); port.setVisible(false); importApp.setVisible(false);
    #endif
-    preset.addItem("SP-404MKII · Mode A", 1); preset.addItem("SP-404MKII · Mode B", 2); preset.addItem("Legacy · 12 pads", 3);
+    preset.addItem("SP-404MKII · Mode A", 1); preset.addItem("SP-404MKII · Mode B", 2); preset.addItem("Legacy · 12 pads", 3);preset.addItem("16 pads · notes 36–51",4);
     preset.setSelectedId(engine.preset.load() + 1, juce::dontSendNotification);
     preset.onChange = [this] { engine.preset.store(preset.getSelectedId() - 1); resized(); };
     addAndMakeVisible(preset); addAndMakeVisible(overwrite);
@@ -159,5 +159,6 @@ void CueEditor::timerCallback() {
     loop.setButtonText(engine.loopEnabled.load() ? "Loop ON" : "Loop OFF");
     mappingHelp.setText(engine.preset.load() == 0 ? "Mode A: CH 1–10 = A–J · empty pad marks; saved pad plays"
         : engine.preset.load() == 1 ? "Mode B: CH 1 = A–E, CH 2 = F–J · Roland default channels"
+        : engine.preset.load() == 3 ? "16 pads: notes 36–51 · any channel · selected bank"
         : "Legacy: notes 36–47 · selected bank · 12 pads", juce::dontSendNotification);
 }

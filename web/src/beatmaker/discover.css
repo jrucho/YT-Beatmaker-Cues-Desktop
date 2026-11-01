@@ -27,6 +27,10 @@
 .ds-library { padding:28px 0 4px; border-bottom:1px solid #202020; margin-bottom:28px; }
 .ds-library .ds-section-heading { margin-bottom:14px; }
 .ds-library-tracks { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+.ds-app .ds-library-tracks.is-list {grid-template-columns:minmax(0,1fr);}
+.ds-library-view-actions {display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.ds-library-tracks.is-list .ds-library-meta strong {font-size:13px;}
+.ds-library-tracks.is-list .ds-library-meta span {font-size:11px;}
 .ds-library-track { display:flex; align-items:center; gap:9px; min-width:0; padding:8px; border:0; border-radius:14px; background:var(--surface-2); }
 .bm-app .ds-library-art { position:relative; display:grid; place-items:center; width:44px; height:44px; min-height:44px; flex-shrink:0; padding:0; overflow:hidden; border:0; border-radius:9px; background:#151515; color:#777; }
 .ds-library-art img { width:100%; height:100%; object-fit:cover; }
@@ -54,7 +58,7 @@
 .ds-has-search .ds-hero h1 { font-size:28px; margin:6px 0; letter-spacing:-1px; }
 .ds-has-search .ds-hero p { display:none; }
 .ds-has-search .ds-sidebar { grid-row:auto; }
-.ds-section-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:22px; }
+.ds-section-heading { display:flex;flex-wrap:wrap;min-width:0;align-items:center;justify-content:space-between;gap:10px;margin-bottom:22px; }
 .ds-section-heading h2 { margin-top:6px; font-size:23px; font-weight:500; letter-spacing:-.6px; }
 .ds-section-heading button { min-height:32px; border-radius:999px; font:500 11px var(--font-sans); color:var(--fg-2); }
 .ds-track-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:13px; }
@@ -62,12 +66,13 @@
 .ds-track-card:hover { background:var(--surface-3); }
 .ds-track-card.is-previewing,.ds-sample.is-previewing { background:var(--accent-soft); }
 .bm-app .ds-art { display:grid; place-items:center; width:100%; aspect-ratio:1.25; min-height:0; padding:0; position:relative; border:0; border-radius:0; overflow:hidden; background:#111; }
+.ds-art>.ds-artwork {position:absolute;inset:0;width:100%;height:100%;}
 .ds-art img { width:100%; height:100%; position:absolute; inset:0; object-fit:cover; filter:saturate(.55) brightness(.7); transition:filter .2s,transform .3s; }
 .ds-art:hover img { filter:saturate(.85) brightness(.9); transform:scale(1.03); }
 .ds-art-play { width:40px; height:40px; display:grid; place-items:center; border:0; border-radius:50%; background:var(--accent); color:var(--accent-ink); z-index:1; }
 .ds-duration { position:absolute; bottom:8px; right:8px; padding:4px 6px; background:#000b; border-radius:4px; font:8px "Geist Mono Variable",monospace; z-index:1; }
-.ds-card-meta { display:flex; flex-direction:column; gap:5px; padding:12px 12px 9px; }
-.ds-card-meta strong { font-size:12px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ds-card-meta { display:flex;min-width:0;flex-direction:column;gap:5px;padding:12px 12px 9px; }
+.ds-card-meta strong {display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;min-height:34px;max-width:100%;font-size:12px;line-height:17px;font-weight:500;overflow:hidden;overflow-wrap:anywhere;}
 .ds-card-meta>span { color:#818181; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ds-card-actions { display:flex; align-items:center; gap:5px; border:0; padding:7px; }
 .ds-card-actions button:first-child { flex:1; font:500 10px var(--font-sans); min-height:30px; padding:0 8px; border:0; border-radius:999px; background:var(--surface-3); }

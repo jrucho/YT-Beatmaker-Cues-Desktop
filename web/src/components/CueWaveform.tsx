@@ -3,12 +3,14 @@ import {useCueStore} from '../mobile/cueStore';
 import {selectCurrent,usePlayer} from '../player/player';
 import {usePadSamples} from '../mobile/padSamples';
 import {playerShortcutsEnabled} from '../native/host';
+import {useAppearance} from '../stores/appearance';
 
 /** Native audio peaks, built off the audio callback; markers edit the current bank. */
 export function CueWaveform({padCount=16}:{padCount?:number}){
   const track=usePlayer(selectCurrent),duration=usePlayer(s=>s.duration),position=usePlayer(s=>s.position);
   const cues=useCueStore(s=>s.cues),bank=useCueStore(s=>s.bank);
   const samples=usePadSamples(s=>s.samples);
+  const accent=useAppearance(s=>s.accent);
   const root=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null);
   const [data,setData]=useState<{peaks:number[];progress:number}>({peaks:[],progress:0});
   const invoke=(window as unknown as {__pluginInvoke?: (name:string)=>Promise<{peaks:number[];progress:number}>}).__pluginInvoke;
@@ -32,7 +34,7 @@ export function CueWaveform({padCount=16}:{padCount?:number}){
       if(duration>0){context.fillStyle='#ffffff';context.fillRect(position/duration*width,0,1,height);}
     };
     draw();const observer=new ResizeObserver(draw);observer.observe(node);return()=>observer.disconnect();
-  },[data,position,duration,visible]);
+  },[data,position,duration,visible,accent]);
   if(!invoke||!visible)return null;
   const timeAt=(clientX:number)=>{const bounds=root.current!.getBoundingClientRect();return Math.max(0,Math.min(duration,(clientX-bounds.left)/bounds.width*duration));};
   return <div ref={root} className="cue-waveform" data-waveform-progress={data.progress} data-peak-count={data.peaks.length} aria-label="Song waveform" onPointerDown={event=>{if(event.button===0&&duration>0){const time=timeAt(event.clientX);if(event.metaKey||event.ctrlKey||event.shiftKey)useCueStore.getState().setNextCue(time);else usePlayer.getState().seek(time);}}} onDoubleClick={event=>{if(duration>0)useCueStore.getState().setNextCue(timeAt(event.clientX));}}>

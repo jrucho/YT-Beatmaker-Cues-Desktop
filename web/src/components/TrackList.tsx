@@ -41,10 +41,10 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, s
       {...virtual}
       onContextMenu={menuAt}
       className={cn(
-        "group relative grid items-center gap-3 rounded-xl px-2 py-1.5 transition-colors duration-150 hover:bg-surface-2 md:px-3",
+        "track-row group relative grid min-w-0 items-center gap-3 rounded-xl px-2 py-1.5 transition-colors duration-150 hover:bg-surface-2 md:px-3",
         showAlbum
-          ? "grid-cols-[auto_1fr_auto] md:grid-cols-[28px_auto_1fr_auto_auto] lg:grid-cols-[28px_auto_minmax(0,1.4fr)_minmax(0,1fr)_auto_auto]"
-          : "grid-cols-[auto_1fr_auto] md:grid-cols-[28px_auto_1fr_auto_auto]",
+          ? "grid-cols-[44px_minmax(0,1fr)_36px] md:grid-cols-[28px_44px_minmax(0,1fr)_auto_36px] lg:grid-cols-[28px_44px_minmax(0,1.4fr)_minmax(0,1fr)_auto_36px]"
+          : "grid-cols-[44px_minmax(0,1fr)_36px] md:grid-cols-[28px_44px_minmax(0,1fr)_auto_36px]",
       )}
     >
       <button
@@ -58,7 +58,7 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, s
         {isCurrent ? <Equalizer live={isPlaying} /> : position + 1}
       </span>
 
-      <div className="pointer-events-none relative">
+      <div className="track-artwork pointer-events-none relative size-11">
         <Artwork src={track.thumb} className="size-11 rounded-[10px]" />
         {isCurrent && (
           <span className="absolute inset-0 grid place-items-center rounded-[10px] bg-black/45 md:hidden">
@@ -68,7 +68,7 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, s
       </div>
 
       <div className="pointer-events-none min-w-0">
-        <p className={cn("truncate text-[15px] leading-tight font-medium", isCurrent ? "text-accent-text" : "text-fg")}>
+        <p title={track.title} className={cn("track-title truncate text-[15px] leading-tight font-medium", isCurrent ? "text-accent-text" : "text-fg")}>
           {track.title}
         </p>
         <p className="mt-0.5 flex items-center gap-1.5 truncate text-[13px] text-fg-2">

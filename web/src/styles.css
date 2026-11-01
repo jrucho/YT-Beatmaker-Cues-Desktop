@@ -168,9 +168,15 @@
     border: 1px solid var(--line-strong);
     color: var(--fg-2);
   }
+  .cue-pad {border:0;box-shadow:none;}
+  .cue-pad:focus-visible {outline:2px solid var(--accent);outline-offset:-3px;}
 }
 
 /* Film grain, fixed and non-interactive so it never repaints with scroll. */
+.view-mode-toggle {display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:999px;background:var(--surface-2);}
+.view-mode-toggle>button,.bm-app .view-mode-toggle>button {display:grid;place-items:center;width:30px;height:30px;min-height:30px;border:0;border-radius:50%;padding:0;background:transparent;color:var(--fg-2);}
+.view-mode-toggle>button[aria-pressed="true"],.bm-app .view-mode-toggle>button[aria-pressed="true"] {background:var(--accent-soft);color:var(--accent-text);}
+
 .grain::after {
   content: "";
   position: fixed;
@@ -255,7 +261,7 @@
   width: 220px;
   height: 220px;
   border-radius: 999px;
-  background: radial-gradient(circle, rgb(195 236 82 / 0.16), transparent 66%);
+  background: radial-gradient(circle, color-mix(in srgb,var(--accent) 16%,transparent), transparent 66%);
   animation: boot-glow 1.2s ease-out both;
 }
 .boot-mark {
@@ -272,7 +278,7 @@
   animation: boot-pop 0.52s cubic-bezier(0.2, 1.3, 0.4, 1) both;
 }
 .boot-pad-1 {
-  background: #c3ec52;
+  background: var(--accent);
   animation-delay: 0.06s;
 }
 .boot-pad-1::after {
@@ -285,12 +291,12 @@
   margin: -8px 0 0 -6px;
   border-top: 8px solid transparent;
   border-bottom: 8px solid transparent;
-  border-left: 13px solid #0b0c0f;
+  border-left: 13px solid var(--accent-ink);
 }
 .boot-pad-2,
 .boot-pad-3,
 .boot-pad-4 {
-  border: 3px solid #c3ec52;
+  border: 3px solid var(--accent);
 }
 .boot-pad-2 {
   animation-delay: 0.14s;

@@ -9,6 +9,8 @@ export const en = {
   locale: "en-US",
 
   common: {
+    gridView: "Grid view",
+    listView: "List view",
     close: "Close",
     back: "Back",
     cancel: "Cancel",

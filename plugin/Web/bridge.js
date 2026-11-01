@@ -83,7 +83,7 @@
   }
   addEventListener('error',event=>{invoke('diagnostic','error: '+event.message).catch(()=>{});});
   addEventListener('unhandledrejection',event=>{invoke('diagnostic','promise: '+String(event.reason?.message||event.reason)).catch(()=>{});});
-  invoke('diagnostic','Beatmaker Cues 1.0.4 plug-in bridge started').catch(()=>{});
+  invoke('diagnostic','Beatmaker Cues 1.0.5 plug-in bridge started').catch(()=>{});
   window.__musikeTransport = async request => {
     const response=await invoke('http',{url:request.url,method:request.method,headers:request.headers,data:request.body});
     return {status:response.status,headers:response.headers||{},body:typeof response.data==='string'?response.data:JSON.stringify(response.data)};
@@ -215,7 +215,7 @@
     const stores=window.__pluginStores;
     if(stores&&!reconciling){
       const cue=stores.cues.getState();
-      const sync=JSON.stringify({trackId:cue.trackId,bank:cue.bank,cues:JSON.parse(localStorage.getItem('musike:cues:v1')||'{}')[cue.trackId]||{},preset:localStorage.getItem('musike:midi:preset')||'sp404mkii-a'});
+      const sync=JSON.stringify({trackId:cue.trackId,bank:cue.bank,cues:JSON.parse(localStorage.getItem('musike:cues:v1')||'{}')[cue.trackId]||{},preset:localStorage.getItem('musike:midi:preset')||(window.__pluginHosted?'linear16':'sp404mkii-a')});
       if(sync!==lastSynced){lastSynced=sync;invoke('syncCues',JSON.parse(sync)).catch(console.error);}
     }
   }

@@ -70,7 +70,7 @@ export default function Collection({ kind }: Props) {
   const playing = isThisPlaying && (status === "playing" || status === "loading");
 
   return (
-    <div className="pb-8">
+    <div className="collection-page pb-8">
       <PageHeader
         title={name}
         mobileOnly
@@ -79,14 +79,14 @@ export default function Collection({ kind }: Props) {
 
       <div className="relative">
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-20 h-72 bg-linear-to-b from-accent-soft to-transparent" />
-        <div className="relative flex flex-col items-center gap-5 px-4 pt-2 pb-6 md:flex-row md:items-end md:gap-6 md:px-6 md:pt-10">
+        <div className="collection-hero relative flex min-w-0 flex-col items-center gap-5 px-4 pt-2 pb-6 md:flex-row md:items-end md:gap-6 md:px-6 md:pt-10">
           <Cover
             kind={kind}
             tracks={tracks}
             iconSize={64}
-            className="size-44 shrink-0 rounded-[18px] shadow-[0_24px_60px_rgb(0_0_0/0.4)] md:size-52"
+            className="collection-cover size-44 shrink-0 rounded-[18px] shadow-[0_24px_60px_rgb(0_0_0/0.4)] md:size-52"
           />
-          <div className="flex min-w-0 flex-col items-center gap-2 text-center md:items-start md:text-left">
+          <div className="collection-heading flex w-full min-w-0 flex-1 flex-col items-center gap-2 text-center md:items-start md:text-left">
             <span className="hidden text-xs font-medium text-fg-2 md:block">{label}</span>
             <h1 className="max-w-full text-[28px] leading-[1.1] font-bold tracking-tight break-words md:text-5xl lg:text-6xl">{name}</h1>
             <p className="font-mono text-[13px] text-fg-2">
@@ -97,7 +97,7 @@ export default function Collection({ kind }: Props) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 px-4 pb-4 md:px-6">
+      <div className="collection-actions flex items-center gap-2 px-4 pb-4 md:px-6">
         <PlayDisc
           label={playing ? t.common.pause : t.common.playX(name)}
           px={56}

@@ -2,6 +2,7 @@ apply plugin: 'com.android.application'
 def repository = rootProject.projectDir.toPath().resolve('../..').normalize().toFile()
 def juce = project.hasProperty('beatmakerJuceDir') ? file(project.property('beatmakerJuceDir')) : new File(repository, 'plugin/.android-deps/juce')
 def appVersion = new groovy.json.JsonSlurper().parse(new File(repository, 'package.json')).version
+def versionParts = appVersion.tokenize('.').collect { it.find(/\d+/).toInteger() }
 def signing = { String name -> System.getenv(name) }
 
 android {
@@ -13,7 +14,7 @@ android {
         minSdk 24
         targetSdk 36
         versionName appVersion
-        versionCode 10004
+        versionCode versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
         ndk { abiFilters 'arm64-v8a' }
         externalNativeBuild { cmake {
             targets 'BeatmakerCues_Standalone'

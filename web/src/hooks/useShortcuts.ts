@@ -27,12 +27,6 @@ export function useShortcuts() {
       const handled = () => e.preventDefault();
 
       switch (e.key) {
-        case " ":
-          // Let focused buttons handle their own Space.
-          if (e.target instanceof HTMLButtonElement || (e.target as HTMLElement)?.getAttribute?.("role") === "slider") return;
-          handled();
-          p.toggle();
-          break;
         case "ArrowRight":
           handled();
           if (e.shiftKey) p.next();

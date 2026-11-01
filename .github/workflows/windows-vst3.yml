@@ -79,6 +79,7 @@ jobs:
         run: |
           pnpm exec playwright install chromium
           node scripts/check-android-cues.mjs
+          node scripts/check-native-ui.mjs
       - name: Configure Windows x64
         run: cmake -S plugin -B plugin/build-windows -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DJUCE_WEBVIEW2_PACKAGE_LOCATION="${{ github.workspace }}/plugin/build-deps"
       - run: cmake --build plugin/build-windows --config Release --parallel 3

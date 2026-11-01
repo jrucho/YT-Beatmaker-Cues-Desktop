@@ -97,6 +97,7 @@ CueProcessor::CueProcessor(AudioTransport transport)
     for (auto& bank : cues) for (auto& cue : bank) cue.store(-1);
     gainValue=parameters.getRawParameterValue("gain");speedValue=parameters.getRawParameterValue("speed");
     sessionId=wrapperType==wrapperType_Standalone||wrapperType==wrapperType_Undefined?"standalone":juce::Uuid().toString();
+    if(wrapperType!=wrapperType_Standalone&&wrapperType!=wrapperType_Undefined)preset.store(3);
     setLatencySamples(0);
     queueThread=std::thread([this]{runQueue();});
     if(wrapperType==wrapperType_Standalone)standaloneNowPlaying=createStandaloneNowPlaying(*this);
@@ -153,7 +154,7 @@ bool CueProcessor::submit(Command command) {
 
 CueProcessor::Target CueProcessor::mapNote(int mode, int channel, int note, int bank) {
     if (channel < 1 || channel > 16 || note < 0 || note > 127) return {};
-    if (mode == 2) return note >= 36 && note <= 47 ? Target{juce::jlimit(0, 9, bank), note - 36} : Target{};
+    if (mode == 2 || mode == 3) return note >= 36 && note <= (mode==2?47:51) ? Target{juce::jlimit(0, 9, bank), note - 36} : Target{};
     if (mode == 0) {
         if (channel > 10) return {};
         for (int i = 0; i < 16; ++i) if (rolandNotes[i] == note) return {channel - 1, i};
@@ -179,7 +180,7 @@ void CueProcessor::handleMidi(const juce::MidiMessage& message) {
         target = mapNote(mode, message.getChannel(), message.getNoteNumber(), selectedBank.load());
     else if (message.isController() && mode != 1 && message.getControllerNumber() >= 20
              && message.getControllerNumber() < 20 + padCount())
-        target = {mode == 2 ? selectedBank.load() : message.getChannel() - 1, message.getControllerNumber() - 20};
+        target = {mode == 2 || mode == 3 ? selectedBank.load() : message.getChannel() - 1, message.getControllerNumber() - 20};
     if (target.bank < 0 || target.bank >= 10 || target.pad < 0) return;
     if (message.isNoteOff() || (message.isController() && message.getControllerValue() == 0)) {
         padEvent(target.bank,target.pad,false,false,0);
@@ -709,7 +710,7 @@ void CueProcessor::setStateInformation(const void* data, int size) {
     else {std::lock_guard<std::mutex> lock(metadataMutex);nativeQueue=juce::var();nativeIndex.store(0);}
     if (const auto* savedUi = state->getChildByName("MobileUI")) setWebState(savedUi->getAllSubText());
     selectedBank.store(juce::jlimit(0, 9, state->getIntAttribute("bank")));
-    preset.store(juce::jlimit(0, 2, state->getIntAttribute("preset")));
+    preset.store(juce::jlimit(0, 3, state->getIntAttribute("preset")));
     overwrite.store(state->getBoolAttribute("overwrite"));
     const auto savedPlayer=juce::JSON::parse(juce::JSON::parse(getWebState())["musike:player"].toString());
     muted.store(state->getBoolAttribute("muted",(bool)savedPlayer["muted"]));
@@ -791,6 +792,10 @@ void CueProcessor::setWebState(const juce::String& state) {
 juce::String CueProcessor::getWebState() const { std::lock_guard<std::mutex> lock(metadataMutex); return webState; }
 juce::String CueProcessor::sessionUiState() const {
     const auto original=getWebState();auto state=juce::JSON::parse(original);if(!state.isObject())state=juce::var(new juce::DynamicObject);
+    if(wrapperType!=wrapperType_Standalone&&wrapperType!=wrapperType_Undefined){
+        const char* names[]={"sp404mkii-a","sp404mkii-b","legacy12","linear16"};
+        state.getDynamicObject()->setProperty("musike:midi:preset",juce::String(names[juce::jlimit(0,3,preset.load())]));
+    }
     const auto native=getWebCues();auto id=native["trackId"].toString();
     if(original.length()<=2&&id.isEmpty()&&!hostRestored.load())return juce::JSON::toString(state);
     if(id.isEmpty()){
@@ -830,7 +835,7 @@ void CueProcessor::syncWebCues(const juce::var& data) {
     const auto bank = data["bank"].toString();
     if (bank.length() == 1) selectedBank.store(juce::jlimit(0, 9, (int) bank[0] - 'A'));
     const auto mapping = data["preset"].toString();
-    preset.store(mapping == "legacy12" ? 2 : mapping == "sp404mkii-b" ? 1 : 0);
+    preset.store(mapping == "linear16" ? 3 : mapping == "legacy12" ? 2 : mapping == "sp404mkii-b" ? 1 : 0);
     setWebTrack(data["trackId"].toString());
     const auto saved = data["cues"];
     for (int b = 0; b < 10; ++b) for (int p = 0; p < 16; ++p) {

@@ -5,6 +5,7 @@ import { Artwork } from "../components/Artwork";
 import { LogoMark } from "../components/Brand";
 import { PageHeader, Section } from "../components/Page";
 import { TrackList, TrackListSkeleton } from "../components/TrackList";
+import { ViewModeToggle } from "../components/ViewModeToggle";
 import { useT } from "../i18n";
 import { paths } from "../lib/routes";
 import type { Track } from "../lib/types";
@@ -35,17 +36,18 @@ function Shortcut({ to, label, tracks, cover }: { to: string; label: string; tra
 }
 
 function RecentCard({ track, onPlay }: { track: Track; onPlay: () => void }) {
+  const t=useT();
   return (
-    <button type="button" onClick={onPlay} className="group flex w-36 shrink-0 snap-start flex-col gap-2 text-left md:w-44">
-      <span className="relative block">
-        <Artwork src={track.art} fallback={track.thumb} className="aspect-square w-full rounded-[14px]" />
+    <button type="button" onClick={onPlay} aria-label={t.common.playX(track.title)} className="recent-track-card group flex w-36 min-w-0 max-w-36 shrink-0 snap-start flex-col gap-2 text-left md:w-44 md:max-w-44">
+      <span className="relative block aspect-square w-full shrink-0">
+        <Artwork src={track.art} fallback={track.thumb} className="absolute inset-0 size-full rounded-[14px]" />
         <span className="absolute right-2 bottom-2 grid size-11 translate-y-1 place-items-center rounded-full bg-accent text-accent-ink opacity-0 shadow-[0_8px_20px_rgb(0_0_0/0.4)] transition-[opacity,transform] duration-200 ease-out-expo group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:opacity-100">
           <PlayIcon size={20} weight="fill" />
         </span>
       </span>
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-medium">{track.title}</span>
-        <span className="block truncate text-xs text-fg-2">{track.artist}</span>
+      <span className="flex w-full min-w-0 flex-col gap-1">
+        <span title={track.title} className="line-clamp-2 min-h-10 break-words text-sm leading-5 font-medium">{track.title}</span>
+        <span title={track.artist} className="block truncate text-xs text-fg-2">{track.artist}</span>
       </span>
     </button>
   );
@@ -126,16 +128,16 @@ export default function Home() {
             <Section
               title={t.nav.recentlyPlayed}
               action={
-                <Link to={paths.history} className="text-sm font-medium text-fg-2 hover:text-fg">
+                <div className="flex shrink-0 items-center gap-3"><ViewModeToggle value={show.recentView} onChange={recentView=>show.set({recentView})} label={t.nav.recentlyPlayed}/><Link to={paths.history} className="text-sm font-medium text-fg-2 hover:text-fg">
                   {t.home.seeAll}
-                </Link>
+                </Link></div>
               }
             >
-              <div className="no-scrollbar flex snap-x snap-mandatory scroll-px-4 gap-4 overflow-x-auto px-4 md:scroll-px-6 md:px-6">
+              {show.recentView==='list'?<div className="recent-track-list px-2 md:px-3"><TrackList tracks={history.slice(0,16)} context={history} header={false} showAlbum={false}/></div>:<div className="no-scrollbar flex snap-x snap-mandatory scroll-px-4 gap-4 overflow-x-auto px-4 md:scroll-px-6 md:px-6">
                 {history.slice(0, 16).map((t, i) => (
                   <RecentCard key={t.id} track={t} onPlay={() => playList(history, i)} />
                 ))}
-              </div>
+              </div>}
             </Section>
           )}
 

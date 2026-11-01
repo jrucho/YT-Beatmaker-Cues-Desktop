@@ -1,4 +1,10 @@
 /* Plug-in-only layout rules. The existing standalone desktop stylesheet is retained. */
+:root[data-plugin-editor] .music-app {height:var(--plugin-viewport-height,100dvh);}
+:root[data-plugin-editor] .safe-top {padding-top:var(--plugin-safe-top,env(safe-area-inset-top));}
+:root[data-plugin-editor] .safe-bottom {padding-bottom:var(--plugin-safe-bottom,env(safe-area-inset-bottom));}
+:root[data-plugin-editor] .mini-player {bottom:calc(72px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));}
+:root[data-plugin-editor] .music-app.cue-workspace-active {padding:0;gap:0;}
+:root[data-plugin-editor] .cue-workspace-main {border-radius:0;box-shadow:none;background:var(--bg);}
 :root[data-plugin-android] {height:var(--plugin-viewport-height,100%);}
 :root[data-plugin-android] body,
 :root[data-plugin-android] #root {height:100%;}
@@ -36,7 +42,7 @@
 :root[data-plugin-editor] .cue-intro {display:none;}
 :root[data-plugin-editor] .cue-transport {flex:none;min-width:0;min-height:44px;margin:0;padding:6px 8px;gap:6px;border-radius:12px;}
 :root[data-plugin-editor] .cue-transport {display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:4px 6px;}
-:root[data-plugin-editor] .cue-song-browser {display:flex;flex-direction:column;min-width:0;}
+:root[data-plugin-editor] .cue-song-browser {display:flex;flex-direction:column;min-width:0;min-height:0;}
 :root[data-plugin-editor] .cue-song-list {height:44px;min-width:0;padding:2px 5px;font-size:10px;line-height:14px;}
 :root[data-plugin-editor] .cue-playback-transport {grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;min-width:0;}
 :root[data-plugin-editor] .cue-mark {grid-column:3;grid-row:1;}
@@ -77,6 +83,12 @@
 :root[data-plugin-editor] .cue-speed>div:first-child {padding-right:23px;gap:3px;}
 :root[data-plugin-editor] .cue-speed>div:first-child .text-sm {font-size:11px;}
 :root[data-plugin-editor] .cue-speed input[type=range] {display:block;width:100%;height:24px;margin:2px 0 0;}
+:root[data-plugin-editor] .cue-speed input[type=range] {-webkit-appearance:none;appearance:none;background:transparent;accent-color:var(--accent);padding:0;}
+:root[data-plugin-editor] .cue-speed input[type=range]::-webkit-slider-runnable-track {height:4px;border-radius:999px;background:linear-gradient(to right,var(--accent) 0%,var(--accent) var(--cue-speed-fill),var(--surface-4) var(--cue-speed-fill),var(--surface-4) 100%);}
+:root[data-plugin-editor] .cue-speed input[type=range]::-webkit-slider-thumb {-webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5px;border:0;border-radius:50%;background:var(--accent);}
+:root[data-plugin-editor] .cue-speed input[type=range]::-moz-range-track {height:4px;border-radius:999px;background:var(--surface-4);}
+:root[data-plugin-editor] .cue-speed input[type=range]::-moz-range-progress {height:4px;border-radius:999px;background:var(--accent);}
+:root[data-plugin-editor] .cue-speed input[type=range]::-moz-range-thumb {width:14px;height:14px;border:0;border-radius:50%;background:var(--accent);}
 :root[data-plugin-editor] .cue-tuning {margin-top:2px;gap:0;}
 :root[data-plugin-editor] .cue-tuning>p {display:none;}
 :root[data-plugin-editor] .cue-tuning>div {width:100%;justify-content:space-between;padding:0;gap:0;}
@@ -171,19 +183,27 @@
 :root[data-plugin-dense="true"] .cue-waveform {height:36px;}
 :root[data-plugin-editor] .cue-stage {position:relative;display:grid;grid-template-columns:minmax(0,1fr);flex:1;min-height:0;gap:10px;}
 :root[data-plugin-editor] .cue-performance {grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;}
-:root[data-plugin-editor] .cue-queue-panel {position:absolute;inset:0 auto 0 0;width:min(280px,85%);z-index:30;display:flex;min-height:0;padding:8px;border-radius:12px;background:var(--surface-2);box-shadow:6px 0 24px #0006;}
+:root[data-plugin-editor] .cue-queue-panel {position:absolute;inset:0 auto 0 0;width:min(340px,calc(100% - 24px));max-width:100%;z-index:30;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;padding:8px;border-radius:12px;background:var(--surface-2);box-shadow:6px 0 24px #0006;}
+:root[data-plugin-editor] .cue-queue-backdrop {position:absolute;inset:0;z-index:29;display:block;border:0;border-radius:12px;background:#0005;}
+:root[data-plugin-editor] .cue-queue-close {position:absolute;top:4px;right:4px;z-index:1;display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:50%;background:var(--surface-3);font-size:20px;}
 :root[data-plugin-editor] .cue-queue-panel .cue-song-browser {height:100%;gap:6px;}
-:root[data-plugin-editor] .cue-queue-panel .cue-song-list {height:100%;flex:1;min-height:0;font-size:11px;line-height:1.6;}
+:root[data-plugin-editor] .cue-queue-panel .cue-song-caption {flex:none;padding-right:30px;min-height:20px;}
+:root[data-plugin-editor] .cue-queue-panel .cue-song-list {height:auto;flex:1;min-height:0;font-size:11px;line-height:1.6;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}
 :root[data-plugin-editor] .cue-queue-panel option {padding:8px 6px;}
-:root[data-plugin-editor] .cue-song-list li {grid-template-columns:20px 44px minmax(0,1fr) 28px;gap:7px;padding:6px;min-height:56px;}
-:root[data-plugin-editor] .cue-song-list li>span:first-of-type {display:flex;font-size:10px;}
+:root[data-plugin-editor] .cue-song-list li {grid-template-columns:44px minmax(0,1fr) 28px;gap:7px;padding:6px;min-height:58px;}
+:root[data-plugin-editor] .cue-song-list li>span:first-of-type {display:none;}
 :root[data-plugin-editor] .cue-song-list li>div.z-10 {display:none;}
 :root[data-plugin-editor] .cue-song-list li>button:last-child {width:28px;height:28px;}
 :root[data-plugin-editor] .cue-song-list p {font-size:12px;}
 :root[data-plugin-editor] .cue-song-list p+p {font-size:10px;}
-@media(min-width:768px){
-  :root[data-plugin-editor] .cue-stage[data-queue-open="true"] {grid-template-columns:minmax(150px,22%) minmax(0,1fr);}
+@media(hover:none){:root[data-plugin-editor] .cue-song-list li>button:last-child {opacity:1;}}
+:root[data-plugin-editor] .cue-song-list .track-title {display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;line-height:16px;overflow:hidden;overflow-wrap:anywhere;}
+@media(min-width:960px) and (min-height:500px){
+  :root[data-plugin-editor] .cue-stage[data-queue-open="true"] {grid-template-columns:minmax(220px,26%) minmax(0,1fr);}
   :root[data-plugin-editor] .cue-queue-panel {position:static;width:auto;box-shadow:none;}
+  :root[data-plugin-editor] .cue-queue-backdrop,
+  :root[data-plugin-editor] .cue-queue-close {display:none;}
+  :root[data-plugin-editor] .cue-queue-panel .cue-song-caption {padding-right:0;}
 }
 :root[data-plugin-layout="landscape"][data-plugin-low-height="true"] .cue-performance {grid-template-columns:minmax(0,1.15fr) minmax(230px,1fr);grid-template-rows:minmax(0,1fr);}
 @media(min-width:768px) and (max-height:600px){
@@ -222,3 +242,15 @@
   :root[data-plugin-editor="desktop"] .bm-pad-empty {padding-top:14px;}
   :root[data-plugin-editor="desktop"] .bm-pad-info>span b {padding:0;}
 }
+
+/* Keep tablet collection headers within the scrollable content width. Short
+   landscape screens spend their height on songs rather than oversized covers. */
+:root[data-plugin-editor] .collection-hero .collection-cover {width:clamp(96px,18vw,184px);height:clamp(96px,18vw,184px);}
+:root[data-plugin-editor] .collection-heading h1 {width:100%;max-width:100%;font-size:clamp(24px,3.3vw,40px);overflow-wrap:anywhere;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-hero {flex-direction:row;align-items:center;gap:14px;padding-top:8px;padding-bottom:12px;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-cover {width:80px;height:80px;border-radius:12px;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-heading {align-items:flex-start;text-align:left;gap:5px;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-heading h1 {font-size:22px;line-height:1.15;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-actions {padding-bottom:8px;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-actions>button {max-width:44px;max-height:44px;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .music-app:not(.cue-workspace-active) header.safe-top>div {height:40px;}

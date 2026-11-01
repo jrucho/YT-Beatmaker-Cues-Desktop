@@ -27,7 +27,7 @@ function ArtworkImage({ src, fallback, alt = "", className, iconSize = 20 }: Pro
   }, []);
 
   return (
-    <div className={cn("relative shrink-0 overflow-hidden bg-surface-3", className)}>
+    <div data-artwork-state={state} className={cn("relative shrink-0 overflow-hidden bg-surface-3", className)}>
       {state !== "error" && current && (
         <img
           ref={imgRef}
@@ -43,7 +43,7 @@ function ArtworkImage({ src, fallback, alt = "", className, iconSize = 20 }: Pro
             else setState("error");
           }}
           className={cn(
-            "h-full w-full object-cover transition-opacity duration-300 ease-out-expo",
+            "absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ease-out-expo",
             state === "ok" ? "opacity-100" : "opacity-0",
           )}
         />

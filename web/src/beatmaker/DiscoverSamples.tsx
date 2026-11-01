@@ -9,6 +9,9 @@ import { useLibrary } from "../stores/library";
 import { openSettings } from "../stores/system";
 import { toast } from "../stores/ui";
 import { LogoMark } from "../components/Brand";
+import { Artwork } from "../components/Artwork";
+import { ViewModeToggle } from "../components/ViewModeToggle";
+import { useAppearance } from "../stores/appearance";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { Slider } from "../components/Slider";
 import { Toasts } from "../components/Toasts";
@@ -62,7 +65,7 @@ function DiscoverPlayer({ sample, onStopSample, onOpenStudio, onMarkCues }: { sa
   return <footer className="ds-player" aria-label="Global player">
     <div className="ds-player-track">
       <button className="ds-player-art" onClick={onOpenStudio} aria-label="Open the studio from the player">
-        {sample ? <Waveform size={22} /> : current?.art || current?.thumb ? <img src={current.art || current.thumb} alt="" /> : <MusicNotes size={21} />}
+        {sample ? <Waveform size={22} /> : <Artwork src={current?.art} fallback={current?.thumb} className="size-full" iconSize={21}/>}
       </button>
       <div className="ds-player-meta"><strong title={title}>{title}</strong><span title={subtitle}>{subtitle}</span></div>
       {sample ? <button className="ds-player-stop" onClick={onStopSample} aria-label="Stop sample preview">STOP</button> : current ? <><button className="ds-player-cues" onClick={() => onMarkCues(current)} aria-label={`Open the studio to mark cues for ${current.title}`} title="Open the studio to mark cues"><Plus size={13} weight="bold" /> MARK CUES</button><button className={`ds-player-fav ${isFavorite ? "is-saved" : ""}`} onClick={() => void toggleFavorite(current)} aria-label={isFavorite ? `Remove ${current.title} from favorites` : `Add ${current.title} to favorites`}><Heart size={17} weight={isFavorite ? "fill" : "regular"} /></button></> : null}
@@ -92,6 +95,7 @@ function DiscoverPlayer({ sample, onStopSample, onOpenStudio, onMarkCues }: { sa
 }
 
 export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStudio(track?: Track): void; onBrowse(): void; onOpenPlaylist(id: string): void }) {
+  const appearance=useAppearance();
   const library = useLibrary();
   const player = usePlayer();
   const current = usePlayer(selectCurrent);
@@ -170,12 +174,12 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
 
   const crates = <section className="ds-crates" aria-label="Music discovery categories">{CRATES.map(crate => <button key={crate.title} className={`ds-crate ${heading === crate.title && mode === "tracks" ? "is-selected" : ""}`} onClick={() => { setSubmittedQuery(""); void search(crate.query, crate.title, "songs"); }} style={{ "--crate-color": crate.color } as CSSProperties}><span className="ds-crate-texture"><MusicNotes size={28} weight="thin" /></span><strong>{crate.title}</strong><span>{crate.label}</span><ArrowRight className="ds-crate-arrow" size={16} /></button>)}</section>;
   const librarySection = (recentTracks.length > 0 || library.playlists.length > 0) && <section className="ds-library" aria-label="Your library">
-    <div className="ds-section-heading"><div><span className="bm-eyebrow">YOUR LIBRARY</span><h2>{libraryTitle}</h2></div><button onClick={onBrowse}>OPEN LIBRARY <ArrowRight size={16} /></button></div>
-    {recentTracks.length > 0 && <div className="ds-library-tracks">{recentTracks.map(t => {
+    <div className="ds-section-heading"><div><span className="bm-eyebrow">YOUR LIBRARY</span><h2>{libraryTitle}</h2></div><div className="ds-library-view-actions"><ViewModeToggle label={libraryTitle} value={appearance.recentView} onChange={recentView=>appearance.set({recentView})}/><button onClick={onBrowse}>OPEN LIBRARY <ArrowRight size={16} /></button></div></div>
+    {recentTracks.length > 0 && <div className={`ds-library-tracks ${appearance.recentView==='list'?'is-list':''}`}>{recentTracks.map(t => {
       const active = current?.id === t.id && (player.status === "playing" || player.status === "loading");
       return <article className="ds-library-track" key={t.id}>
         <button className="ds-library-art" aria-label={`${active ? "Pause" : "Preview"} ${t.title}`} onClick={() => previewTrack(t)}>
-          {t.art || t.thumb ? <img src={t.art || t.thumb} alt="" loading="lazy" /> : <MusicNotes size={22} />}
+          <Artwork src={t.art} fallback={t.thumb} className="size-full" iconSize={22}/>
           <span className="ds-library-play">{active ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}</span>
         </button>
         <div className="ds-library-meta"><strong title={t.title}>{t.title}</strong><span>{t.artist}</span></div>
@@ -228,7 +232,7 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
             <div className="ds-track-grid">{tracks.map(track => {
               const active = current?.id === track.id && (player.status === "playing" || player.status === "loading");
               return <article className={`ds-track-card ${active ? "is-previewing" : ""}`} key={track.id}>
-                <button className="ds-art" aria-label={`${active ? "Pause" : "Preview"} ${track.title}`} onClick={() => previewTrack(track)}>{track.art || track.thumb ? <img src={track.art || track.thumb} alt="" loading="lazy" /> : <MusicNotes size={35} />}<span className="ds-art-play">{active ? <Pause size={22} weight="fill" /> : <Play size={22} weight="fill" />}</span><span className="ds-duration">{duration(track.duration)}</span></button>
+                <button className="ds-art" aria-label={`${active ? "Pause" : "Preview"} ${track.title}`} onClick={() => previewTrack(track)}><Artwork src={track.art} fallback={track.thumb} className="ds-artwork absolute inset-0 size-full" iconSize={35}/><span className="ds-art-play">{active ? <Pause size={22} weight="fill" /> : <Play size={22} weight="fill" />}</span><span className="ds-duration">{duration(track.duration)}</span></button>
                 <div className="ds-card-meta"><strong title={track.title}>{track.title}</strong><span>{track.artist}</span></div>
                 <div className="ds-card-actions"><button onClick={() => openStudio(track)} aria-label={`Load ${track.title} into studio`}>LOAD IN STUDIO <ArrowRight size={13} /></button><button className={library.isFavorite(track.id) ? "is-saved" : ""} aria-label={`${library.isFavorite(track.id) ? "Unsave" : "Save"} ${track.title}`} onClick={() => void library.toggleFavorite(track)}><Heart size={17} weight={library.isFavorite(track.id) ? "fill" : "regular"} /></button></div>
               </article>;

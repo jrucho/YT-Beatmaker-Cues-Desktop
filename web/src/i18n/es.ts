@@ -10,6 +10,8 @@ export const es: Messages = {
   locale: "es-ES",
 
   common: {
+    gridView: "Vista de cuadrícula",
+    listView: "Vista de lista",
     close: "Cerrar",
     back: "Atrás",
     cancel: "Cancelar",

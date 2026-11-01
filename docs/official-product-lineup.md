@@ -1,14 +1,14 @@
-# Product lineup — 1.0.4
+# Product lineup — 1.0.5
 
-The v1.0.4 release is authorized for publication with source on `main`, a
-`release/1.0.4` version branch, and separately labeled application/plug-in exports.
-See [downloads](downloads-1.0.4.md) for the complete published asset inventory.
+The v1.0.5 release is authorized for publication with source on `main`, a
+`release/1.0.5` version branch, and separately labeled application/plug-in exports.
+See [downloads](downloads-1.0.5.md) for the complete asset inventory.
 
 | Product | Official implementation |
 | --- | --- |
 | iOS | Native JUCE app formerly called the plug-in standalone, with its embedded AUv3 |
 | Android | New native JUCE Android application, with the loading, touch and safe-area fixes |
-| Full desktop studio | Original full desktop implementation, packaged as 1.0.4 for Mac and Windows |
+| Full desktop studio | Original full desktop implementation, packaged as 1.0.5 for Mac and Windows |
 | Native cue standalone | Universal Mac app and Windows x64 app; shared native/mobile cue and sample-pad engine |
 | VST3 / AU | Native plug-in with a unified responsive cue workspace, supporting portrait and landscape |
 

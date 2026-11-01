@@ -309,7 +309,23 @@ int main() {
         check(CueProcessor::mapNote(0, 11, 48, 0).bank == -1, "Mode A bank isolation");
         check(CueProcessor::mapNote(1, 3, 24, 0).bank == -1, "Mode B bank isolation");
         for (int i = 0; i < 12; ++i) check(CueProcessor::mapNote(2, 16, 36 + i, 7).pad == i, "Legacy note order");
-        std::cout << "PASS: 320 Roland mappings and legacy/channel isolation\n";
+        for(int channel=1;channel<=16;++channel)for(int bank=0;bank<10;++bank)for(int pad=0;pad<16;++pad){
+            const auto linear=CueProcessor::mapNote(3,channel,36+pad,bank);
+            check(linear.bank==bank&&linear.pad==pad,"Linear 16 mapping must use ascending notes and current bank on every channel");
+        }
+        check(CueProcessor::mapNote(3,1,52,0).pad==-1,"Linear 16 accepted an out-of-range note");
+        {
+            juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_VST3);CueProcessor hosted;
+            juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_Undefined);
+            check(hosted.preset.load()==3&&hosted.padCount()==16,"Fresh hosted plug-in must default to linear 16 pads");
+            check(juce::JSON::parse(hosted.sessionUiState())["musike:midi:preset"].toString()=="linear16","Hosted UI default does not match native preset");
+            hosted.prepareToPlay(48000,128);hosted.installSampleForTest(sample());block(hosted,128);hosted.selectedBank.store(4);
+            juce::AudioBuffer<float> audio(2,128);juce::MidiBuffer midi;midi.addEvent(juce::MidiMessage::noteOn(16,36,(juce::uint8)110),17);renderChecked(hosted,audio,midi);
+            check(hosted.getCue(4,0)>=0&&hosted.getCue(9,0)<0,"Linear 16 MIDI changed the selected bank");
+            juce::MemoryBlock saved;hosted.getStateInformation(saved);CueProcessor recalled;recalled.setStateInformation(saved.getData(),(int)saved.getSize());
+            check(recalled.preset.load()==3&&recalled.selectedBank.load()==4,"Linear 16 preset/bank did not survive host recall");
+        }
+        std::cout << "PASS: 320 Roland mappings, linear 16 on all channels/current banks, fresh hosted default, saved preset/bank and legacy isolation\n";
 
         CueProcessor processor;
         processor.prepareToPlay(48000, 256); processor.installSampleForTest(sample()); block(processor);

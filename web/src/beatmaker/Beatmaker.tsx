@@ -8,6 +8,7 @@ import { useLibrary } from "../stores/library";
 import { openSettings } from "../stores/system";
 import { toast, useUi } from "../stores/ui";
 import { LogoMark } from "../components/Brand";
+import { Artwork } from "../components/Artwork";
 import { AddToPlaylistDialog, NamePlaylistDialog } from "../components/Dialogs";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { Toasts } from "../components/Toasts";
@@ -226,7 +227,7 @@ export function Beatmaker({ onBrowse, onDiscover }: { onBrowse(): void; onDiscov
       </div>
       {searchType === "playlists" ? <div className="bm-playlist-search"><YouTubePlaylists query={playlistQuery} onPreview={launch} onImported={playlist => selectCollection(playlist.id)} /></div> : <VirtualGrid items={shown} itemKey={track=>track.id} className={`bm-covers ${list ? "bm-list" : ""}`} busy={searching} renderItem={(t,_index,virtual)=><div {...virtual} className={`bm-track ${track?.id === t.id ? "is-current" : ""}`}>
         <button className="bm-track-main" onClick={() => launch(t)} aria-label={`Play ${t.title}`}>
-          <div className="bm-cover-art">{t.art || t.thumb ? <img src={t.art || t.thumb} loading="lazy" alt="" /> : <MusicNotes size={30} />}<span className="bm-cover-play"><Play weight="fill" size={21} /></span></div>
+          <div className="bm-cover-art"><Artwork src={t.art} fallback={t.thumb} className="absolute inset-0 size-full" iconSize={30}/><span className="bm-cover-play"><Play weight="fill" size={21} /></span></div>
           <div className="bm-track-info"><strong title={t.title}>{t.title}</strong><span>{t.artist || "Unknown artist"}</span></div>
         </button>
         <button className={`bm-favorite ${library.isFavorite(t.id) ? "is-saved" : ""}`} aria-label={library.isFavorite(t.id) ? "Remove from favorites" : "Save to favorites"} onClick={() => void library.toggleFavorite(t)}>{library.isFavorite(t.id) ? "♥" : "+"}</button>

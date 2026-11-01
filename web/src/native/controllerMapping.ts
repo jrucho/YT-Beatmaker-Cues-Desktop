@@ -32,11 +32,17 @@ export const LEGACY12: ControllerMapping = {
   id: "legacy12", label: "Legacy · 12 pads (notes 36–47)",
   padToNote: Array.from({ length: 12 }, (_, i) => i + 36), ccStart: 20,
 };
-export const CONTROLLER_PRESETS = [SP404MKII, SP404MKII_B, LEGACY12];
+export const LINEAR16: ControllerMapping = {
+  id: "linear16", label: "16 pads · notes 36–51",
+  description: "Notes 36–51 in pad order · any MIDI channel · selected bank",
+  padToNote: Array.from({ length: 16 }, (_, i) => i + 36), ccStart: 20,
+};
+export const CONTROLLER_PRESETS = [LINEAR16, SP404MKII, SP404MKII_B, LEGACY12];
 const KEY = "musike:midi:preset";
 export function readControllerPreset(): ControllerMapping {
-  try { return CONTROLLER_PRESETS.find(p => p.id === localStorage.getItem(KEY)) ?? SP404MKII; }
-  catch { return SP404MKII; }
+  const fallback = typeof window !== "undefined" && window.__pluginHosted ? LINEAR16 : SP404MKII;
+  try { return CONTROLLER_PRESETS.find(p => p.id === localStorage.getItem(KEY)) ?? fallback; }
+  catch { return fallback; }
 }
 export function saveControllerPreset(id: string) {
   try { localStorage.setItem(KEY, id); } catch { /* storage unavailable */ }

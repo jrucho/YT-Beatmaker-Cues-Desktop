@@ -58,6 +58,7 @@
 .bm-track.is-current { background:var(--accent-soft); }
 .bm-app .bm-track-main { display:block; padding:0; border:0; border-radius:0; background:none; width:100%; text-align:left; }
 .bm-cover-art { height:clamp(75px,10vw,140px); position:relative; overflow:hidden; background:var(--surface-3); display:grid; place-items:center; }
+.bm-cover-art>[data-artwork-state] {position:absolute;inset:0;width:100%;height:100%;}
 .bm-cover-art img { width:100%; height:100%; object-fit:cover; filter:saturate(.6) brightness(.78); transition:filter .2s,transform .3s; }
 .bm-track:hover img { filter:saturate(.85) brightness(.95); transform:scale(1.04); }
 .bm-cover-play { display:grid; place-items:center; position:absolute; inset:0; opacity:0; background:#0003; color:#fff; }

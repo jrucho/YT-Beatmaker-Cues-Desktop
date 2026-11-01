@@ -34,7 +34,7 @@ bool checkHostedKeyboardRouting(){
     int downs=0,ups=0;juce::MidiBuffer midi;juce::AudioBuffer<float> output(2,128);
     std::function<void(bool,unsigned short)> callback=[&](bool down,unsigned short code){
         if(down)++downs;else ++ups;
-        if(code==0)midi.addEvent(down?juce::MidiMessage::noteOn(1,48,(juce::uint8)127):juce::MidiMessage::noteOff(1,48),31);
+        if(code==0)midi.addEvent(down?juce::MidiMessage::noteOn(1,36,(juce::uint8)127):juce::MidiMessage::noteOff(1,36),31);
     };
     host->callback=&callback;
     const auto pump=[&](int milliseconds){const auto deadline=juce::Time::getMillisecondCounter()+milliseconds;while(juce::Time::getMillisecondCounter()<deadline){CFRunLoopRunInMode(kCFRunLoopDefaultMode,.005,true);processor.processBlock(output,midi);}};
@@ -62,7 +62,7 @@ bool checkHostedKeyboardRouting(){
     };
     evaluate("document.activeElement?.blur();true");pump(50);
     [window makeFirstResponder:browser];
-    processor.syncWebCues(juce::JSON::parse("{\"trackId\":\"keyfixture0\",\"bank\":\"A\",\"preset\":\"sp404mkii-a\",\"cues\":{\"A\":{\"1\":0.125}}}"));
+    processor.syncWebCues(juce::JSON::parse("{\"trackId\":\"keyfixture0\",\"bank\":\"A\",\"preset\":\"linear16\",\"cues\":{\"A\":{\"1\":0.125}}}"));
     processor.submit({CueProcessor::Action::pause});processor.processBlock(output,midi);
     const auto before=processor.padStates[0].load()>>1;
     send(true,0,@"a");processor.processBlock(output,midi);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { build } from "../server/node_modules/esbuild/lib/main.js";
 
 const result = await build({ entryPoints: ["web/src/native/controllerMapping.ts"], bundle: true, write: false, format: "esm", platform: "node" });
-const { SP404MKII, SP404MKII_B, LEGACY12, mapControllerMessage } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
+const { SP404MKII, SP404MKII_B, LEGACY12, LINEAR16, mapControllerMessage } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 const notes = [48,49,50,51,44,45,46,47,40,41,42,43,36,37,38,39];
 for (let bank = 0; bank < 10; bank++) {
   for (let pad = 1; pad <= 16; pad++) {
@@ -31,8 +31,16 @@ for (let pad = 1; pad <= 12; pad++) {
   assert.deepEqual(mapControllerMessage({ type: "noteon", channel: 15, note: 35 + pad, velocity: 127 }, LEGACY12, "F"), { bank: "F", pad, velocity: 127, pressed: true });
 }
 assert.equal(mapControllerMessage({ type: "noteon", channel: 0, note: 48, velocity: 127 }, LEGACY12, "A"), null);
+for(let channel=0;channel<16;channel++)for(let bank=0;bank<10;bank++)for(let pad=1;pad<=16;pad++){
+  const message={type:'noteon',channel,note:35+pad,velocity:92};
+  const expected={bank:'ABCDEFGHIJ'[bank],pad,velocity:92,pressed:true};
+  assert.deepEqual(mapControllerMessage(message,LINEAR16,expected.bank),expected);
+  assert.deepEqual(mapControllerMessage({...message,type:'noteoff'},LINEAR16,expected.bank),{...expected,pressed:false});
+  assert.deepEqual(mapControllerMessage({type:'cc',channel,controller:19+pad,value:92},LINEAR16,expected.bank),expected);
+}
+assert.equal(mapControllerMessage({type:'noteon',channel:0,note:52,velocity:127},LINEAR16,'A'),null);
 assert.equal(mapControllerMessage({ type: "noteon", channel: -1, note: 48, velocity: 127 }, SP404MKII, "A"), null);
 assert.equal(mapControllerMessage({ type: "cc", channel: 0, controller: 20, value: 0 }, SP404MKII, "A").pressed, false);
 const custom = { id: "custom", label: "Custom", padToNote: [60, 64], bankChannels: { J: 16 } };
 assert.deepEqual(mapControllerMessage({ type: "noteon", channel: 15, note: 64, velocity: 55 }, custom, "A"), { bank: "J", pad: 2, velocity: 55, pressed: true });
-console.log("PASS: all 320 SP-404MKII Mode A/B pad/bank targets, Note Off, velocity-zero Note On, channel isolation, legacy 12 pads, CC releases and custom mappings.");
+console.log("PASS: 320 Roland mappings, linear 16-pad notes/CCs on every channel/current bank, legacy 12 pads, releases and custom mappings.");

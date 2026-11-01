@@ -1,12 +1,18 @@
-# Beatmaker Cues — native apps and plug-ins, 1.0.4
+# Beatmaker Cues — native apps and plug-ins, 1.0.5
 
 The native iOS and Android app shells are named **Beatmaker Cues** and use the
 original iOS icon. The native VST3/AU edition uses the same responsive interface.
 The separate full desktop studio retains the original stems/VJ/FX implementation.
 Download native apps, plug-ins, portable projects and source from the
-[v1.0.4 release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.4).
+[v1.0.5 release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.5).
 
 ## Unified portrait/landscape workspace
+
+Version 1.0.5 adds borderless pads, accent-coloured rate controls
+and logos, smaller-screen playlist overlays, consistent artwork frames and a
+persistent Recently Played list/grid switch. Fresh hosted instances default to
+**16 pads**: notes 36–51 in pad order on any MIDI channel, using the selected bank
+like Legacy 12. Existing restored projects keep their saved preset.
 
 The cue workspace keeps pads, transport, banks, speed, tuning and IN/OUT controls
 visible together without page scrolling. It adapts between portrait and landscape;

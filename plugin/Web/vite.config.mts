@@ -41,7 +41,7 @@ export default async (environment) => {
       if (id.endsWith('/web/src/native/ytplayer.ts')) return code.replace('?.musikeResolve;', '?.musikeResolve ?? (globalThis as any).__pluginResolveBridge;').replace('!!bridge && Capacitor.getPlatform() === "ios"', '!!bridge');
       if (id.endsWith('/web/src/native/streams.ts')) return code.replace('const ios = Capacitor.getPlatform() === "ios";', 'const ios = true;');
       if (id.endsWith('/web/src/native/midi.ts')) return code.replace('Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("MusikeMidi")', 'true');
-      if (id.endsWith('/web/src/views/Cues.tsx')) return code.replace('min={-50}','min={-75}').replace('const [overwrite, setOverwrite] = useState(false);', `const [overwrite, setOverwrite] = useState(false);
+       if (id.endsWith('/web/src/views/Cues.tsx')) return code.replace('min={-50}','min={-75}').replace('(speed+50)/150','(speed+75)/175').replace('const [overwrite, setOverwrite] = useState(false);', `const [overwrite, setOverwrite] = useState(false);
         useEffect(() => { void (window as any).__pluginInvoke('midiOptions', { overwrite }); }, [overwrite]);`);
       if (!id.endsWith('/web/src/main.tsx')) return;
        return code + `\nimport ${JSON.stringify(fileURLToPath(new URL('./responsive.css',import.meta.url)).split(path.sep).join('/'))};
