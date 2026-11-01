@@ -169,6 +169,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT ANDROID)
     target_compile_definitions(FxGraphTests PRIVATE JUCE_USE_CURL=0)
     target_link_libraries(FxGraphTests PRIVATE juce::juce_core)
     add_test(NAME PortableFxGraph COMMAND FxGraphTests)
+    # CI build caches can outlive the runner's installed Node version/path.
+    unset(BEATMAKER_NODE_EXECUTABLE CACHE)
     find_program(BEATMAKER_NODE_EXECUTABLE node)
     if(BEATMAKER_NODE_EXECUTABLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/check-native-effect-kernels.mjs")
         add_test(NAME OriginalWorkletParity COMMAND "${BEATMAKER_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/check-native-effect-kernels.mjs" "$<TARGET_FILE:EffectKernelTests>")
