@@ -106,7 +106,7 @@ try{
     assert(geometry.scroll<=2&&geometry.overflow<=1&&geometry.controls.every(r=>r.x>=0&&r.y>=0&&r.right<=width+1&&r.bottom<=geometry.limit+1&&r.width>=20&&r.height>=20),'Performance clipping at '+width+'x'+height+': '+JSON.stringify(geometry));
   }
   await page.setViewportSize({width:768,height:1024});await navigate('/library');
-  await page.evaluate(()=>document.querySelector('a[href="/playlist/fixture-playlist"]')?.click());
+  await page.locator('a[href="/playlist/fixture-playlist"]').first().click();
   await page.locator('.collection-hero').waitFor();
   for(const [width,height] of [[768,1024],[1024,768],[667,375]]){
     await page.setViewportSize({width,height});await page.waitForTimeout(100);
