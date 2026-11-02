@@ -11,6 +11,7 @@ namespace {
 std::atomic<CueProcessor*> current{nullptr};
 std::mutex engineAccess;
 std::array<std::atomic<int>,4> safeInsets{};
+std::atomic<int> insetsRevision{0};
 std::atomic<int> minimumBufferFrames{0},requestedBufferFrames{0},initialXRuns{-1},bufferFallbacks{0};
  #if BEATMAKER_ANDROID_LATENCY_PROBE
 std::atomic<int> forcedBufferBursts{0};
@@ -92,6 +93,7 @@ private:
 std::unique_ptr<StandaloneNowPlaying> makeAndroid(CueProcessor& engine){if(engine.wrapperType!=juce::AudioProcessor::wrapperType_Standalone)return {};return std::make_unique<AndroidNowPlaying>(engine);}
 const bool registered=[] {registerStandaloneNowPlayingFactory(makeAndroid);return true;}();
 }
+int androidInsetsRevision(){return insetsRevision.load();}
 juce::var androidPlatformState(){
     auto* result=new juce::DynamicObject;
     const char* names[]{"left","top","right","bottom"};
@@ -107,13 +109,17 @@ juce::var androidPlatformState(){
     {std::lock_guard<std::mutex> lock(engineAccess);if(auto* engine=current.load()){
         result->setProperty("fastCommandsAccepted",engine->androidFastAccepted.load());result->setProperty("fastCommandsRendered",engine->androidFastRendered.load());
         result->setProperty("lastFastCommandToRenderMs",engine->androidFastLastRenderMs.load());
+        result->setProperty("callbackFrames",engine->androidCallbackFrames.load());result->setProperty("callbackElapsedMs",engine->androidCallbackMs.load());
+        result->setProperty("peakCallbackElapsedMs",engine->androidPeakCallbackMs.load());
         result->setProperty("nativeTouchCommands",engine->androidNativeTouches.load());
         result->setProperty("audioGeneration",engine->androidAudioGeneration());result->setProperty("sourceId",engine->androidBridgeSourceId.load());
     }}
     return juce::var(result);
 }
 extern "C" JNIEXPORT void JNICALL Java_app_musike_android_StandaloneBridge_setInsets(JNIEnv*,jclass,jint left,jint top,jint right,jint bottom){
-    const int values[]{left,top,right,bottom};for(size_t i=0;i<4;++i)safeInsets[i].store(juce::jmax(0,values[i]));
+    const int values[]{left,top,right,bottom};bool changed=false;
+    for(size_t i=0;i<4;++i){const int value=juce::jmax(0,values[i]);if(safeInsets[i].exchange(value)!=value)changed=true;}
+    if(changed)++insetsRevision;
 }
 extern "C" JNIEXPORT void JNICALL Java_app_musike_android_StandaloneBridge_bind(JNIEnv* env,jclass type,jobject){
     if(bridge)env->DeleteGlobalRef(bridge);bridge=(jclass)env->NewGlobalRef(type);

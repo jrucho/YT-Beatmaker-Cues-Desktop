@@ -246,7 +246,10 @@ void CueProcessor::jump(double seconds, float velocity) {
 void CueProcessor::execute(const Command& command) {
    #if JUCE_ANDROID
     if(command.androidGeneration>=0&&command.androidGeneration!=loadGeneration.load())return;
-    if(command.androidTicket){androidRenderingTicket=command.androidTicket;androidRenderingStarted=command.androidStartedMs;}
+    if(command.androidTicket){
+        androidRenderingTicket=command.androidTicket;androidRenderingStarted=command.androidStartedMs;
+        androidRenderingNeedsAudio=(command.action==Action::cue||command.action==Action::pad)&&!hasPadSample(command.bank,command.pad);
+    }
    #endif
     switch (command.action) {
         case Action::pad: hit(command.bank, command.pad, command.overwrite, 1.0f);padEvent(command.bank,command.pad,false,false,1.0f);break;
@@ -467,6 +470,9 @@ void CueProcessor::render(juce::AudioBuffer<float>& buffer, int start, int count
 }
 
 void CueProcessor::processBlock(juce::AudioBuffer<float>& output, juce::MidiBuffer& midi) {
+   #if JUCE_ANDROID
+    const auto androidCallbackStarted=juce::Time::getMillisecondCounterHiRes();
+   #endif
     juce::ScopedNoDenormals noDenormals;
     if(!playing.load()){smoothedSpeed.setCurrentAndTargetValue(speedValue->load());smoothedTuning.setCurrentAndTargetValue(semitones.load());}
     beatmaker::dsp::FxState update;if(fxGraphUpdates.consume(update))nativeFxGraph.configure(update);
@@ -476,6 +482,9 @@ void CueProcessor::processBlock(juce::AudioBuffer<float>& output, juce::MidiBuff
     Sample* next;
     do { next = published.load(); audioHazard.store(next); } while (next != published.load());
     if (next != current) {
+       #if JUCE_ANDROID
+        androidRenderingTicket=0;
+       #endif
         current = next;
         position = current ? juce::jlimit(0.0, (double) current->frames() - 1, restorePosition.load() * current->rate) : 0;
         playing.store(false); fadeRemaining = 0;
@@ -504,7 +513,15 @@ void CueProcessor::processBlock(juce::AudioBuffer<float>& output, juce::MidiBuff
     if(loadFirstRenderMs.load()==0&&current&&current==published.load()&&measuredLoadGeneration.load()==loadGeneration.load()&&loadPublishedMs.load()>0)loadFirstRenderMs.store(juce::Time::getMillisecondCounterHiRes());
     playhead.store(current ? position / current->rate : 0);
    #if JUCE_ANDROID
-    if(androidRenderingTicket){androidFastLastRenderMs.store(juce::Time::getMillisecondCounterHiRes()-androidRenderingStarted);androidFastRendered.store(androidRenderingTicket);androidRenderingTicket=0;}
+    const auto androidFinished=juce::Time::getMillisecondCounterHiRes();
+    const auto androidElapsed=androidFinished-androidCallbackStarted;
+    androidCallbackFrames.store(output.getNumSamples());androidCallbackMs.store(androidElapsed);
+    if(androidElapsed>androidPeakCallbackMs.load())androidPeakCallbackMs.store(androidElapsed);
+    // A cache-wait callback fades to silence; it has not rendered the requested
+    // cue. Keep timing until the target PCM actually reaches the renderer.
+    if(androidRenderingTicket&&(!androidRenderingNeedsAudio||!cacheWaiting)){
+        androidFastLastRenderMs.store(androidFinished-androidRenderingStarted);androidFastRendered.store(androidRenderingTicket);androidRenderingTicket=0;
+    }
    #endif
     midi.clear();
 }
@@ -668,7 +685,10 @@ juce::var CueProcessor::loadDiagnostics() const {
     result->setProperty("sampleStorage",sample?(sample->paged?"paged":"resident"):"none");
     result->setProperty("pcmCacheBytes",sample?(juce::int64)(sample->paged?sample->paged->pcmBytes():(size_t)sample->frames()*sample->channels()*sizeof(float)):0);
     result->setProperty("buffering",cacheBuffering.load());result->setProperty("cacheMisses",cacheMisses.load());
-    if(sample&&sample->paged){result->setProperty("cachedPages",sample->paged->loadedPages());result->setProperty("decoderPageReads",sample->paged->decoderReads());}
+    if(sample&&sample->paged){
+        result->setProperty("cachedPages",sample->paged->loadedPages());result->setProperty("decoderPageReads",sample->paged->decoderReads());
+        result->setProperty("cueCacheBank",selectedBank.load());result->setProperty("readyCueHeads",sample->paged->readyCueHeads(selectedBank.load()));
+    }
     result->setProperty("generation",measuredLoadGeneration.load());result->setProperty("downloadMs",loadDownloadMs.load());result->setProperty("decoderInitMs",loadDecoderMs.load());result->setProperty("pcmReadMs",loadPcmReadMs.load());
     result->setProperty("requestToPublishMs",publishedAt>0?publishedAt-start:-1);result->setProperty("requestToFirstRenderMs",first>0?first-start:-1);result->setProperty("note","First-render timing measures buffer processing, excluding earlier UI URL resolution, FX look-ahead (reported separately) and physical device output latency");return juce::var(result);
 }
@@ -1181,6 +1201,7 @@ void CueProcessor::runQueue(){
                 cacheFailed=sample->paged->failed();cacheGeneration=loadGeneration.load();
                 for(int b=0;b<10;++b)for(int p=0;p<16;++p)sample->paged->setCue(b*16+p,cues[(size_t)b][(size_t)p].load());
                 sample->paged->setLoop(loopIn.load(),loopOut.load(),loopEnabled.load());
+                sample->paged->setCueBank(selectedBank.load());
             }
         }
         if(cacheFailed){failLoad("Audio page decoding failed; select the song again.",cacheGeneration);continue;}

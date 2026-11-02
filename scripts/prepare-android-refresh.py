@@ -117,6 +117,19 @@ for mode in ['original-ui', 'native-touch']:
 expected_certificate = (root / 'mobile/android/release-certificate.sha256').read_text().strip().lower()
 if android_info.get('certificateSha256') != expected_certificate:
     raise RuntimeError('Android release certificate mismatch')
+if 'selected-bank-residency' in android_info['checks']:
+    baseline_result = android_info.get('cueResidencyBaseline', {}).get('result', {})
+    if baseline_result.get('coldHits', 0) <= 0:
+        raise RuntimeError('Missing the measured later-bank cache baseline')
+    residency = android_info.get('cueResidencyMeasurements', [])
+    for speed, tuning in [(0, 0), (50, 5), (-50, -7)]:
+        if not any(entry.get('sourceCommit') == sha and entry['result'].get('speed') == speed
+                   and entry['result'].get('tuning') == tuning and entry['result'].get('coldHits') == 0
+                   and entry['result'].get('xrunDelta') == 0
+                   and entry['result'].get('prefetch', {}).get('readyCueHeads') == 16
+                   and entry['result'].get('prefetch', {}).get('pcmCacheBytes') == 16 * 1024 * 1024
+                   for entry in residency):
+            raise RuntimeError('Missing current-source prepared-bank speed/tuning verification')
 
 output.mkdir(parents=True, exist_ok=True)
 if any(output.iterdir()):
@@ -131,7 +144,7 @@ updated = {file.name for file in replacements} | {notes_name, manifest_name, che
 old_commits = manifest.get('assetSourceCommits', {})
 commits = {name: sha if name in updated else old_commits.get(name, manifest['sourceCommit']) for name in baseline}
 manifest.update(sourceCommit=sha, initialSourceCommit=tag, workingTreeDirty=False,
-                refresh='Android native touch input and stable low-latency output',
+                refresh='Android native touch, selected-bank cue residency and decoder scheduling',
                 refreshScope=['Android', 'corresponding-source'], refreshedAssets=sorted(updated),
                 retainedAssets=sorted(baseline - updated), assetSourceCommits=commits)
 manifest['files'] = [{'name': name, 'bytes': (output / name).stat().st_size,

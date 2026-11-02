@@ -43,5 +43,8 @@ private:
     int previousRemoteRevision=0;
     juce::String previousParameters;
     juce::String previousAndroidPlatform;
+   #if JUCE_ANDROID
+    int previousAndroidGeneration=-1,previousAndroidSource=-1,previousAndroidInsets=-1;
+   #endif
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MobileWebEditor)
 };

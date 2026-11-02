@@ -52,6 +52,16 @@ double PagedAudio::bufferedTo(double seconds) const {
     while(page<pageCount&&table[(size_t)page].load())++page;
     return juce::jmin((double)length,(double)page*pageFrames)/rate;
 }
+int PagedAudio::readyCueHeads(int bank) const {
+    int ready=0;
+    for(int pad=0;pad<16;++pad){
+        const int frame=cueFrames[(size_t)(juce::jlimit(0,9,bank)*16+pad)].load();if(frame<0)continue;
+        bool resident=true;
+        for(int page=cueFirstPage(frame);page<=cueLastPage(frame);++page)resident=resident&&table[(size_t)page].load()!=nullptr;
+        if(resident)++ready;
+    }
+    return ready;
+}
 
 bool PagedAudio::load(int number,const std::array<int,pageSlots>& wanted,int wantedCount){
     if(table[(size_t)number].load())return true;
@@ -76,19 +86,31 @@ bool PagedAudio::load(int number,const std::array<int,pageSlots>& wanted,int wan
     table[(size_t)number].store(destination);++cachedPages;return true;
 }
 void PagedAudio::run(){
+    int playbackFirst=-1,playbackLast=-1;
     while(!stopping.load()&&!readFailed.load()){
         const auto request=requestedRange.load();
+        const auto hints=cueHintsRevision.load();
         const int first=(int)(request>>32),last=(int)(request&0xffffffffu);
+        // Refill a multi-second playback window in chunks. Extending it one
+        // page on every callback repeatedly seeks the sole decoder away from
+        // cue preparation, starving distant banks while playback advances.
+        if(first<playbackFirst||last>playbackLast||playbackLast-last<16){
+            playbackFirst=juce::jmax(0,first-2);playbackLast=juce::jmin(pageCount-1,last+32);
+        }
         std::array<int,pageSlots> wanted{};int count=0;
         const auto add=[&](int number){if(number>=0&&number<pageCount&&count<pageSlots&&std::find(wanted.begin(),wanted.begin()+count,number)==wanted.begin()+count)wanted[(size_t)count++]=number;};
         for(int i=first;i<=last&&count<pageSlots;++i)add(i);
-        for(int i=1;i<=8;++i)add(last+i);
+        for(int page=last+1;page<=playbackLast;++page)add(page);
         add(first-1);add(first-2);
-        // Loop endpoints get priority; marked cues then fill the remaining cache.
-        for(int i=160;i<162;++i){const int frame=cueFrames[(size_t)i].load();if(frame>=0){add(frame/pageFrames);add(frame/pageFrames+1);add(frame/pageFrames-1);}}
-        for(int i=0;i<160&&count<pageSlots;++i){const int frame=cueFrames[(size_t)i].load();if(frame>=0){add(frame/pageFrames);add(frame/pageFrames+1);add(frame/pageFrames-1);}}
+        // Reserve the performing bank before filling spare slots with other
+        // banks. A-to-J order otherwise evicts every later-bank attack as soon
+        // as the song has more marked cues than the bounded cache can hold.
+        const auto addCue=[&](int index){const int frame=cueFrames[(size_t)index].load();if(frame>=0)for(int page=cueFirstPage(frame);page<=cueLastPage(frame);++page)add(page);};
+        for(int i=160;i<162;++i)addCue(i);
+        const int active=cueBank.load()*16;
+        for(int pad=0;pad<160&&count<pageSlots;++pad)addCue((active+pad)%160);
         for(int i=0;i<count&&!stopping.load()&&!readFailed.load();++i){
-            if(requestedRange.load()!=request)break;
+            if(requestedRange.load()!=request||cueHintsRevision.load()!=hints)break;
             load(wanted[(size_t)i],wanted,count);
         }
         juce::Thread::sleep(2);

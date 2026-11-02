@@ -15,7 +15,12 @@ parser.add_argument('--apk', required=True)
 parser.add_argument('--output', default='release')
 parser.add_argument('--checks', default='native-build,apk-signature')
 parser.add_argument('--latency-report', action='append', default=[], help='Attach a measured benchmark JSON to the build record')
+parser.add_argument('--comparison-source-commit', help='Source of historical routing/baseline measurements')
+parser.add_argument('--cue-residency-baseline', help='Historical later-bank cache comparison JSON')
+parser.add_argument('--cue-residency-report', action='append', default=[], help='Current selected-bank cache verification JSON')
 args = parser.parse_args()
+if args.comparison_source_commit and not re.fullmatch(r'[0-9a-f]{40}', args.comparison_source_commit):
+    parser.error('--comparison-source-commit must be a complete commit SHA')
 root = Path(__file__).resolve().parents[2]
 version = json.loads((root / 'package.json').read_text())['version']
 apk = Path(args.apk).resolve()
@@ -52,15 +57,31 @@ info = dict(version=version, productName='Beatmaker Cues', platform='Android', a
             applicationId='app.owaega.beatmakercuesstandalone', formats=['Standalone'],
             signing='persistent-release-key', certificateSha256=certificate.group(1),
             checks=args.checks.split(','), **source_info(root))
+
+def measurement(name, source):
+    report = Path(name)
+    payload = report.read_bytes()
+    return dict(report=report.name, sha256=hashlib.sha256(payload).hexdigest(), sourceCommit=source, result=json.loads(payload))
+
+
+comparison_source = args.comparison_source_commit or info.get('sourceCommit')
 if args.latency_report:
     info['latencyMeasurements'] = []
     for name in args.latency_report:
-        report = Path(name)
-        payload = report.read_bytes()
-        result = json.loads(payload)
+        entry = measurement(name, comparison_source)
+        result = entry['result']
         if result.get('input') != 'Android input motionevent DOWN/UP' or not result.get('nativeSamplesMs'):
             raise RuntimeError('Expected a real Android MotionEvent benchmark report')
-        info['latencyMeasurements'].append(dict(report=report.name, sha256=hashlib.sha256(payload).hexdigest(), result=result))
+        info['latencyMeasurements'].append(entry)
+if args.cue_residency_baseline:
+    info['cueResidencyBaseline'] = measurement(args.cue_residency_baseline, comparison_source)
+if args.cue_residency_report:
+    info['cueResidencyMeasurements'] = []
+    for name in args.cue_residency_report:
+        entry = measurement(name, info.get('sourceCommit'))
+        if entry['result'].get('totalMarkedCues') != 160 or not entry['result'].get('hits'):
+            raise RuntimeError('Expected a real 160-cue residency check')
+        info['cueResidencyMeasurements'].append(entry)
 record = output / f'Plugin-Build-{version}-Android-arm64.json'
 record.write_text(json.dumps(info, indent=2) + '\n')
 checksums = output / f'SHA256SUMS-Plugins-{version}-Android-arm64.txt'

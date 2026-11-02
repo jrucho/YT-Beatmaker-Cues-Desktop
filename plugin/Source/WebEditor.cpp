@@ -311,8 +311,14 @@ void MobileWebEditor::timerCallback() {
         previousSampleRevision=engine.padSampleRevision().load();browser.emitEventIfBrowserIsVisible("pluginPadSamples",engine.padSamples());
     }
    #if JUCE_ANDROID
-    const auto platform=androidPlatformState();const auto encodedPlatform=juce::JSON::toString(platform,true);
-    if(encodedPlatform!=previousAndroidPlatform){previousAndroidPlatform=encodedPlatform;browser.emitEventIfBrowserIsVisible("pluginAndroidPlatform",platform);}
+    const auto generation=engine.androidAudioGeneration(),bridgeSource=engine.androidBridgeSourceId.load(),insets=androidInsetsRevision();
+    // Timing counters do not need a 60 Hz round trip through the WebView.
+    // Source/layout changes still reach the native touch map on the next tick.
+    if(timerTicks%6==0||generation!=previousAndroidGeneration||bridgeSource!=previousAndroidSource||insets!=previousAndroidInsets){
+        previousAndroidGeneration=generation;previousAndroidSource=bridgeSource;previousAndroidInsets=insets;
+        const auto platform=androidPlatformState();const auto encodedPlatform=juce::JSON::toString(platform,true);
+        if(encodedPlatform!=previousAndroidPlatform){previousAndroidPlatform=encodedPlatform;browser.emitEventIfBrowserIsVisible("pluginAndroidPlatform",platform);}
+    }
    #endif
     previousRemoteRevision=engine.remoteTransportRevision.load();
     if(previousRestoreRevision!=engine.restoreRevision.load()){

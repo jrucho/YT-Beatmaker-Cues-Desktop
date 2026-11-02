@@ -70,7 +70,7 @@ It now plays successfully in both local native editor builds.
 
 `Source/PagedAudio.{h,cpp}` supplies a fixed-size, lossless float PCM page cache:
 
-- Tracks above 4,194,304 frames use 64 preallocated 32,768-frame pages: **16 MiB
+- Tracks above 4,194,304 frames use 256 preallocated 8,192-frame pages: **16 MiB
   stereo PCM per loaded cache**, independent of track duration. Short tracks
   retain a resident buffer of at most 32 MiB stereo. These figures exclude decoder,
   UI and indexing overhead; transitions can briefly retain another sample/cache.

@@ -61,6 +61,7 @@ export function useNativePadTouch(options: {
     changes.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style", "hidden", "open", "aria-modal"] });
     window.addEventListener("resize", schedule);
     window.addEventListener("pageshow", schedule);
+    window.addEventListener("plugin-android-insets", schedule);
     document.addEventListener("scroll", schedule, true);
     document.addEventListener("visibilitychange", schedule);
     update();
@@ -69,6 +70,7 @@ export function useNativePadTouch(options: {
       resize.disconnect(); changes.disconnect();
       window.removeEventListener("resize", schedule);
       window.removeEventListener("pageshow", schedule);
+      window.removeEventListener("plugin-android-insets", schedule);
       document.removeEventListener("scroll", schedule, true);
       document.removeEventListener("visibilitychange", schedule);
       bridge.configure(null);

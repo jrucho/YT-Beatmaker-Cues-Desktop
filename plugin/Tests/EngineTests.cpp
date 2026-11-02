@@ -296,6 +296,39 @@ static void longTrackTests(){
     std::cout<<"PASS: 645-second stereo sample, fixed 16 MiB PCM cache, cold/latest/warmed cues, 90 evictions, loop, independent pitch/speed, offline bounce, exact end and background errors; no callback decode/allocation\n";
 }
 
+static void selectedBankCacheTests(){
+    auto source=std::make_unique<CueProcessor::Sample>();source->rate=48000;source->path="bank-cache-fixture:";
+    source->paged=std::make_unique<PagedAudio>(std::make_unique<LongToneReader>(),0);
+    CueProcessor processor;processor.prepareToPlay(48000,512);processor.installSampleForTest(std::move(source));
+    juce::AudioBuffer<float> output(2,512);juce::MidiBuffer midi;renderChecked(processor,output,midi);
+    auto banks=std::make_unique<juce::DynamicObject>();
+    for(int bank=0;bank<10;++bank){
+        auto pads=std::make_unique<juce::DynamicObject>();
+        for(int pad=0;pad<16;++pad)pads->setProperty(juce::Identifier(juce::String(pad+1)),2+(bank*16+pad)*3.8);
+        banks->setProperty(juce::Identifier(juce::String::charToString((juce::juce_wchar)('A'+bank))),juce::var(pads.release()));
+    }
+    auto state=std::make_unique<juce::DynamicObject>();state->setProperty("cues",juce::var(banks.release()));
+    const auto mapping=juce::var(state.release());
+    for(const int bank:{9,4,0}){
+        mapping.getDynamicObject()->setProperty("bank",juce::String::charToString((juce::juce_wchar)('A'+bank)));
+        processor.syncWebCues(mapping);
+        for(int poll=0;poll<1000;++poll){
+            juce::Thread::sleep(5);
+            if((int)processor.loadDiagnostics()["readyCueHeads"]==16)break;
+        }
+        if((int)processor.loadDiagnostics()["readyCueHeads"]!=16){std::cerr<<"Cache bank "<<bank<<" selected "<<processor.selectedBank.load()<<" diagnostics "<<juce::JSON::toString(processor.loadDiagnostics(),true)<<"\n";check(false,"Selected bank was not fully warmed");}
+        for(const int pad:{0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15}){
+            const double target=2+(bank*16+pad)*3.8;const int misses=processor.loadDiagnostics()["cacheMisses"];
+            processor.submit({CueProcessor::Action::pad,bank,pad});renderChecked(processor,output,midi);
+            check(processor.playhead.load()>target+.001&&(int)processor.loadDiagnostics()["cacheMisses"]==misses,"Selected bank attack was evicted in favor of an earlier bank");
+            const auto lastFrame=(juce::int64)std::llround(processor.playhead.load()*48000)-1;
+            check(std::abs(output.getSample(0,511)-.8f*LongToneReader::tone(lastFrame,0))<.0001f,"Bank-priority prefetch changed the source PCM");
+        }
+    }
+    check((juce::int64)processor.loadDiagnostics()["pcmCacheBytes"]==16*1024*1024,"Selected-bank prefetch grew the PCM cache");
+    std::cout<<"PASS: all 160 cues set, J/E/A selected-bank attacks resident after prefetch, exact PCM and fixed 16 MiB cache; no callback decode/allocation\n";
+}
+
 int main() {
     juce::ScopedJuceInitialiser_GUI initialise;
     try {
@@ -513,6 +546,7 @@ int main() {
         rateTransitionTests();
         fxGraphRoutingTests();
         remoteTransportTests();
+        selectedBankCacheTests();
         longTrackTests();
         return 0;
     } catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << "\n"; return 1; }

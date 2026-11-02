@@ -62,6 +62,8 @@ public:
     int androidAudioGeneration() const {return loadGeneration.load();}
     std::atomic<int> androidBridgeSourceId{0},androidFastAccepted{0},androidFastRendered{0};
     std::atomic<double> androidFastLastRenderMs{0};
+    std::atomic<int> androidCallbackFrames{0};
+    std::atomic<double> androidCallbackMs{0},androidPeakCallbackMs{0};
     std::array<std::atomic<double>,160> androidTouchStartedMs{};
     std::atomic<int> androidNativeTouches{0};
    #endif
@@ -153,6 +155,7 @@ private:
    #if JUCE_ANDROID
     std::mutex androidCommandWriter;
     int androidRenderingTicket=0;double androidRenderingStarted=0;
+    bool androidRenderingNeedsAudio=false;
    #endif
     const AudioTransport audioTransport;
     juce::ThreadPool loaders{2};

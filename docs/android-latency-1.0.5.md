@@ -24,14 +24,43 @@ second hit, including after a delayed renderer event.
   replay an action already handled on down. Sample-management dialogs open on
   release so that the same finger cannot immediately dismiss their backdrop.
 
-## Measurements and limits
+## Selected-bank follow-up
 
-Measured on **2026-11-02**, API 35 arm64 Android emulator, optimized Release probe,
+The initial two-pad timing fixture did not exercise a full ten-bank cue map.
+With all 160 cues marked, its A-to-J prefetch order filled the cache before bank
+J: a real Android comparison had **12 of 16 J presses** request decoding on demand
+at +50% preserved-pitch speed and +5 semitones. A native regression also reproduces
+the starvation after prefetch has settled.
+
+The follow-up prioritizes the selected bank and cancels obsolete prefetch hints.
+It uses 256 smaller 8192-frame pages at the same **16 MiB stereo PCM budget**,
+preparing bounded attacks/continuation in source order. Chunked playback-window
+refills avoid seeking away from cue preparation every time playback crosses a
+page. DSP, source PCM, tuning, speed and the cue transition are preserved.
+
+After selected-bank preparation, **48 of 48 presses** across unity, +50%/+5 st and
+−50%/−7 st playback had **zero cache misses and zero new underruns**. Preparation
+is measured separately and took about 6–9 seconds on the emulator for this
+160-mark fixture; this is not a claim of instant cold-bank preparation. Current
+raw reports, including preparation time, are in the Android build record.
+
+Timing now remains pending through a cache-wait/silence block until the requested
+cue PCM reaches the renderer. Diagnostics expose native render-block size and
+elapsed time. Platform counters update at 10 Hz, while source/inset changes retain
+next-tick updates; pad feedback remains at 60 Hz. Unchanged insets no longer write
+CSS repeatedly: an idle-playback check went from 540 root-style mutations in 2.5
+seconds to zero, with 25 diagnostic updates over that interval.
+
+## Input-routing measurements and limits
+
+The initial input-routing comparison was measured from source **`e20d12b`** on
+**2026-11-02**, API 35 arm64 Android emulator, optimized Release probe,
 cached 645-second AAC fixture `7sFnp7bKwdE`, 48 kHz, two bursts/1920 frames. Each
 case alternates two real `input motionevent` pad presses for 24 trials and discards
 four warmups. Both routes use the same buffer configuration and cached cues.
-The release's `Plugin-Build-1.0.5-Android-arm64.json` contains the four raw reports,
-their SHA-256 digests, individual samples and device/buffer metadata.
+The release's `Plugin-Build-1.0.5-Android-arm64.json` contains the four historical
+routing reports and the current cue-residency reports, each with a source commit,
+SHA-256 digest, individual samples and device/buffer metadata.
 
 | Input route | Renderer load | Median to render | p95 to render | New underruns |
 | --- | --- | ---: | ---: | ---: |
@@ -65,6 +94,9 @@ adb install -r plugin/Android/app/build/outputs/apk/release/pluginStandalone-rel
 export ANDROID_APPLICATION_ID=app.owaega.beatmakercuesstandalone.latencyprobe
 node scripts/check-android-plugin.mjs
 node scripts/check-android-pad-touch.mjs
+node scripts/check-android-cue-residency.mjs --speed=50 --tuning=5 --output release/cue-residency-fast.json
+node scripts/check-android-cue-residency.mjs --speed=-50 --tuning=-7 --output release/cue-residency-slow.json
+node scripts/check-android-cue-residency.mjs --output release/cue-residency-unity.json
 node scripts/benchmark-android-latency.mjs --baseline --bursts=2 --output release/android-original.json
 node scripts/benchmark-android-latency.mjs --bursts=2 --output release/android-native.json
 node scripts/benchmark-android-latency.mjs --baseline --bursts=2 --renderer-stall=1500

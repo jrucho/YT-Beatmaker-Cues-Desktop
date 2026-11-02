@@ -4,6 +4,8 @@
 
 ### Android input-latency refresh
 
+- Follow-up: prioritize the selected bank's attacks/continuation with all 160 cues marked, use smaller pages at the same 16 MiB PCM budget, and batch playback-window refills to avoid decoder seek thrashing. Native regression covers J/E/A banks and exact PCM; all 48 prepared-bank Android presses across three speed/tuning settings had zero cache misses. Preparation time is recorded separately.
+- Keep command timing pending through cache-wait blocks, expose render-block elapsed diagnostics, and reduce platform status traffic to 10 Hz with immediate source/inset invalidation. Avoid redundant inset CSS writes.
 - Route saved cue/sample touch-down from the Android view directly to the native command queue, with source/generation guards and event-time-matched UI receipts to prevent duplicate hits after renderer stalls.
 - Retain native decoding, Signalsmith stretch, speed/tuning and cue transitions. Start with two native bursts/output rate and grow buffering after repeated underruns; the underrunning one-burst experiment remains internal.
 - Preserve original-position hold/Overwrite marking, sample-only playback, deletion/dialog/overlay exclusions and resized hit regions. Use independent pointer hold timers and open sample management on release.

@@ -118,12 +118,15 @@
   }
   if (window.__JUCE__.getAndroidUserScripts) {
     const applyPlatform = state => {
-      const scale = window.devicePixelRatio || 1;
+      const scale = window.devicePixelRatio || 1,root=document.documentElement,previous=window.__pluginAndroidPlatform;
+      let insetsChanged=false;
       for (const edge of ['top', 'left', 'right', 'bottom']) {
-        document.documentElement.style.setProperty('--plugin-safe-' + edge, Math.max(0, state[edge] || 0) / scale + 'px');
+        const name='--plugin-safe-'+edge,value=Math.max(0,state[edge]||0)/scale+'px';
+        if(root.style.getPropertyValue(name)!==value){root.style.setProperty(name,value);insetsChanged=true;}
       }
       window.__pluginAndroidPlatform = state;
-      syncPadMap();
+      if(previous?.sourceId!==state.sourceId||previous?.audioGeneration!==state.audioGeneration)syncPadMap();
+      if(insetsChanged)window.dispatchEvent(new Event('plugin-android-insets'));
     };
     backend.addEventListener('pluginAndroidPlatform', applyPlatform);
     invoke('androidPlatform').then(applyPlatform).catch(console.error);
