@@ -18,9 +18,15 @@ parser.add_argument('--latency-report', action='append', default=[], help='Attac
 parser.add_argument('--comparison-source-commit', help='Source of historical routing/baseline measurements')
 parser.add_argument('--cue-residency-baseline', help='Historical later-bank cache comparison JSON')
 parser.add_argument('--cue-residency-report', action='append', default=[], help='Current selected-bank cache verification JSON')
+parser.add_argument('--device-latency-baseline', help='Physical-device comparison baseline JSON')
+parser.add_argument('--device-latency-baseline-source', help='Commit used for the physical-device baseline')
+parser.add_argument('--device-latency-report', action='append', default=[], help='Current physical-device input/render verification JSON')
+parser.add_argument('--device-latency-notes', default='', help='Output route and system-effect conditions for device measurements')
 args = parser.parse_args()
 if args.comparison_source_commit and not re.fullmatch(r'[0-9a-f]{40}', args.comparison_source_commit):
     parser.error('--comparison-source-commit must be a complete commit SHA')
+if args.device_latency_baseline_source and not re.fullmatch(r'[0-9a-f]{40}', args.device_latency_baseline_source):
+    parser.error('--device-latency-baseline-source must be a complete commit SHA')
 root = Path(__file__).resolve().parents[2]
 version = json.loads((root / 'package.json').read_text())['version']
 apk = Path(args.apk).resolve()
@@ -82,6 +88,18 @@ if args.cue_residency_report:
         if entry['result'].get('totalMarkedCues') != 160 or not entry['result'].get('hits'):
             raise RuntimeError('Expected a real 160-cue residency check')
         info['cueResidencyMeasurements'].append(entry)
+if args.device_latency_report:
+    device = dict(notes=args.device_latency_notes, measurements=[])
+    if args.device_latency_baseline:
+        if not args.device_latency_baseline_source:
+            raise RuntimeError('Identify the physical comparison baseline source')
+        device['baseline'] = measurement(args.device_latency_baseline, args.device_latency_baseline_source)
+    for name in args.device_latency_report:
+        entry = measurement(name, info.get('sourceCommit'))
+        if entry['result'].get('device', {}).get('emulator') is not False or not entry['result'].get('nativeSamplesMs'):
+            raise RuntimeError('Expected a physical Android input/render report')
+        device['measurements'].append(entry)
+    info['deviceLatency'] = device
 record = output / f'Plugin-Build-{version}-Android-arm64.json'
 record.write_text(json.dumps(info, indent=2) + '\n')
 checksums = output / f'SHA256SUMS-Plugins-{version}-Android-arm64.txt'

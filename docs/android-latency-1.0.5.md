@@ -40,7 +40,7 @@ page. DSP, source PCM, tuning, speed and the cue transition are preserved.
 
 After selected-bank preparation, **48 of 48 presses** across unity, +50%/+5 st and
 −50%/−7 st playback had **zero cache misses and zero new underruns**. Preparation
-is measured separately and took about 6–9 seconds on the emulator for this
+is measured separately and took about 6–10 seconds on the emulator for this
 160-mark fixture; this is not a claim of instant cold-bank preparation. Current
 raw reports, including preparation time, are in the Android build record.
 
@@ -50,6 +50,43 @@ elapsed time. Platform counters update at 10 Hz, while source/inset changes reta
 next-tick updates; pad feedback remains at 60 Hz. Unchanged insets no longer write
 CSS repeatedly: an idle-playback check went from 540 root-style mutations in 2.5
 seconds to zero, with 25 diagnostic updates over that interval.
+
+## Physical Nothing Phone (1) verification
+
+Physical speaker tests on **A063 / Nothing OS 3.2 / Android 15** confirmed that
+system effects influence the audio path. With Wavelet's global Dynamics
+Processing active, AAudio rejected low-latency mode and accepted a regular-mixer
+stream with 960-frame periods. With Wavelet off, the same float transport accepted
+low-latency mode with **192-frame periods at 48 kHz (4 ms)**. The user approved the
+short comparison and subsequently deactivated Wavelet manually.
+
+The app now observes the stream that actually started: API, accepted performance
+mode, sharing, sample format, period, queue size and capacity. Its default uses
+two accepted periods and grows buffering after repeated underruns. It follows
+stream-revision changes and avoids opening a second exclusive stream to guess
+the period. This policy uses stream capabilities across Android devices.
+
+Published builds retain JUCE's **float-first transport, Media/Music attributes
+and native DSP**. Alternate usage/format comparisons are internal-probe controls;
+they did not improve this phone's route and are confined to that build.
+
+With Wavelet off, the final 72 physical pad presses used float stereo at 48 kHz,
+a 384-frame queue, and produced **zero new underruns**:
+
+| Preserved-pitch configuration | Median input-to-render | p95 input-to-render |
+| --- | ---: | ---: |
+| Unity / 0 st | 2.95 ms | 5.38 ms |
+| +50% speed / +5 st | 3.83 ms | 5.94 ms |
+| −50% speed / −7 st | 3.89 ms | 6.20 ms |
+
+The earlier Wavelet-on comparison measured an 11.50 ms median with two regular
+mixer periods. These comparisons include the system-effect configuration change.
+The fast speaker path still reported about **28 ms of output latency**, additional
+to input-to-render time. This is a driver estimate, not a microphone measurement
+of total finger-to-speaker latency. The 2–6 ms physical end-to-end target is not
+verified. Raw physical reports and their conditions are in the Android build
+record. The emulator independently retained its supported 960-frame periods and
+stable two-period queue; 192 frames is not hardcoded for other phones.
 
 ## Input-routing measurements and limits
 
@@ -104,7 +141,8 @@ node scripts/benchmark-android-latency.mjs --bursts=2 --renderer-stall=1500
 node scripts/check-android-screen-off.mjs
 ```
 
-Set `ADB` to the SDK's adb executable if it is not on PATH. The probe has its own
+Set `ADB` to the SDK's adb executable if it is not on PATH. The probe is labelled
+**Beatmaker Cues (latency test)** and has its own
 application ID/data, optimized native code, WebView debugging and test-only burst
 controls. `--bridge-only` isolates direct Java/JNI commands without raw touch;
 `--bursts=0` uses the adaptive two-burst default. The import/screen-off fixtures

@@ -8,7 +8,8 @@ The initial port targets arm64 devices, Android 7/API 24 or newer.
 ## Build
 
 Install Java 21, Android SDK platform/build-tools 36, NDK 28.1.13356709 and SDK
-CMake 3.31.6. Set `JAVA_HOME` and `ANDROID_HOME`, then from the repository root:
+CMake 3.31.6, plus Python 3 for the reproducible JUCE backend hooks. Set
+`JAVA_HOME` and `ANDROID_HOME`, then from the repository root:
 On a Linux build host, JUCE's host-side resource compiler also requires the X11,
 Xext, Xrandr, Xinerama, Xcursor, FreeType and Fontconfig development packages.
 
@@ -60,6 +61,10 @@ JUCE AGPLv3 option; distribute the corresponding-source/dependency archive.
   touch-down enters the native audio queue before React scheduling; its UI event
   reconciles once. See [1.0.5 input measurements](android-latency-1.0.5.md), including
   renderer-stall tests and the distinction from physical speaker latency.
+- Accepted-stream diagnostics expose the actual transport, performance mode,
+  period and queue capacity. The source-controlled Android JUCE hook runs during
+  CMake configuration. Buffering follows the accepted stream and route revisions;
+  production keeps float-first audio transport and Media/Music attributes.
 - Native media snapshots feed a MediaSession/foreground playback service;
   system play, pause, seek and navigation command the C++ engine independently
   of WebView event delivery. Audio focus loss pauses playback.

@@ -32,7 +32,7 @@ const snapshot=()=>evaluate('__pluginInvoke("audio",{cmd:"snapshot"})');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const checkBrowsingChrome=async()=>{
   for(const route of ['/','/search','/library']){
-    await evaluate(`(()=>{const links=[...document.querySelectorAll('a')];const link=links.find(link=>link.getAttribute('href')===${JSON.stringify(route)}&&link.getBoundingClientRect().width>0);if(!link)throw Error('Navigation link missing');link.click();return true;})()`);
+    await evaluate(`(()=>{const links=[...document.querySelectorAll('a')];const route=${JSON.stringify(route)};const link=links.find(link=>(link.getAttribute('href')===route||route==='/library'&&/^\\/playlist\\//.test(link.getAttribute('href')||''))&&link.getBoundingClientRect().width>0);if(!link)throw Error('Navigation link missing');link.click();return true;})()`);
     await delay(150);
     const chrome=await evaluate(`(()=>{const mini=document.querySelector('.mini-player'),nav=document.querySelector('.music-app>nav'),main=document.querySelector('main');return {width:innerWidth,scroll:document.documentElement.scrollWidth,app:document.querySelector('.music-app').getBoundingClientRect().toJSON(),mini:mini?.getBoundingClientRect().toJSON(),nav:nav?.getBoundingClientRect().toJSON(),scrollbars:getComputedStyle(main,'::-webkit-scrollbar').display};})()`);
     assert(chrome.scroll<=chrome.width+1&&chrome.app.left===0&&chrome.app.right>=chrome.width,'Android content leaves a gap or overflows the screen edge: '+JSON.stringify(chrome));

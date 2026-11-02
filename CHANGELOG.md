@@ -4,6 +4,8 @@
 
 ### Android input-latency refresh
 
+- Observe the actually accepted Android stream, use its period/capacity for adaptive buffering, and reconfigure on stream revisions. Avoid probing another exclusive stream while audio is open. Production retains float-first Media/Music output; alternate transports are probe-only.
+- Verify 72 physical Nothing Phone (1) pad presses across normal/stretched/tuned playback with Wavelet off: 2.95–3.89 ms median input-to-render, no new underruns, plus roughly 28 ms driver-reported output latency. Record the system-effect conditions separately from app timing; preserve device-adaptive values for other phones.
 - Follow-up: prioritize the selected bank's attacks/continuation with all 160 cues marked, use smaller pages at the same 16 MiB PCM budget, and batch playback-window refills to avoid decoder seek thrashing. Native regression covers J/E/A banks and exact PCM; all 48 prepared-bank Android presses across three speed/tuning settings had zero cache misses. Preparation time is recorded separately.
 - Keep command timing pending through cache-wait blocks, expose render-block elapsed diagnostics, and reduce platform status traffic to 10 Hz with immediate source/inset invalidation. Avoid redundant inset CSS writes.
 - Route saved cue/sample touch-down from the Android view directly to the native command queue, with source/generation guards and event-time-matched UI receipts to prevent duplicate hits after renderer stalls.

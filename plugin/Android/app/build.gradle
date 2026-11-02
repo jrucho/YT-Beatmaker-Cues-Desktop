@@ -13,6 +13,7 @@ android {
     defaultConfig {
         applicationId 'app.owaega.beatmakercuesstandalone'
         if (latencyProbe) applicationIdSuffix '.latencyprobe'
+        manifestPlaceholders = [beatmakerApplicationLabel: latencyProbe ? 'Beatmaker Cues (latency test)' : 'Beatmaker Cues']
         minSdk 24
         targetSdk 36
         versionName appVersion

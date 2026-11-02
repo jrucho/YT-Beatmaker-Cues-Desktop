@@ -1,6 +1,7 @@
 #include "Processor.h"
 #include "StandaloneNowPlaying.h"
 #include "AndroidStandalone.h"
+#include "AndroidAudioOutput.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #include <jni.h>
@@ -22,13 +23,28 @@ public:
     explicit AndroidNowPlaying(CueProcessor& value):engine(value){{std::lock_guard<std::mutex> lock(engineAccess);current.store(&engine);}if(bridge&&backgroundMethod)engine.backgroundPlayback.store(juce::getEnv()->CallStaticBooleanMethod(bridge,backgroundMethod));startTimer(20);}
     ~AndroidNowPlaying() override {stopTimer();{std::lock_guard<std::mutex> lock(engineAccess);current.store(nullptr);}if(bridge&&shutdownMethod)juce::getEnv()->CallStaticVoidMethod(bridge,shutdownMethod);}
 private:
-    void timerCallback() override {
+    void updateAudioConfiguration() {
+       #if BEATMAKER_ANDROID_LATENCY_PROBE
+        if(lastOutputProfile!=beatmakerAndroidOutputProfile()){
+            lastOutputProfile=beatmakerAndroidOutputProfile();
+            if(auto* holder=juce::StandalonePluginHolder::getInstance()){
+                const auto setup=holder->deviceManager.getAudioDeviceSetup();
+                holder->deviceManager.closeAudioDevice();holder->deviceManager.setAudioDeviceSetup(setup,true);
+            }
+            audioConfigured=false;
+        }
+       #endif
         if(auto* holder=juce::StandalonePluginHolder::getInstance())if(auto* device=holder->deviceManager.getCurrentAudioDevice()){
            #if BEATMAKER_ANDROID_LATENCY_PROBE
             if(lastForcedBursts!=forcedBufferBursts.load()){lastForcedBursts=forcedBufferBursts.load();audioConfigured=false;}
            #endif
-            if(!audioConfigured||device!=configuredDevice){
-                sizes=device->getAvailableBufferSizes();sizes.sort();
+            const auto native=androidAudioOutputInfo();
+            if(!native.active||native.burst<=0){audioConfigured=false;return;}
+            if(!audioConfigured||device!=configuredDevice||native.revision!=configuredOutputRevision){
+                // Inspect the active stream. Opening another exclusive stream
+                // to guess a burst can observe a fallback or steal its route.
+                const int maximumBursts=native.capacity>0?juce::jmax(1,juce::jmin(4,native.capacity/native.burst)):4;
+                sizes.clear();for(int bursts=1;bursts<=maximumBursts;++bursts)sizes.add(native.burst*bursts);
                 const auto previous=holder->deviceManager.getAudioDeviceSetup();auto setup=previous;
                 if(!sizes.isEmpty()){
                     burst=sizes[0];minimumBufferFrames.store(burst);initialXRuns.store(device->getXRunCount());
@@ -49,6 +65,7 @@ private:
                     }
                 }
                 configuredDevice=holder->deviceManager.getCurrentAudioDevice();
+                configuredOutputRevision=androidAudioOutputInfo().revision;
                 lastXRuns=configuredDevice?configuredDevice->getXRunCount():0;
                 warmupUntil=juce::Time::getMillisecondCounterHiRes()+2000;
                 xrunBudget=0;
@@ -68,12 +85,16 @@ private:
                         const auto error=holder->deviceManager.setAudioDeviceSetup(setup,true);
                         if(error.isNotEmpty())holder->deviceManager.setAudioDeviceSetup(previous,true);
                         configuredDevice=holder->deviceManager.getCurrentAudioDevice();lastXRuns=configuredDevice?configuredDevice->getXRunCount():0;
+                        configuredOutputRevision=androidAudioOutputInfo().revision;
                         warmupUntil=juce::Time::getMillisecondCounterHiRes()+2000;
                         xrunBudget=0;
                     }
                 }
             }
         }
+    }
+    void timerCallback() override {
+        updateAudioConfiguration();
         if(!bridge||!publishMethod)return;
         auto data=engine.nativeSnapshot();auto* fields=data.getDynamicObject();
         fields->setProperty("wantedPlaying",engine.requestedPlay.load()&&!engine.nativeEnded.load());
@@ -85,9 +106,11 @@ private:
     CueProcessor& engine;
     bool audioConfigured=false;
     juce::AudioIODevice* configuredDevice=nullptr;
+    int configuredOutputRevision=-1;
     juce::Array<int> sizes;int burst=0,lastXRuns=0,xrunBudget=0;double warmupUntil=0;
    #if BEATMAKER_ANDROID_LATENCY_PROBE
     int lastForcedBursts=0;
+    int lastOutputProfile=0;
    #endif
 };
 std::unique_ptr<StandaloneNowPlaying> makeAndroid(CueProcessor& engine){if(engine.wrapperType!=juce::AudioProcessor::wrapperType_Standalone)return {};return std::make_unique<AndroidNowPlaying>(engine);}
@@ -106,6 +129,15 @@ juce::var androidPlatformState(){
         result->setProperty("outputLatencyFrames",device->getOutputLatencyInSamples());
         result->setProperty("deviceType",device->getTypeName());result->setProperty("xRuns",device->getXRunCount());
     }
+    const auto native=androidAudioOutputInfo();
+    auto* output=new juce::DynamicObject;
+    output->setProperty("active",native.active);output->setProperty("profile",beatmakerAndroidOutputProfile());
+    output->setProperty("api",native.api);output->setProperty("performance",native.performance);output->setProperty("sharing",native.sharing);
+    output->setProperty("format",native.format);output->setProperty("mmap",native.mmap);output->setProperty("burstFrames",native.burst);
+    output->setProperty("bufferFrames",native.buffer);output->setProperty("capacityFrames",native.capacity);output->setProperty("sampleRate",native.rate);
+    output->setProperty("channels",native.channels);output->setProperty("deviceId",native.device);output->setProperty("usage",native.usage);output->setProperty("contentType",native.content);
+    result->setProperty("output",juce::var(output));
+    if(native.active){const auto requested=result->getProperty("bufferFrames");result->setProperty("deviceBufferFrames",requested);result->setProperty("bufferFrames",native.buffer);}
     {std::lock_guard<std::mutex> lock(engineAccess);if(auto* engine=current.load()){
         result->setProperty("fastCommandsAccepted",engine->androidFastAccepted.load());result->setProperty("fastCommandsRendered",engine->androidFastRendered.load());
         result->setProperty("lastFastCommandToRenderMs",engine->androidFastLastRenderMs.load());
@@ -129,6 +161,7 @@ extern "C" JNIEXPORT void JNICALL Java_app_musike_android_StandaloneBridge_bind(
 extern "C" JNIEXPORT jboolean JNICALL Java_app_musike_android_StandaloneBridge_performance(JNIEnv*,jclass,jint action,jint sourceId,jdouble value,jint bank,jint pad){
    #if BEATMAKER_ANDROID_LATENCY_PROBE
     if(action==5&&std::isfinite(value)&&value>=0&&value<=4){forcedBufferBursts.store((int)value);return true;}
+    if(action==6&&std::isfinite(value)&&value>=0&&value<=3)return androidSetOutputProfile((int)value);
    #endif
     std::lock_guard<std::mutex> lock(engineAccess);auto* engine=current.load();if(!engine)return false;
     if(action==4){

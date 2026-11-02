@@ -130,6 +130,9 @@ public final class StandaloneBridge {
         @JavascriptInterface public boolean bufferBursts(int count) {
             return BuildConfig.LATENCY_PROBE && performance(5, 0, count, 0, 0);
         }
+        @JavascriptInterface public boolean outputMode(int mode) {
+            return BuildConfig.LATENCY_PROBE && performance(6, 0, mode, 0, 0);
+        }
     }
     public static int nativeSampleRate() {
         if (context == null) return 0;

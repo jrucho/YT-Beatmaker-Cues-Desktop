@@ -130,6 +130,17 @@ if 'selected-bank-residency' in android_info['checks']:
                    and entry['result'].get('prefetch', {}).get('pcmCacheBytes') == 16 * 1024 * 1024
                    for entry in residency):
             raise RuntimeError('Missing current-source prepared-bank speed/tuning verification')
+if 'physical-speaker' in android_info['checks']:
+    physical = android_info.get('deviceLatency', {}).get('measurements', [])
+    for speed, tuning in [(0, 0), (50, 5), (-50, -7)]:
+        if not any(entry.get('sourceCommit') == sha and entry['result'].get('device', {}).get('emulator') is False
+                   and entry['result'].get('dsp', {}).get('speed') == speed
+                   and entry['result'].get('dsp', {}).get('tuning') == tuning
+                   and entry['result'].get('xrunDelta') == 0
+                   and entry['result'].get('platformAfter', {}).get('output', {}).get('performance') == 12
+                   and entry['result'].get('platformAfter', {}).get('output', {}).get('format') == 2
+                   for entry in physical):
+            raise RuntimeError('Missing current-source physical float-output speed/tuning verification')
 
 output.mkdir(parents=True, exist_ok=True)
 if any(output.iterdir()):
@@ -144,7 +155,7 @@ updated = {file.name for file in replacements} | {notes_name, manifest_name, che
 old_commits = manifest.get('assetSourceCommits', {})
 commits = {name: sha if name in updated else old_commits.get(name, manifest['sourceCommit']) for name in baseline}
 manifest.update(sourceCommit=sha, initialSourceCommit=tag, workingTreeDirty=False,
-                refresh='Android native touch, selected-bank cue residency and decoder scheduling',
+                refresh='Android native touch, selected-bank residency and accepted-stream adaptive buffering',
                 refreshScope=['Android', 'corresponding-source'], refreshedAssets=sorted(updated),
                 retainedAssets=sorted(baseline - updated), assetSourceCommits=commits)
 manifest['files'] = [{'name': name, 'bytes': (output / name).stat().st_size,

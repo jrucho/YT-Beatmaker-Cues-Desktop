@@ -10,11 +10,20 @@ const bursts=Number(process.argv.find(arg=>arg.startsWith('--bursts='))?.split('
 assert(Number.isInteger(bursts)&&bursts>=0&&bursts<=4,'--bursts must be 0 (adaptive default), 1, 2, 3 or 4');
 const stallMs=Number(process.argv.find(arg=>arg.startsWith('--renderer-stall='))?.split('=')[1]??(process.argv.includes('--renderer-stall')?400:0));
 assert(Number.isFinite(stallMs)&&stallMs>=0&&stallMs<=10000,'Renderer stall must be 0–10000 ms');
+const requestedSpeed=process.argv.find(arg=>arg.startsWith('--speed='))?.split('=')[1];
+const requestedTuning=process.argv.find(arg=>arg.startsWith('--tuning='))?.split('=')[1];
+let previousDsp,dsp;
 const statistics=samples=>{
   const values=samples.slice(4).sort((a,b)=>a-b),quantile=q=>values[Math.floor((values.length-1)*q)];
   return {minimum:values[0],median:quantile(.5),p95:quantile(.95),maximum:values.at(-1),mean:values.reduce((a,b)=>a+b,0)/values.length};
 };
 try{
+  previousDsp=await evaluate('(()=>{const p=__pluginStores.player.getState();return {speed:p.speed,tuning:p.tuning,speedMode:p.speedMode};})()');
+  const speed=requestedSpeed==null?previousDsp.speed:Number(requestedSpeed),tuning=requestedTuning==null?previousDsp.tuning:Number(requestedTuning);
+  assert(Number.isFinite(speed)&&speed>=-75&&speed<=100&&Number.isFinite(tuning)&&tuning>=-12&&tuning<=12,'Invalid speed/tuning comparison');
+  const speedMode=process.argv.includes('--varispeed')?'pitch':requestedSpeed!=null||requestedTuning!=null?'speed':previousDsp.speedMode;
+  await evaluate(`__pluginStores.player.getState().setSpeedMode(${JSON.stringify(speedMode)});__pluginStores.player.getState().setSpeed(${speed});__pluginStores.player.getState().setTuning(${tuning});true`);
+  dsp={speed,tuning,speedMode};
   await evaluate(`window.__disableAndroidPerformance=${mode==='original-ui'};window.__disableAndroidPadTouch=${mode!=='native-touch'};true`);
   if(application.endsWith('.latencyprobe')){
     assert(await evaluate(`window.__beatmakerPerformance.bufferBursts(${bursts})`),'Internal buffer control unavailable');
@@ -38,7 +47,7 @@ try{
     try{
       for(let poll=0;poll<100;poll++){
         const state=await snapshot();rendered=await platform();
-        if(state.playing&&!state.buffering&&state.position>=target&&state.position<target+1+stallMs/1000&&rendered.fastCommandsRendered>previous.fastCommandsRendered){arrived=true;break;}
+        if(state.playing&&!state.buffering&&state.position>=target&&state.position<target+1+stallMs/1000*(1+speed/100)&&rendered.fastCommandsRendered>previous.fastCommandsRendered){arrived=true;break;}
         if(performance.now()-start>stallMs+1500)break;
         await delay(2);
       }
@@ -54,12 +63,12 @@ try{
   }
   const after=await platform();
   const result={mode,application,input:'Android input motionevent DOWN/UP',rendererStallMs:stallMs,
-    requestedBursts:bursts,trials:observedMs.length,warmupDiscarded:4,
+    requestedBursts:bursts,dsp,trials:observedMs.length,warmupDiscarded:4,
     device:{model:adb('shell','getprop','ro.product.model'),sdk:adb('shell','getprop','ro.build.version.sdk'),emulator:adb('shell','getprop','ro.kernel.qemu')==='1'},
     platformBefore:before,platformAfter:after,xrunDelta:after.xRuns-before.xRuns,
     nativeTouchToRenderMs:statistics(renderMs),nativeSamplesMs:renderMs,
     hostObservedMs:statistics(observedMs),hostSamplesMs:observedMs,
-    note:'Native timing starts at Android MotionEvent eventTime and ends when its audio render callback completes. It excludes touch hardware scanning and speaker/output buffering. Host timing also includes adb process/CDP overhead. Emulator measurements do not establish physical Nothing Phone latency.'};
+    note:'Native timing starts at Android MotionEvent eventTime and ends when its audio render callback completes. It excludes touch hardware scanning and speaker/output buffering. Host timing also includes adb process/CDP overhead. Render timing is not physical finger-to-speaker latency.'};
   const output=process.argv.indexOf('--output');if(output>=0)await writeFile(process.argv[output+1],JSON.stringify(result,null,2)+'\n');
   console.log(JSON.stringify(result,null,2));
-}finally{try{await evaluate('__pluginInvoke("audio",{cmd:"pause"})');}catch{}client.close();}
+}finally{try{await evaluate('__pluginInvoke("audio",{cmd:"pause"})');if(previousDsp)await evaluate(`__pluginStores.player.getState().setSpeed(${previousDsp.speed});__pluginStores.player.getState().setTuning(${previousDsp.tuning});__pluginStores.player.getState().setSpeedMode(${JSON.stringify(previousDsp.speedMode)});true`);}catch{}client.close();}
