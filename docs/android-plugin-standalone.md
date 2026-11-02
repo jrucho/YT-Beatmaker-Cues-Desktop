@@ -55,8 +55,11 @@ JUCE AGPLv3 option; distribute the corresponding-source/dependency archive.
   The 645-second test song reached first render in 2.39 seconds including a fresh
   2.16-second download, or about 0.18–0.31 seconds from an encoded cache hit.
 - Native cutout/status-bar insets position the header below the camera. The
-  standalone chooses two supported audio bursts for cue playback rather than
-  JUCE's default 40/100 ms queue; physical output latency remains device-dependent.
+  standalone starts at two native audio bursts and the supported native output
+  rate, with an underrun-driven fallback toward four bursts. Saved cue/sample
+  touch-down enters the native audio queue before React scheduling; its UI event
+  reconciles once. See [1.0.5 input measurements](android-latency-1.0.5.md), including
+  renderer-stall tests and the distinction from physical speaker latency.
 - Native media snapshots feed a MediaSession/foreground playback service;
   system play, pause, seek and navigation command the C++ engine independently
   of WebView event delivery. Audio focus loss pauses playback.
@@ -66,6 +69,7 @@ JUCE AGPLv3 option; distribute the corresponding-source/dependency archive.
 - Native full desktop Advanced/stems/FX/sequencer/sidechain/VJ parity remains
   incomplete. This port uses the normal plug-in interface and core native engine.
 
-See `official-product-lineup.md` for the current official app/icon direction and
-the publication/push hold. Local candidates may identify an uncommitted working
-tree; they are not published 1.0.4 releases.
+See `official-product-lineup.md` for the official app/icon direction and
+`downloads-1.0.5.md` for the public builds and per-asset source identity. Local
+candidates may identify an uncommitted working tree; release assembly requires
+clean-source Android and corresponding-source records.

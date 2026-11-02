@@ -1,11 +1,13 @@
 # Beatmaker Cues 1.0.5
 
-Source is on `main`, `release/1.0.5` and tag `v1.0.5`.
+Current source is on `main` and `release/1.0.5`; tag `v1.0.5` preserves the initial
+release baseline. Per-asset build records identify the Android refresh separately.
 Download the apps, plug-ins and exports from the
 [v1.0.5 release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.5).
 
 ## What's new
 
+- **Android input-latency refresh:** saved cue/sample presses enter the native audio queue directly from Android touch-down, with one-hit UI reconciliation. Stretch, speed and pitch processing are retained. A stable two-burst default and underrun fallback prioritize clean playback. Emulator touch-event-to-render median improved from 10.14 to 7.12 ms; these figures exclude touch hardware and speaker/output latency. See [measurements and reproduction](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/blob/main/docs/android-latency-1.0.5.md).
 - **Desktop Space-bar transport:** Space toggles play/pause across Discover, Studio and music/cue views, including after using pads or faders. Holding the key does not repeatedly toggle, and text fields retain normal spaces. Hosted plug-ins leave Space to the DAW.
 - **Minimal pads:** native cue/sample pads have no external border/ring. Keyboard focus is drawn inside the pad.
 - **Default 16-pad plug-in preset:** notes **36–51** in ascending pad order, on any MIDI channel, using the selected bank—Legacy 12 behavior with four more pads. Existing saved sessions retain their selected preset; select **16 pads** to use it in an existing project.
@@ -48,6 +50,12 @@ builds. UI checks exercise 12 phone/tablet/plug-in shapes, accent-coloured fader
 pixels, 500-song queue end reachability, long playlist headings, stable artwork
 frames and persisted recent-list preferences. The full desktop studio has its own
 browser regression checks and package/signature verification.
+
+The Android refresh additionally checks raw touch/JNI single-hit behavior, source
+and generation guards, layout changes, holds/Overwrite, sample import/playback/
+editing/removal, a stalled renderer and uncached screen-off next-track playback.
+Android/source assets identify the refresh commit; other platform binaries and
+portable projects retain their initial v1.0.5 bytes and original build records.
 
 Physical iOS screen-off/next-track acceptance and individual DAW/controller
 acceptance remain device-specific. Linux v1.0.3 installers remain available in the

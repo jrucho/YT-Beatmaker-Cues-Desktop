@@ -255,11 +255,17 @@ juce::var MobileWebEditor::audio(const juce::var& message) {
     if(command=="load") {
         engine.setNativeQueue(message["queue"]);
         sourceId=(int)message["sourceId"];sourceUrl=message["url"].toString();announced=false;pendingLoad=true;
+       #if JUCE_ANDROID
+        engine.androidBridgeSourceId.store(0);
+       #endif
         lastPosition=(double)message["startAt"];previousPlaying=false;
         const auto queue=message["queue"];const auto tracks=queue["tracks"];const int index=(int)queue["index"];
         const auto id=tracks.isArray()&&index>=0&&index<tracks.size()?tracks[index]["id"].toString():juce::String{};
         if(sourceUrl.isNotEmpty())engine.loadRemote(sourceUrl,lastPosition,id);
         else {engine.requestedPlay.store(false);engine.submit({CueProcessor::Action::pause});pendingLoad=false;}
+       #if JUCE_ANDROID
+        engine.androidBridgeSourceId.store(sourceId);
+       #endif
     } else if(command=="play") {engine.requestedPlay.store(true);engine.playIntentRevision.fetch_add(1);if(engine.ready.load())engine.submit({CueProcessor::Action::play});}
     else if(command=="pause") {engine.requestedPlay.store(false);engine.playIntentRevision.fetch_add(1);engine.submit({CueProcessor::Action::pause});}
     else if(command=="seek"||command=="cue") {

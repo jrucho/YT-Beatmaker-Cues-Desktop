@@ -18,7 +18,11 @@ class CueProcessor final : public juce::AudioProcessor {
 public:
     enum class Action { pad, markNext, play, pause, seek, cue, clearBank, setIn, setOut, toggleLoop };
     enum class RemoteAction {play,pause,toggle,seek,next,previous};
-    struct Command { Action action; int bank = 0, pad = -1; double value = 0; bool overwrite = false; };
+    struct Command { Action action; int bank = 0, pad = -1; double value = 0; bool overwrite = false;
+       #if JUCE_ANDROID
+        bool androidPerformance=false;int androidTicket=0,androidGeneration=-1;double androidStartedMs=0;
+       #endif
+    };
     struct Target { int bank = -1, pad = -1; };
     struct Sample {
         juce::AudioBuffer<float> audio;
@@ -52,7 +56,15 @@ public:
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*, int) override;
 
-    bool submit(Command); // Message-thread producer, audio-thread consumer.
+    bool submit(Command); // Non-audio producers; audio-thread consumer never locks.
+   #if JUCE_ANDROID
+    bool submitAndroidPerformance(Command);
+    int androidAudioGeneration() const {return loadGeneration.load();}
+    std::atomic<int> androidBridgeSourceId{0},androidFastAccepted{0},androidFastRendered{0};
+    std::atomic<double> androidFastLastRenderMs{0};
+    std::array<std::atomic<double>,160> androidTouchStartedMs{};
+    std::atomic<int> androidNativeTouches{0};
+   #endif
     void loadFile(const juce::File&, bool preserveCues = false,int ticket = 0);
     void loadDemo(bool preserveCues = false);
     void loadFromApp(const juce::String& videoId, int port);
@@ -138,6 +150,10 @@ private:
     std::array<std::array<std::atomic<double>, 16>, 10> cues;
     juce::AbstractFifo commands{256};
     std::array<Command, 256> commandData;
+   #if JUCE_ANDROID
+    std::mutex androidCommandWriter;
+    int androidRenderingTicket=0;double androidRenderingStarted=0;
+   #endif
     const AudioTransport audioTransport;
     juce::ThreadPool loaders{2};
     juce::ThreadPool padSampleLoaders{1};

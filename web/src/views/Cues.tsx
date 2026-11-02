@@ -16,6 +16,7 @@ import { midi, midiAvailable, type MidiDevice, type MidiMessage } from "../nativ
 import { CONTROLLER_PRESETS, mapControllerMessage, readControllerPreset, saveControllerPreset } from "../native/controllerMapping";
 import { padFeedback, usePadFeedback } from "../mobile/padFeedback";
 import { changePadSample, hasPadSample, padSamplesAvailable, playPadSample, refreshPadSamples, usePadSamples, type PadSample } from "../mobile/padSamples";
+import { takeNativePadTouch, useNativePadTouch } from "../mobile/nativePadTouch";
 import { toast } from "../stores/ui";
 
 const formatSemitones = (st: number) => `${st > 0 ? "+" : ""}${st} st`;
@@ -56,8 +57,12 @@ export default function Cues() {
   useEffect(()=>{const update=()=>{setWide(window.innerWidth>=960&&window.innerHeight>=500);setShort(window.innerHeight<=360);};window.addEventListener('resize',update);return()=>window.removeEventListener('resize',update);},[]);
   const [devices, setDevices] = useState<MidiDevice[]>([]);
   /** What the finger on a pad is doing: a long press marks the cue instead of playing it. */
-  const press = useRef({ timer: null as number | null, marked: false, played: false });
+  const presses = useRef(new Map<number, number>());
   const faderTap = useRef({ started: 0, startX: 0, startY: 0, previous: 0, previousX: 0, previousY: 0 });
+
+  useNativePadTouch({ trackId: track?.id ?? null, bank,
+    cues: overwrite ? {} : cues, samples, padCount: mapping.padToNote.length,
+    disabled: sampleEdit || !!samplePad || sampleBusy || midiOpen || (queueOpen && !wide) });
 
   useEffect(() => {
     useCueStore.getState().setTrack(track?.id ?? null);
@@ -158,50 +163,47 @@ export default function Cues() {
    * Pads play on press, not on release: waiting for the finger to lift adds the whole tap to the delay.
    * Holding a pad still marks (or overwrites) it, and a tap on an empty pad still marks it.
    */
-  const playPad = (pad: number) => {
-    if (cues[pad] != null && !overwrite) {
-      press.current.played = true;
-      trigger(pad);
-    }
-  };
-
-  const down = (pad: number) => {
+  const down = (pad: number, eventTime: number) => {
     padFeedback({ bank: useCueStore.getState().bank, pad, phase: "pressed" });
-    press.current.marked = false;
-    press.current.played = false;
-    if (press.current.timer) window.clearTimeout(press.current.timer);
-    if(sampleEdit){press.current.marked=true;setSamplePad({bank,pad});return;}
-    if(hasPadSample(bank,pad)){press.current.played=true;trigger(pad);return;}
+    const previous = presses.current.get(pad);
+    if (previous != null) window.clearTimeout(previous);
+    presses.current.delete(pad);
+    // Open management on click/release so the same finger-up cannot land on
+    // the newly inserted dialog backdrop and immediately dismiss it.
+    if(sampleEdit)return;
+    const sample = hasPadSample(bank,pad);
+    const touch = takeNativePadTouch(bank, pad, sample, cues[pad], eventTime);
+    const play = () => touch ? touch.reconcile(() => trigger(pad)) : trigger(pad);
+    if(sample){play();return;}
     if (cues[pad] == null || overwrite) {
-      press.current.marked = true;
       mark(pad);
       return;
     }
     // Capture before triggering the saved cue: holding to overwrite must mark where the finger went down,
     // not the old cue plus the long-press delay.
-    const at = cuePosition().catch(() => null);
-    press.current.timer = window.setTimeout(() => {
-      press.current.marked = true;
+    const at = touch ? Promise.resolve(touch.position) : cuePosition().catch(() => null);
+    presses.current.set(pad, window.setTimeout(() => {
+      presses.current.delete(pad);
       mark(pad, at, false);
-    }, 600);
-    playPad(pad);
+    }, 600));
+    play();
   };
 
   const up = (pad?: number) => {
     if (pad) padFeedback({ bank: useCueStore.getState().bank, pad, phase: "released" });
-    if (press.current.timer) window.clearTimeout(press.current.timer);
-    press.current.timer = null;
+    if (pad) {
+      const timer = presses.current.get(pad);
+      if (timer != null) window.clearTimeout(timer);
+      presses.current.delete(pad);
+    }
   };
 
   useEffect(() => () => {
-    if (press.current.timer) window.clearTimeout(press.current.timer);
+    for (const timer of presses.current.values()) window.clearTimeout(timer);
+    presses.current.clear();
   }, [track?.id, bank]);
 
   const hit = (pad: number) => {
-    const { marked, played } = press.current;
-    press.current.marked = false;
-    press.current.played = false;
-    if (marked || played) return; // already handled while the finger was down
     if(sampleEdit){setSamplePad({bank,pad});return;}
     if (hasPadSample(bank,pad)||cues[pad] != null && !overwrite) trigger(pad);
     else mark(pad);
@@ -292,14 +294,14 @@ export default function Cues() {
                       onPointerDown={(e) => {
                         if (e.button !== 0) return;
                         e.currentTarget.setPointerCapture(e.pointerId);
-                        down(pad);
+                        down(pad, e.timeStamp);
                       }}
                       onPointerUp={() => up(pad)}
                       onPointerLeave={() => up(pad)}
                       onPointerCancel={() => up(pad)}
                       data-pad-state={feedback.pressed.has(`${bank}:${pad}`) ? "pressed" : feedback.flashing.has(`${bank}:${pad}`) ? "triggered" : feedback.active === `${bank}:${pad}` ? "active" : "idle"}
                       onContextMenu={(e) => e.preventDefault()}
-                      onClick={() => hit(pad)}
+                      onClick={(event) => { if (sampleEdit || event.detail === 0) hit(pad); }}
                       aria-label={sample?`${t.cues.pad(pad)}: Sample ${sample.name}`:time == null ? `${t.cues.pad(pad)}: ${t.cues.empty}` : `${t.cues.pad(pad)}: ${formatTime(time)}`}
                       title={sample?.error||sample?.name||(sampleEdit?'Load a sample into this pad':undefined)}
                       data-pad-kind={sample?'sample':'cue'}

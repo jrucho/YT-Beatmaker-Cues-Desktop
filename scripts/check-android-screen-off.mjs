@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 const adb=(...args)=>execFileSync(process.env.ADB||'adb',args,{encoding:'utf8'}).trim();
-const app='app.owaega.beatmakercuesstandalone',delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const app=process.env.ANDROID_APPLICATION_ID||'app.owaega.beatmakercuesstandalone',delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 assert.equal(adb('shell','getprop','ro.kernel.qemu'),'1','This automated lock/unlock test runs on the emulator');
 adb('shell','input','keyevent','KEYCODE_WAKEUP');adb('shell','wm','dismiss-keyguard');
 adb('shell','am','start','-W','-n',`${app}/app.musike.android.MainActivity`);

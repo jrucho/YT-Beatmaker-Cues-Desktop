@@ -2,6 +2,16 @@
 
 ## 1.0.5
 
+### Android input-latency refresh
+
+- Route saved cue/sample touch-down from the Android view directly to the native command queue, with source/generation guards and event-time-matched UI receipts to prevent duplicate hits after renderer stalls.
+- Retain native decoding, Signalsmith stretch, speed/tuning and cue transitions. Start with two native bursts/output rate and grow buffering after repeated underruns; the underrunning one-burst experiment remains internal.
+- Preserve original-position hold/Overwrite marking, sample-only playback, deletion/dialog/overlay exclusions and resized hit regions. Use independent pointer hold timers and open sample management on release.
+- Verify 17 native Android input/sample cases, renderer-stall comparisons, screen-off uncached advancement and shared native/UI regressions. Emulator median input-event-to-render improved from 10.14 to 7.12 ms, excluding touch hardware and output buffering; Nothing Phone physical latency remains to be measured.
+- Refresh Android and corresponding-source assets in v1.0.5 with per-asset provenance; preserve the initial tag and other platform build records.
+
+### Initial release
+
 - Fixed desktop Space-bar play/pause across Discover, Studio and music/cue views, including after pad/button/fader focus. Auto-repeat is suppressed; text entry and hosted DAW Space handling are preserved.
 - Simplified native cue/sample pads with no external border/ring; keyboard focus is drawn inside a pad.
 - Added the default hosted **16 pads** preset: ascending notes 36–51 on any MIDI channel, using the selected bank like Legacy 12. Saved project presets remain restorable.

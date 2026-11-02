@@ -2,10 +2,11 @@ package app.musike.android;
 // JUCE observes ActivityLifecycleCallbacks itself. JuceActivity is the optional
 // push-notification activity and calls JNI hooks absent from this target.
 public final class MainActivity extends android.app.Activity {
+    private final java.util.WeakHashMap<android.webkit.WebView, Boolean> configuredWebViews = new java.util.WeakHashMap<>();
     @Override protected void onCreate(android.os.Bundle state) {
         super.onCreate(state);
         if (android.os.Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
-        if (BuildConfig.DEBUG) android.webkit.WebView.setWebContentsDebuggingEnabled(true);
+        if (BuildConfig.DEBUG || BuildConfig.LATENCY_PROBE) android.webkit.WebView.setWebContentsDebuggingEnabled(true);
         android.view.View decor = getWindow().getDecorView();
         decor.setBackgroundColor(android.graphics.Color.BLACK);
         decor.getViewTreeObserver().addOnGlobalLayoutListener(() -> configureWebViews(decor));
@@ -18,6 +19,18 @@ public final class MainActivity extends android.app.Activity {
     }
     private void configureWebViews(android.view.View view) {
         if (view instanceof android.webkit.WebView) {
+            android.webkit.WebView web = (android.webkit.WebView)view;
+            if (!configuredWebViews.containsKey(web)) {
+                configuredWebViews.put(web, true);
+                StandaloneBridge.PerformanceBridge performance = new StandaloneBridge.PerformanceBridge();
+                web.addJavascriptInterface(performance, "__beatmakerPerformance");
+                web.setOnTouchListener((target,event) -> {performance.touch(web,event);return false;});
+                // addJavascriptInterface becomes visible on the next document.
+                // A very fast initial load can beat the first layout callback.
+                web.evaluateJavascript("typeof window.__beatmakerPerformance", result -> {
+                    if ("\"undefined\"".equals(result) && web.getUrl() != null && web.getUrl().startsWith("https://juce.backend/")) web.reload();
+                });
+            }
             view.setBackgroundColor(android.graphics.Color.BLACK);
             view.setVerticalScrollBarEnabled(false);
             view.setHorizontalScrollBarEnabled(false);

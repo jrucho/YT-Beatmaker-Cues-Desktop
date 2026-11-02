@@ -53,6 +53,12 @@ mixes up to 32 one-shot voices, follows MIDI sample offsets and velocity, and
 loads/reclaims samples off the audio thread. Decoded pad audio has a combined
 128 MiB budget; song playback retains its separate bounded streaming cache.
 
+The Android 1.0.5 refresh routes saved cue/sample touch-down straight to the
+native command queue, then reconciles the UI once. It retains stretch, speed,
+pitch and cue transitions, using a stable two-burst/native-rate output setup
+with underrun fallback. See [Android measurements](../docs/android-latency-1.0.5.md)
+for input-path timings, coverage and physical-latency limits.
+
 ## Legacy desktop-layout development target
 
 The normal product uses the unified responsive editor. A separate **Beatmaker Cues

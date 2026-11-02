@@ -44,11 +44,57 @@
     if (result && result.__error) job.reject(new Error(result.__error));
     else job.resolve(result);
   });
-  const invoke = (name, ...params) => new Promise((resolve, reject) => {
+  const androidPerformance=()=>window.__disableAndroidPerformance?undefined:window.__beatmakerPerformance;
+  let performanceSourceId=0,performanceTrackId='',padMap=null,lastPadMap='',claimedTouch=null;
+  const syncPadMap=()=>{
+    const bridge=window.__beatmakerPerformance;
+    if(!bridge)return;
+    const platform=window.__pluginAndroidPlatform;
+    const matchingTrack=padMap?.trackId===performanceTrackId&&platform?.sourceId===performanceSourceId;
+    const encoded=JSON.stringify(padMap&&!document.hidden?{
+      ...padMap,sourceId:performanceSourceId,generation:platform?.audioGeneration??-1,
+      bank:padMap.bank.charCodeAt(0)-65,enabled:!window.__disableAndroidPerformance&&!window.__disableAndroidPadTouch,
+      pads:padMap.pads.filter(pad=>pad.sample||matchingTrack)
+    }:{});
+    if(encoded===lastPadMap)return;
+    try{bridge.regions(JSON.stringify({...JSON.parse(encoded),clockId:performance.timeOrigin,jsTime:performance.now()}));lastPadMap=encoded;}catch{}
+  };
+  const consumeClaimedTouch=(sourceId,bank,pad,sample)=>{
+    if(!claimedTouch||claimedTouch.sourceId!==sourceId||claimedTouch.bank!==bank||claimedTouch.pad!==pad||claimedTouch.sample!==sample)return false;
+    claimedTouch=null;return true;
+  };
+  if(window.__JUCE__.getAndroidUserScripts){
+    window.__pluginPadTouch={
+      configure:map=>{padMap=map;syncPadMap();},
+      take:(bank,pad,sample,to,eventTime)=>{
+        const sourceId=performanceSourceId,bankIndex=bank.charCodeAt(0)-65,padIndex=pad-1;
+        try{
+          const position=androidPerformance()?.consumeTouch(sourceId,bankIndex,padIndex,sample,to??0,eventTime);
+          if(!Number.isFinite(position))return;
+          let reconciled=false;
+          return {position,reconcile:trigger=>{
+            if(reconciled)return;
+            reconciled=true;
+            claimedTouch={sourceId,bank:bankIndex,pad:padIndex,sample};
+            try{trigger();}finally{claimedTouch=null;}
+          }};
+        }catch{}
+      }
+    };
+    addEventListener('pagehide',()=>{try{window.__beatmakerPerformance?.regions('{}');lastPadMap='';}catch{}});
+  }
+  const invoke = (name, ...params) => {
+    if(name==='padSample'&&params[0]?.cmd==='trigger'){
+      const request=params[0],bank=request.bank?.charCodeAt(0)-65,pad=request.pad-1;
+      if(consumeClaimedTouch(performanceSourceId,bank,pad,true))return Promise.resolve(true);
+      try{if(androidPerformance()?.audio(4,0,0,bank,pad))return Promise.resolve(true);}catch{}
+    }
+    return new Promise((resolve, reject) => {
     const resultId = counter++;
     pending.set(resultId, {resolve,reject});
     backend.emitEvent('__juce__invoke', {name,params,resultId});
-  });
+    });
+  };
   window.__pluginInvoke = invoke;
   // Native Mac hosted editors route musical keyboard presses directly to the
   // host responder. Tell that router when keys must instead stay in text/UI.
@@ -77,6 +123,7 @@
         document.documentElement.style.setProperty('--plugin-safe-' + edge, Math.max(0, state[edge] || 0) / scale + 'px');
       }
       window.__pluginAndroidPlatform = state;
+      syncPadMap();
     };
     backend.addEventListener('pluginAndroidPlatform', applyPlatform);
     invoke('androidPlatform').then(applyPlatform).catch(console.error);
@@ -174,8 +221,28 @@
   };
   window.fetch=window.fetch.bind(window);
   window.__pluginAudioBridge={
-    postMessage:message=>invoke('audio',message),
-    position:sourceId=>invoke('audio',{cmd:'position',sourceId}).then(state=>state.position),
+    postMessage:message=>{
+      if(message.cmd==='load'){
+        performanceSourceId=message.sourceId;
+        performanceTrackId=message.queue?.tracks?.[message.queue.index]?.id||'';
+        syncPadMap();
+      }
+      const action={cue:0,seek:1,play:2,pause:3}[message.cmd];
+      if(action!==undefined){
+        const sourceId=message.sourceId??performanceSourceId;
+        const bank=message.bank?.charCodeAt(0)-65||0,pad=message.pad==null?-1:message.pad-1;
+        const reconciled=action===0&&consumeClaimedTouch(sourceId,bank,pad,false);
+        try{if(reconciled||androidPerformance()?.audio(action,sourceId,message.to||0,bank,pad)){
+          if(action===0||action===1)queueMicrotask(()=>window.__musikeAudioEvent?.('seeked',{sourceId,position:message.to}));
+          return Promise.resolve({});
+        }}catch{}
+      }
+      return invoke('audio',message);
+    },
+    position:sourceId=>{
+      try{const position=androidPerformance()?.position(sourceId);if(Number.isFinite(position))return Promise.resolve(position);}catch{}
+      return invoke('audio',{cmd:'position',sourceId}).then(state=>state.position);
+    },
     snapshot:()=>invoke('audio',{cmd:'snapshot'})
   };
   window.__pluginResolveBridge={postMessage:message=>{
@@ -228,7 +295,10 @@
     stores.player.subscribe((current,previous)=>{if(current.queue!==previous.queue||current.index!==previous.index||current.status!==previous.status)queueMicrotask(persist);});
   });
   addEventListener('pagehide',persist);
-  backend.addEventListener('pluginAudio',({event,payload})=>window.__musikeAudioEvent?.(event,payload));
+  backend.addEventListener('pluginAudio',({event,payload})=>{
+    if((event==='track'||event==='snapshot')&&payload.trackId!=null){performanceTrackId=payload.trackId;syncPadMap();}
+    window.__musikeAudioEvent?.(event,payload);
+  });
   backend.addEventListener('pluginParameters',state=>window.__pluginStores?.player.setState(state));
   backend.addEventListener('pluginPadSamples',pads=>window.dispatchEvent(new CustomEvent('plugin-pad-samples',{detail:pads})));
   backend.addEventListener('pluginPads',events=>{

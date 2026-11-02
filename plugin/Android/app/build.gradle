@@ -4,6 +4,7 @@ def juce = project.hasProperty('beatmakerJuceDir') ? file(project.property('beat
 def appVersion = new groovy.json.JsonSlurper().parse(new File(repository, 'package.json')).version
 def versionParts = appVersion.tokenize('.').collect { it.find(/\d+/).toInteger() }
 def signing = { String name -> System.getenv(name) }
+def latencyProbe = project.hasProperty('beatmakerLatencyProbe')
 
 android {
     namespace 'app.musike.android'
@@ -11,14 +12,17 @@ android {
     ndkVersion '28.1.13356709'
     defaultConfig {
         applicationId 'app.owaega.beatmakercuesstandalone'
+        if (latencyProbe) applicationIdSuffix '.latencyprobe'
         minSdk 24
         targetSdk 36
         versionName appVersion
         versionCode versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
+        buildConfigField 'boolean', 'LATENCY_PROBE', latencyProbe ? 'true' : 'false'
         ndk { abiFilters 'arm64-v8a' }
         externalNativeBuild { cmake {
             targets 'BeatmakerCues_Standalone'
             arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24', '-DANDROID_WEAK_API_DEFS=ON', '-DCMAKE_CXX_STANDARD=17', "-DFETCHCONTENT_SOURCE_DIR_JUCE=${juce.absolutePath}", '-DBEATMAKER_DESKTOP_BETA=OFF'
+            arguments "-DBEATMAKER_ANDROID_LATENCY_PROBE=${latencyProbe ? 'ON' : 'OFF'}"
         } }
     }
     buildFeatures { buildConfig true }

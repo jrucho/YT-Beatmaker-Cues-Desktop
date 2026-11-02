@@ -1,7 +1,10 @@
 # v1.0.5 downloads
 
 [Open the v1.0.5 GitHub release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.5).
-Source is on `main`, `release/1.0.5` and tag `v1.0.5`.
+Current source is on `main` and `release/1.0.5`; tag `v1.0.5` retains the initial
+baseline. The Android APK and corresponding-source archives include the
+[input-latency refresh](android-latency-1.0.5.md). Per-asset records distinguish
+their newer source from the retained platform binaries and portable projects.
 
 | Edition/export | Release asset |
 | --- | --- |

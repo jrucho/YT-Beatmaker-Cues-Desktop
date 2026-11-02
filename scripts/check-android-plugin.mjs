@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 const adb = (...args) => execFileSync(process.env.ADB || 'adb', args, {encoding:'utf8'}).trim();
-const application = 'app.owaega.beatmakercuesstandalone';
+const application = process.env.ANDROID_APPLICATION_ID || 'app.owaega.beatmakercuesstandalone';
 adb('shell','am','start','-W','-n',`${application}/app.musike.android.MainActivity`);
 const pid = adb('shell', 'pidof', application);
 assert(/^\d+$/.test(pid), 'Launch the standalone debug app first');
