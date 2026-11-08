@@ -4,7 +4,8 @@ The native iOS and Android app shells are named **Beatmaker Cues** and use the
 original iOS icon. The native VST3/AU edition uses the same responsive interface.
 The separate full desktop studio retains the original stems/VJ/FX implementation.
 The 1.0.6 native release includes iOS/AUv3, Mac AU/VST3/standalone and Windows
-VST3/standalone. See the [release notes](../docs/release-1.0.6-notes.md) and
+VST3/standalone. [Download native 1.0.6](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.6).
+See the [release notes](../docs/release-1.0.6-notes.md) and
 [native input verification](../docs/native-input-1.0.6.md). Full desktop studio
 and Android downloads remain in the
 [v1.0.5 release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.5).

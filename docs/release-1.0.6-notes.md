@@ -1,5 +1,9 @@
 # Beatmaker Cues 1.0.6 — native input release
 
+[Download native 1.0.6](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.6).
+All 17 release assets identify clean source commit
+`d51cc4ee6093ae6489faab0d1b4bc30a53803faf`; the tag preserves that build baseline.
+
 ## What's new
 
 - **iOS/AUv3:** a simultaneous UIKit observer sends saved cue/sample touch-down
@@ -32,11 +36,17 @@ installers remain available in v1.0.5.
 
 ## Verification and installation
 
-See [native input verification](native-input-1.0.6.md) for the checks and commands.
+See [native input verification](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/blob/main/docs/native-input-1.0.6.md) for the checks and commands.
 The real Cocoa/WKWebView fixture verifies rendering during a 450 ms JavaScript
 stall, one-time UI claims and sibling-browser isolation. The iOS Simulator fixture
 exercises the actual UIKit observer, WKWebView and renderer with injected touches;
 it is not a physical touch or acoustic-latency test.
+
+[Windows native CI](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/actions/runs/42490254439)
+also passes real SendInput/WebView2 single-hit behavior through a 450 ms renderer
+stall, the six native suites, VST3 MIDI/audio/state/editor and installer checks.
+Both portable Apple projects compile independently after extraction. Published
+asset digests match the versioned checksum manifest.
 
 The local registered-device profiles expired November 7, 2026. Xcode currently
 cannot renew the existing app/extension bundle IDs for the original team, so

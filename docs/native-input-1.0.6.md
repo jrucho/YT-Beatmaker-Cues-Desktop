@@ -27,10 +27,15 @@ used. Mouse/touch events continue to the normal UI.
   Existing host-keyboard, sample, local AAC, persistence, responsive and 500-track
   checks also run. `PluginProbe` checks real VST3 MIDI/audio/state and editor sizes.
 - Windows `WebIntegration --shared-offline` includes real `SendInput`/WebView2
-  single-hit and 450 ms renderer-stall checks. Native Windows CI is required to
-  confirm this platform; Mac execution does not substitute for it.
+  single-hit and 450 ms renderer-stall checks. These passed in
+  [native Windows CI run 42490254439](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/actions/runs/42490254439),
+  together with all six CTests and the real VST3 host probe.
 - Shared browser checks: `pnpm typecheck`, `check-android-cues.mjs` in Android and
   iOS modes, `check-native-ui.mjs`, controller mapping and CoreMIDI parsing.
+- Both exported Apple projects compile independently after extraction, without
+  Node/CMake or source paths back into the working checkout. All 17 Android
+  emulator raw-touch/sample regression cases also pass against the updated shared
+  code; the internal probe is separate from the published Android app.
 
 ## iOS Simulator fixture
 
