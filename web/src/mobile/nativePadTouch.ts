@@ -3,15 +3,15 @@ import type { PadSample } from "./padSamples";
 
 interface Bounds { x: number; y: number; w: number; h: number }
 interface Region extends Bounds { pad: number; sample: boolean; to: number }
-interface PadMap { trackId: string | null; bank: string; aspect: number; pads: Region[]; blocked: Bounds[] }
-interface TouchReceipt { position: number; reconcile(trigger: () => void): void }
+interface PadMap { trackId: string | null; bank: string; aspect: number; width: number; height: number; dpr: number; pads: Region[]; blocked: Bounds[] }
+export interface TouchReceipt { position: number; reconcile(trigger: () => void): void }
 interface PadTouchBridge {
   configure(map: PadMap | null): void;
-  take(bank: string, pad: number, sample: boolean, to: number, eventTime: number): TouchReceipt | undefined;
+  take(bank: string, pad: number, sample: boolean, to: number, eventTime: number): TouchReceipt | Promise<TouchReceipt | undefined> | undefined;
 }
 declare global { interface Window { __pluginPadTouch?: PadTouchBridge } }
 
-/** Only the native Android shell supplies this adapter. Other players keep their normal input path. */
+/** Native shells supply this adapter; other players retain their normal input path. */
 export const takeNativePadTouch = (bank: string, pad: number, sample: boolean, to: number, eventTime: number) =>
   window.__pluginPadTouch?.take(bank, pad, sample, to ?? 0, eventTime);
 
@@ -28,7 +28,7 @@ export function useNativePadTouch(options: {
       queued = false;
       if (disposed) return;
       const grid = document.querySelector(".cue-pad-grid");
-      if (disabled || document.hidden || !grid || document.querySelector('[role="dialog"],[aria-modal="true"]')) {
+      if (disabled || document.hidden || !grid || Math.abs((window.visualViewport?.scale ?? 1) - 1) > .01 || document.querySelector('[role="dialog"],[aria-modal="true"]')) {
         bridge.configure(null);
         return;
       }
@@ -50,7 +50,7 @@ export function useNativePadTouch(options: {
         pads.push({ ...bounds(button.parentElement!), pad: index, sample: !!sample, to: sample ? 0 : cues[pad] });
       });
       const blocked = Array.from(grid.querySelectorAll("button:not(.cue-pad)"), bounds);
-      bridge.configure({ trackId, bank, aspect: width / height, pads, blocked });
+      bridge.configure({ trackId, bank, aspect: width / height, width, height, dpr: window.devicePixelRatio || 1, pads, blocked });
     };
     const schedule = () => { if (!queued) { queued = true; queueMicrotask(update); } };
     const resize = new ResizeObserver(schedule);
@@ -60,6 +60,8 @@ export function useNativePadTouch(options: {
     const changes = new MutationObserver(schedule);
     changes.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style", "hidden", "open", "aria-modal"] });
     window.addEventListener("resize", schedule);
+    window.visualViewport?.addEventListener("resize", schedule);
+    window.visualViewport?.addEventListener("scroll", schedule);
     window.addEventListener("pageshow", schedule);
     window.addEventListener("plugin-android-insets", schedule);
     document.addEventListener("scroll", schedule, true);
@@ -69,6 +71,8 @@ export function useNativePadTouch(options: {
       disposed = true;
       resize.disconnect(); changes.disconnect();
       window.removeEventListener("resize", schedule);
+      window.visualViewport?.removeEventListener("resize", schedule);
+      window.visualViewport?.removeEventListener("scroll", schedule);
       window.removeEventListener("pageshow", schedule);
       window.removeEventListener("plugin-android-insets", schedule);
       document.removeEventListener("scroll", schedule, true);

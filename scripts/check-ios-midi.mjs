@@ -1,7 +1,9 @@
 // Exercise the actual Swift CoreMIDI byte parser without requiring an attached MIDI controller.
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const source = readFileSync(new URL("../mobile/ios/App/App/MusikeMidiPlugin.swift", import.meta.url), "utf8");
@@ -25,9 +27,12 @@ let resumed = feed([0x91, 47, 64])
 assert(resumed.count == 1 && resumed[0]["channel"] as? Int == 1 && resumed[0]["note"] as? Int == 47)
 print("PASS: CoreMIDI running status, split packets, real-time bytes, velocity-zero note-off, CC mapping and SysEx filtering.")
 `;
-const result = spawnSync("xcrun", ["swift", "-module-cache-path", "mobile/ios/build/MacModuleCache", "-"], {
+// Clang PCMs contain absolute paths; a moved checkout must not reuse its cache.
+const cache = mkdtempSync(join(tmpdir(), "beatmaker-midi-cache-"));
+const result = spawnSync("/usr/bin/xcrun", ["swift", "-module-cache-path", cache, "-"], {
   cwd: root, input: `import Foundation\n${parser}\n${checks}`, encoding: "utf8",
 });
+rmSync(cache, { recursive: true, force: true });
 process.stdout.write(result.stdout ?? "");
 process.stderr.write(result.stderr ?? "");
 if (result.status !== 0) process.exit(result.status ?? 1);

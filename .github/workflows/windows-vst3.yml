@@ -100,7 +100,7 @@ jobs:
       - name: Verify installer
         run: python plugin/Tests/InstallReleaseTests.py
       - name: Package Windows binaries
-        run: python plugin/Scripts/package_release.py --build-dir plugin/build-windows --platform Windows --arch x64 --checks engine,persistence,concurrency,vst3-host,webview-offline,hosted-keyboard
+        run: python plugin/Scripts/package_release.py --build-dir plugin/build-windows --platform Windows --arch x64 --checks engine,persistence,concurrency,vst3-host,webview-offline,hosted-keyboard,native-pad-input,renderer-stall-single-hit
       - uses: actions/upload-artifact@v7
         with:
           name: Beatmaker-Cues-Windows-x64

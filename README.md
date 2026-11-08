@@ -6,6 +6,10 @@ A standalone desktop music and beatmaking app combining [Musike](https://github.
 
 **[Download v1.0.5 — apps, plug-ins and source](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.5)** · [All exports](docs/downloads-1.0.5.md) · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
 
+**Native 1.0.6:** iOS/AUv3 and desktop plug-ins gain native pad input with one-hit
+UI reconciliation, plus the selected-bank cue-cache improvements.
+[Native release notes and verification status](docs/release-1.0.6-notes.md).
+
 **1.0.5** adds minimal native pads, a default linear **16-pad plug-in mapping**, accent-coloured controls/logos, improved smaller iPad/landscape playlists, stable artwork sizing and a Recently Played list/grid switch. Native sample pads and focused-window DAW keyboard routing are included. [1.0.4 remains available](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.4).
 
 The [Android input-latency refresh](docs/android-latency-1.0.5.md) sends saved cue/sample touch-down directly to the native engine, preserving stretch/speed/pitch and single-hit UI behavior. Its follow-up prioritizes the selected bank's decoded cue attacks and avoids decoder seek thrashing. Measurements distinguish preparation, input-to-render time and physical speaker latency.

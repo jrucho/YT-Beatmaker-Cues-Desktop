@@ -29,7 +29,7 @@ if (reference.status === 0) {
   assert.equal(object.sha, sha, 'Existing release tag points at a different source commit');
 } else assert.match(reference.stderr, /HTTP 404/, 'Could not verify existing tag');
 // No --clobber: an existing release/tag is deliberately not modified by this operation.
-gh(['release', 'create', tag, '--target', sha, '--draft', '--title', tag, '--notes-file', 'docs/release-1.0.4-notes.md']);
+gh(['release', 'create', tag, '--target', sha, '--draft', '--title', tag, '--notes-file', `docs/release-${version}-notes.md`]);
 gh(['release', 'upload', tag, ...allowed.map(name => path.join(directory, name))]);
 const result = JSON.parse(gh(['release', 'view', tag, '--json', 'isDraft,assets,url']));
 assert.equal(result.isDraft, true);

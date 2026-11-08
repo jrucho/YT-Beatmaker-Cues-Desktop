@@ -7,6 +7,9 @@
 #if JUCE_MAC
 bool checkHostedKeyboardRouting();
 #endif
+#if JUCE_MAC || JUCE_WINDOWS
+bool checkNativePadInputRouting(CueProcessor&,MobileWebEditor&);
+#endif
 
 int main(int argc,char** argv) {
     std::cout<<std::unitbuf;
@@ -155,7 +158,10 @@ int main(int argc,char** argv) {
         if((processor.padStates[0].load()>>1)!=keyboardPadBefore+1){std::cerr<<"Hosted number-key cue shortcut did not reach native playback exactly once\n";return 1;}
         std::cout<<"PASS: hosted letter/transport isolation with number-key pads restored\n";
        #if JUCE_MAC
-        if(!checkHostedKeyboardRouting())return 1;
+         if(!checkHostedKeyboardRouting())return 1;
+        #endif
+        #if JUCE_MAC || JUCE_WINDOWS
+         if(!checkNativePadInputRouting(processor,*editor))return 1;
        #endif
         processor.importPadSample(0,15,juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));
         for(int i=0;i<100&&!(bool)evaluate("Boolean(document.querySelector('button[aria-label^=\"Pad 16: Sample\"]'))");++i)pump(50);

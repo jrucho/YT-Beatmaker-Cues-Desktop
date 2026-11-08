@@ -16,7 +16,7 @@ import { midi, midiAvailable, type MidiDevice, type MidiMessage } from "../nativ
 import { CONTROLLER_PRESETS, mapControllerMessage, readControllerPreset, saveControllerPreset } from "../native/controllerMapping";
 import { padFeedback, usePadFeedback } from "../mobile/padFeedback";
 import { changePadSample, hasPadSample, padSamplesAvailable, playPadSample, refreshPadSamples, usePadSamples, type PadSample } from "../mobile/padSamples";
-import { takeNativePadTouch, useNativePadTouch } from "../mobile/nativePadTouch";
+import { takeNativePadTouch, useNativePadTouch, type TouchReceipt } from "../mobile/nativePadTouch";
 import { toast } from "../stores/ui";
 
 const formatSemitones = (st: number) => `${st > 0 ? "+" : ""}${st} st`;
@@ -172,8 +172,14 @@ export default function Cues() {
     // the newly inserted dialog backdrop and immediately dismiss it.
     if(sampleEdit)return;
     const sample = hasPadSample(bank,pad);
-    const touch = takeNativePadTouch(bank, pad, sample, cues[pad], eventTime);
-    const play = () => touch ? touch.reconcile(() => trigger(pad)) : trigger(pad);
+    const touch = sample || cues[pad] != null && !overwrite ? takeNativePadTouch(bank, pad, sample, cues[pad], eventTime) : undefined;
+    const trackId=useCueStore.getState().trackId,atDown=cues[pad];
+    const playWith = (receipt?: TouchReceipt) => {
+      const current=useCueStore.getState();
+      if(current.trackId!==trackId||current.bank!==bank||hasPadSample(bank,pad)!==sample||!sample&&current.cues[pad]!==atDown)return;
+      if(receipt)receipt.reconcile(() => trigger(pad));else trigger(pad);
+    };
+    const play = () => {if(touch instanceof Promise)void touch.then(playWith).catch(error=>toast(error.message,'error'));else playWith(touch);};
     if(sample){play();return;}
     if (cues[pad] == null || overwrite) {
       mark(pad);
@@ -181,7 +187,8 @@ export default function Cues() {
     }
     // Capture before triggering the saved cue: holding to overwrite must mark where the finger went down,
     // not the old cue plus the long-press delay.
-    const at = touch ? Promise.resolve(touch.position) : cuePosition().catch(() => null);
+    const at = touch instanceof Promise ? touch.then(receipt=>receipt?.position??cuePosition()).catch(()=>null)
+      : touch ? Promise.resolve(touch.position) : cuePosition().catch(() => null);
     presses.current.set(pad, window.setTimeout(() => {
       presses.current.delete(pad);
       mark(pad, at, false);

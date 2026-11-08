@@ -54,10 +54,13 @@ MobileWebEditor::MobileWebEditor(CueProcessor& processor, bool offline)
     previousRestoreRevision=engine.restoreRevision.load();
     addAndMakeVisible(browser);
     if(!standalone&&engine.wrapperType!=juce::AudioProcessor::wrapperType_Undefined)hostedKeyboard=createHostedKeyboard(engine,*this);
+   #if (JUCE_MAC || JUCE_IOS || JUCE_WINDOWS) && !BEATMAKER_DESKTOP_BETA
+    nativePadInput=std::make_unique<NativePadInput>(engine,browser);
+   #endif
     browser.goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
     startTimerHz(60);
 }
-MobileWebEditor::~MobileWebEditor(){hostedKeyboard.reset();stopTimer();cancelled->store(true);requests.removeAllJobs(true,-1);storageWorker.removeAllJobs(false,-1);engine.openEditors.fetch_sub(1);}
+MobileWebEditor::~MobileWebEditor(){nativePadInput.reset();hostedKeyboard.reset();stopTimer();cancelled->store(true);requests.removeAllJobs(true,-1);storageWorker.removeAllJobs(false,-1);engine.openEditors.fetch_sub(1);}
 void MobileWebEditor::parentHierarchyChanged(){
    #if JUCE_IOS || JUCE_ANDROID
     // Logical-to-physical rounding may leave the last device pixel to the JUCE
@@ -69,6 +72,7 @@ void MobileWebEditor::parentHierarchyChanged(){
 void MobileWebEditor::resized(){
     // Native browser subviews can cover a software JUCE grip. Reserve its own hit area.
     browser.setBounds(getLocalBounds().withTrimmedBottom(resizeGripSize));
+    if(nativePadInput)nativePadInput->invalidateLayout();
     engine.editorWidth.store(getWidth());engine.editorHeight.store(getHeight());
 }
 
@@ -83,6 +87,9 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
        #endif
         .withInitialisationData("pluginStorage",engine.sessionUiState())
         .withInitialisationData("hostedPlugin",engine.wrapperType!=juce::AudioProcessor::wrapperType_Standalone&&engine.wrapperType!=juce::AudioProcessor::wrapperType_Undefined)
+       #if (JUCE_MAC || JUCE_IOS || JUCE_WINDOWS) && !BEATMAKER_DESKTOP_BETA
+        .withInitialisationData("nativePadInput",true)
+       #endif
        #if JUCE_IOS || JUCE_ANDROID
         .withInitialisationData("desktopPlatform",false)
        #else
@@ -91,6 +98,10 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withUserScript(juce::String::fromUTF8(MobileWebAssets::bridge_js,MobileWebAssets::bridge_jsSize))
         .withResourceProvider([this](const auto& path){return resource(path);})
         .withNativeFunction("audio",[this](const auto& args,auto complete){complete(audio(args[0]));})
+        .withNativeFunction("padTouchRegions",[this](const auto& args,auto complete){if(nativePadInput)nativePadInput->configure(args.isEmpty()?juce::var{}:args[0]);complete(true);})
+        .withNativeFunction("padTouchClaim",[this](const auto& args,auto complete){complete(nativePadInput?nativePadInput->claim(args[0]):object({{"accepted",false}}));})
+        .withNativeFunction("padTouchState",[this](const auto&,auto complete){complete(nativePadInput?nativePadInput->state():object({{"supported",false}}));})
+        .withNativeFunction("padTouchDiagnostics",[this](const auto&,auto complete){complete(nativePadInput?nativePadInput->diagnostics():object({{"supported",false}}));})
         .withNativeFunction("keyboardFocus",[this](const auto& args,auto complete){if(hostedKeyboard&&!args.isEmpty())hostedKeyboard->setUiState((bool)args[0]["editing"],(bool)args[0]["padsActive"]);complete(true);})
         .withNativeFunction("keyboardDiagnostics",[this](const auto&,auto complete){complete(hostedKeyboard?hostedKeyboard->diagnostics():juce::var{});})
         .withNativeFunction("store",[this](const auto& args,auto complete){
@@ -253,6 +264,7 @@ juce::var MobileWebEditor::audio(const juce::var& message) {
     const auto command=message["cmd"].toString();
     if(command!="snapshot"&&command!="position"&&engine.backgroundPlayback.load()&&uiStateIsStale())return true;
     if(command=="load") {
+        if(nativePadInput)nativePadInput->setSource(0,{});
         engine.setNativeQueue(message["queue"]);
         sourceId=(int)message["sourceId"];sourceUrl=message["url"].toString();announced=false;pendingLoad=true;
        #if JUCE_ANDROID
@@ -263,6 +275,7 @@ juce::var MobileWebEditor::audio(const juce::var& message) {
         const auto id=tracks.isArray()&&index>=0&&index<tracks.size()?tracks[index]["id"].toString():juce::String{};
         if(sourceUrl.isNotEmpty())engine.loadRemote(sourceUrl,lastPosition,id);
         else {engine.requestedPlay.store(false);engine.submit({CueProcessor::Action::pause});pendingLoad=false;}
+        if(nativePadInput)nativePadInput->setSource(sourceId,id);
        #if JUCE_ANDROID
         engine.androidBridgeSourceId.store(sourceId);
        #endif
@@ -307,6 +320,10 @@ void MobileWebEditor::timerCallback() {
     // Native playback/Now Playing continues independently while the app is
     // backgrounded. Reconcile the latest revisions when its WebView returns.
     if(engine.backgroundPlayback.load())return;
+    if(nativePadInput){
+        nativePadInput->poll();const auto state=nativePadInput->state();const auto encoded=juce::JSON::toString(state,true);
+        if(encoded!=previousPadInputState){previousPadInputState=encoded;browser.emitEventIfBrowserIsVisible("pluginPadInputState",state);}
+    }
     if(previousSampleRevision!=engine.padSampleRevision().load()){
         previousSampleRevision=engine.padSampleRevision().load();browser.emitEventIfBrowserIsVisible("pluginPadSamples",engine.padSamples());
     }
@@ -324,7 +341,7 @@ void MobileWebEditor::timerCallback() {
     if(previousRestoreRevision!=engine.restoreRevision.load()){
         previousRestoreRevision=engine.restoreRevision.load();announced=false;pendingLoad=false;
         if(engine.editorWidth.load()>0&&engine.editorHeight.load()>0)setSize(engine.editorWidth.load(),engine.editorHeight.load());
-        browser.refresh();return;
+        if(nativePadInput)nativePadInput->invalidateLayout();browser.refresh();return;
     }
     if(previousTrackRevision!=engine.nativeTrackRevision.load()){
         previousTrackRevision=engine.nativeTrackRevision.load();announced=false;pendingLoad=true;lastRevision=-1;emit("track",engine.nativeSnapshot());

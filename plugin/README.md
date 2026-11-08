@@ -1,10 +1,29 @@
-# Beatmaker Cues — native apps and plug-ins, 1.0.5
+# Beatmaker Cues — native apps and plug-ins, 1.0.6
 
 The native iOS and Android app shells are named **Beatmaker Cues** and use the
 original iOS icon. The native VST3/AU edition uses the same responsive interface.
 The separate full desktop studio retains the original stems/VJ/FX implementation.
-Download native apps, plug-ins, portable projects and source from the
+The 1.0.6 native release includes iOS/AUv3, Mac AU/VST3/standalone and Windows
+VST3/standalone. See the [release notes](../docs/release-1.0.6-notes.md) and
+[native input verification](../docs/native-input-1.0.6.md). Full desktop studio
+and Android downloads remain in the
 [v1.0.5 release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.5).
+
+## Native pad input in 1.0.6
+
+iOS/AUv3 observes UIKit touch-down without delaying or cancelling WebKit touches.
+Mac observes Cocoa left-mouse-down; Windows observes input scoped to its own
+WebView2. Saved cue/sample presses enter the existing native command queue, then
+event-time receipts reconcile the shared interface once. This keeps playback
+independent of a busy JavaScript renderer. Empty/Overwrite marking, pre-jump hold
+positions, sample management on release, keyboard and sample-offset MIDI retain
+their normal behavior. Native adapters are per editor and invalidate resized or
+stale maps; dialogs/editing/blocked controls are excluded.
+
+Selected-bank cue attack preparation and chunked decoder refills also reach the
+new Apple/desktop binaries, with the same 16 MiB PCM budget. Cold preparation and
+device/DAW output buffering remain separate from the input path. See the
+verification notes for automated coverage and physical-device signing status.
 
 ## Unified portrait/landscape workspace
 

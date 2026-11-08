@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.6
+
+- Add native UIKit touch-down forwarding for iOS/AUv3, Cocoa mouse-down forwarding for Mac AU/VST3/standalone, and scoped Windows WebView2 pointer forwarding. Saved cue/sample hits enter the native audio queue before WebView event processing; event-time receipts reconcile the interface once.
+- Isolate adapters to their own embedded browser, including sibling plug-in editors sharing a host window. Invalidate resized/stale layouts and guard audio generations, native track revisions, blocked controls, dialogs, sample editing and zoomed views.
+- Ship the selected-bank cue attack cache and chunked playback-window refill on the new native Apple/desktop builds, retaining the same 16 MiB PCM budget, native decoding, Signalsmith stretch, tuning and cue transitions.
+- Preserve original-position long-press marking, empty/Overwrite pads, independent samples without a song, number-key pads, host keyboard isolation and sample-offset MIDI.
+- Verify the shared engine/PCM/allocation suites, real Cocoa/WKWebView single-hit behavior through a 450 ms renderer stall, sibling-browser isolation, and the simulator UIKit/WKWebView cue/sample path with injected touches. Physical iOS acceptance requires renewed development provisioning; input-path checks do not measure touch hardware or acoustic output latency.
+- Prepare native iOS/AUv3, Mac and Windows artifacts and corresponding source separately from the existing v1.0.5 full desktop studio and Android releases.
+
 ## 1.0.5
 
 ### Android input-latency refresh

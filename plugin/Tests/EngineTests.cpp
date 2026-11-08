@@ -1,4 +1,5 @@
 #include "Processor.h"
+#include "NativePadInput.h"
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
@@ -87,6 +88,59 @@ static void padSampleTests(){
     auto legacy=juce::AudioProcessor::getXmlFromBinary(saved.getData(),(int)saved.getSize());legacy->deleteAllChildElementsWithTagName("PadSamples");juce::MemoryBlock old;juce::AudioProcessor::copyXmlToBinary(*legacy,old);
     recalled.setStateInformation(old.getData(),(int)old.getSize());check(!recalled.hasPadSample(0,0),"Old DAW sessions inherited sample assignments");
     std::cout<<"PASS: native sample pads without a song, sample-accurate MIDI, stereo/rate/velocity/polyphony, no cue overwrite, cue fallback, retained files, isolated state recall and allocation-free rendering\n";
+}
+
+static void nativePadInputTests(){
+    CueProcessor processor;processor.prepareToPlay(48000,128);processor.installSampleForTest(sample());block(processor,128);
+    processor.submit({CueProcessor::Action::seek,0,0,2.25});block(processor,128);
+    PadInputRouter router(processor);router.setSource(7,"input-fixture");
+    auto map=juce::JSON::parse(R"({"sourceId":7,"bank":0,"width":400,"height":800,"dpr":2,"enabled":true,"pads":[{"pad":0,"to":0.125,"sample":false,"x":0.1,"y":0.2,"w":0.5,"h":0.3}],"blocked":[{"x":0.1,"y":0.2,"w":0.05,"h":0.05}]})");
+    const auto configure=[&]{auto* object=map.getDynamicObject();const auto state=router.state(true);object->setProperty("generation",state["audioGeneration"]);object->setProperty("trackRevision",state["trackRevision"]);object->setProperty("layoutRevision",state["layoutRevision"]);router.configure(map);};
+    configure();const double epoch=juce::Time::currentTimeMillis();
+    auto request=juce::JSON::parse(R"({"sourceId":7,"bank":0,"pad":0,"to":0.125,"sample":false})");
+    request.getDynamicObject()->setProperty("eventEpochMs",epoch);request.getDynamicObject()->setProperty("generation",processor.audioGeneration());request.getDynamicObject()->setProperty("trackRevision",processor.nativeTrackRevision.load());
+    check(!router.pointerDown(45,170,400,800,false,epoch,1),"Native input ignored a blocked delete control");
+    check(!router.pointerDown(150,250,800,400,false,epoch,1),"Native input accepted stale viewport geometry");
+    check(!router.pointerDown(NAN,250,400,800,false,epoch,1),"Native input accepted non-finite coordinates");
+    const auto before=processor.padStates[0].load()>>1;
+    check(router.pointerDown(150,250,400,800,false,epoch,1),"Native input did not accept a prepared cue");
+    check(processor.nativePadInputAccepted.load()==1&&(processor.padStates[0].load()>>1)==before,"Native input bypassed the audio command consumer");
+    block(processor,128);
+    check((processor.padStates[0].load()>>1)==before+1&&processor.nativePadInputRendered.load()==1&&processor.playhead.load()>.125&&processor.playhead.load()<.13,"Native input did not render exactly one cue");
+    const auto receipt=router.claim(request);
+    check((bool)receipt["accepted"]&&!(bool)receipt["stale"]&&(double)receipt["position"]==2.25,"Native receipt lost its original pre-jump playhead");
+    check(!(bool)router.claim(request)["accepted"],"Native receipt could be claimed twice");
+    check(router.pointerDown(300,500,800,1600,true,epoch+100,1),"Native Windows physical-pixel/DPR conversion failed");
+    request.getDynamicObject()->setProperty("eventEpochMs",epoch+300);
+    check(!(bool)router.claim(request)["accepted"],"Native receipt matched a different physical event");
+    request.getDynamicObject()->setProperty("eventEpochMs",epoch+100);
+    check((bool)router.claim(request)["accepted"],"Mismatched claim consumed the valid receipt");
+    check(router.pointerDown(150,250,400,800,false,epoch+200,1),"Native changed-cue fixture did not queue");
+    request.getDynamicObject()->setProperty("eventEpochMs",epoch+200);request.getDynamicObject()->setProperty("to",.25);
+    const auto changed=router.claim(request);check((bool)changed["accepted"]&&(bool)changed["stale"],"Changed cue target would replay an already accepted physical event");request.getDynamicObject()->setProperty("to",.125);
+    block(processor,128);router.invalidateLayout();router.configure(map);
+    check(!router.pointerDown(150,250,400,800,false,epoch,1),"Native input accepted a pre-resize layout revision");
+    configure();processor.backgroundPlayback.store(true);
+    check(!router.pointerDown(150,250,400,800,false,epoch,1),"Native input triggered during background playback");processor.backgroundPlayback.store(false);
+    processor.nativeTrackRevision.fetch_add(1);
+    check(!router.pointerDown(150,250,400,800,false,epoch,1),"Native input accepted a stale track revision");configure();
+    const auto oldHits=processor.padStates[0].load()>>1;
+    check(router.pointerDown(150,250,400,800,false,epoch+400,1),"Native stale-generation fixture did not queue");
+    processor.installSampleForTest(sample());block(processor,128);
+    check((processor.padStates[0].load()>>1)==oldHits,"Queued native cue triggered a replacement source");
+    request.getDynamicObject()->setProperty("eventEpochMs",epoch+400);
+    const auto stale=router.claim(request);check((bool)stale["accepted"]&&(bool)stale["stale"],"Stale accepted event would fall back to a second UI trigger");
+    configure();router.setSource(8,"replacement");
+    check(!router.pointerDown(150,250,400,800,false,epoch,1),"Changing source did not invalidate native regions");
+    CueProcessor samples;samples.prepareToPlay(48000,128);samples.importPadSample(0,0,juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));samples.overwrite.store(true);
+    PadInputRouter sampleRouter(samples);auto* object=map.getDynamicObject();object->setProperty("sourceId",0);object->setProperty("layoutRevision",0);object->setProperty("generation",-1);
+    (*map["pads"].getArray())[0].getDynamicObject()->setProperty("sample",true);sampleRouter.configure(map);
+    check(sampleRouter.pointerDown(150,250,400,800,false,epoch,1),"Native sample input required a loaded song");
+    juce::AudioBuffer<float> audio(2,128);juce::MidiBuffer midi;renderChecked(samples,audio,midi);
+    check(audio.getMagnitude(0,128)>.0001f&&!samples.playing.load()&&samples.getCue(0,0)<0,"Native sample input marked/jumped transport or failed to render");
+    samples.removePadSample(0,0);
+    check(!sampleRouter.pointerDown(150,250,400,800,false,epoch,1),"Removed sample fell through to a native cue");
+    std::cout<<"PASS: native cue/sample input, one-time event receipts, pre-jump position, stale source/generation/layout, blocked controls, DPR, background and sample-only playback; no callback allocation\n";
 }
 
 static void rateTransitionTests(){
@@ -543,6 +597,7 @@ int main() {
         }
         effectRoutingTests();
         padSampleTests();
+        nativePadInputTests();
         rateTransitionTests();
         fxGraphRoutingTests();
         remoteTransportTests();

@@ -144,14 +144,13 @@ void CueProcessor::prepareToPlay(double rate, int maximumBlock) {
 }
 
 bool CueProcessor::submit(Command command) {
-   #if JUCE_ANDROID
     // JUCE UI messages and the WebView's synchronous Java bridge are separate
     // producers. Serialize only their tiny writes, never the audio consumer.
-    std::lock_guard<std::mutex> writer(androidCommandWriter);
-   #endif
+    std::lock_guard<std::mutex> writer(commandWriter);
     int start1, size1, start2, size2;
     commands.prepareToWrite(1, start1, size1, start2, size2);
     if (size1 == 0) { ++droppedCommands; return false; }
+    if(command.nativePerformance){command.nativeTicket=nativePadInputAccepted.fetch_add(1)+1;if(command.nativeStartedMs<=0)command.nativeStartedMs=juce::Time::getMillisecondCounterHiRes();}
    #if JUCE_ANDROID
     if((command.action==Action::cue||command.action==Action::pad)&&command.bank>=0&&command.bank<10&&command.pad>=0&&command.pad<16){
         const auto touch=androidTouchStartedMs[(size_t)(command.bank*16+command.pad)].exchange(0);
@@ -163,6 +162,7 @@ bool CueProcessor::submit(Command command) {
     commands.finishedWrite(1);
     return true;
 }
+bool CueProcessor::submitNativePadInput(Command command,double startedMs){command.nativePerformance=true;command.nativeStartedMs=startedMs;return submit(command);}
  #if JUCE_ANDROID
 bool CueProcessor::submitAndroidPerformance(Command command){
     command.androidPerformance=true;
@@ -244,6 +244,8 @@ void CueProcessor::jump(double seconds, float velocity) {
 }
 
 void CueProcessor::execute(const Command& command) {
+    if(command.sourceGeneration>=0&&command.sourceGeneration!=loadGeneration.load())return;
+    if(command.nativeTicket){nativeRenderingTicket=command.nativeTicket;nativeRenderingStarted=command.nativeStartedMs;nativeRenderingNeedsAudio=(command.action==Action::cue||command.action==Action::pad)&&!hasPadSample(command.bank,command.pad);}
    #if JUCE_ANDROID
     if(command.androidGeneration>=0&&command.androidGeneration!=loadGeneration.load())return;
     if(command.androidTicket){
@@ -482,6 +484,7 @@ void CueProcessor::processBlock(juce::AudioBuffer<float>& output, juce::MidiBuff
     Sample* next;
     do { next = published.load(); audioHazard.store(next); } while (next != published.load());
     if (next != current) {
+        nativeRenderingTicket=0;
        #if JUCE_ANDROID
         androidRenderingTicket=0;
        #endif
@@ -512,6 +515,9 @@ void CueProcessor::processBlock(juce::AudioBuffer<float>& output, juce::MidiBuff
     if(current&&current->paged)current->paged->releasePages();
     if(loadFirstRenderMs.load()==0&&current&&current==published.load()&&measuredLoadGeneration.load()==loadGeneration.load()&&loadPublishedMs.load()>0)loadFirstRenderMs.store(juce::Time::getMillisecondCounterHiRes());
     playhead.store(current ? position / current->rate : 0);
+    if(nativeRenderingTicket&&(!nativeRenderingNeedsAudio||!cacheWaiting)){
+        nativePadInputRenderMs.store(juce::Time::getMillisecondCounterHiRes()-nativeRenderingStarted);nativePadInputRendered.store(nativeRenderingTicket);nativeRenderingTicket=0;
+    }
    #if JUCE_ANDROID
     const auto androidFinished=juce::Time::getMillisecondCounterHiRes();
     const auto androidElapsed=androidFinished-androidCallbackStarted;

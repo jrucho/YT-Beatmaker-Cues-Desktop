@@ -45,43 +45,62 @@
     else job.resolve(result);
   });
   const androidPerformance=()=>window.__disableAndroidPerformance?undefined:window.__beatmakerPerformance;
+  const nativePadAvailable=window.__JUCE__.initialisationData.nativePadInput?.[0]===true;
+  let nativePadState=null;
   let performanceSourceId=0,performanceTrackId='',padMap=null,lastPadMap='',claimedTouch=null;
   const syncPadMap=()=>{
     const bridge=window.__beatmakerPerformance;
-    if(!bridge)return;
-    const platform=window.__pluginAndroidPlatform;
-    const matchingTrack=padMap?.trackId===performanceTrackId&&platform?.sourceId===performanceSourceId;
+    if(!bridge&&!nativePadAvailable)return;
+    const platform=bridge?window.__pluginAndroidPlatform:nativePadState;
+    const matchingTrack=padMap?.trackId===performanceTrackId&&platform?.sourceId===performanceSourceId
+      &&(!nativePadAvailable||platform?.trackId===padMap?.trackId)&&window.__musikeAudioEl?.readyState>0;
     const encoded=JSON.stringify(padMap&&!document.hidden?{
       ...padMap,sourceId:performanceSourceId,generation:platform?.audioGeneration??-1,
-      bank:padMap.bank.charCodeAt(0)-65,enabled:!window.__disableAndroidPerformance&&!window.__disableAndroidPadTouch,
+      trackRevision:platform?.trackRevision??-1,layoutRevision:platform?.layoutRevision??-1,
+      bank:padMap.bank.charCodeAt(0)-65,enabled:bridge?!window.__disableAndroidPerformance&&!window.__disableAndroidPadTouch:!!platform?.supported&&!window.__disableNativePadInput,
       pads:padMap.pads.filter(pad=>pad.sample||matchingTrack)
     }:{});
     if(encoded===lastPadMap)return;
-    try{bridge.regions(JSON.stringify({...JSON.parse(encoded),clockId:performance.timeOrigin,jsTime:performance.now()}));lastPadMap=encoded;}catch{}
+    try{
+      if(bridge)bridge.regions(JSON.stringify({...JSON.parse(encoded),clockId:performance.timeOrigin,jsTime:performance.now()}));
+      else invoke('padTouchRegions',JSON.parse(encoded)).catch(error=>{lastPadMap='';console.error(error);});
+      lastPadMap=encoded;
+    }catch{}
   };
   const consumeClaimedTouch=(sourceId,bank,pad,sample)=>{
     if(!claimedTouch||claimedTouch.sourceId!==sourceId||claimedTouch.bank!==bank||claimedTouch.pad!==pad||claimedTouch.sample!==sample)return false;
     claimedTouch=null;return true;
   };
-  if(window.__JUCE__.getAndroidUserScripts){
+  const touchReceipt=(sourceId,bank,pad,sample,position,stale=false)=>{
+    let reconciled=false;
+    return {position:stale?NaN:position,reconcile:trigger=>{
+      if(reconciled||stale)return;
+      reconciled=true;claimedTouch={sourceId,bank,pad,sample};
+      try{trigger();}finally{claimedTouch=null;}
+    }};
+  };
+  if(window.__JUCE__.getAndroidUserScripts||nativePadAvailable){
     window.__pluginPadTouch={
       configure:map=>{padMap=map;syncPadMap();},
       take:(bank,pad,sample,to,eventTime)=>{
         const sourceId=performanceSourceId,bankIndex=bank.charCodeAt(0)-65,padIndex=pad-1;
+        if(nativePadAvailable){
+          const platform=nativePadState;
+          if(!platform?.supported||window.__disableNativePadInput)return;
+          const eventEpochMs=eventTime>1e12?eventTime:performance.timeOrigin+eventTime;
+          return invoke('padTouchClaim',{sourceId,bank:bankIndex,pad:padIndex,sample,to:to??0,eventEpochMs,generation:platform.audioGeneration,trackRevision:platform.trackRevision}).then(result=>{
+            if(!result?.accepted&&!result?.stale)return;
+            return touchReceipt(sourceId,bankIndex,padIndex,sample,result.position??NaN,!!result.stale);
+          });
+        }
         try{
           const position=androidPerformance()?.consumeTouch(sourceId,bankIndex,padIndex,sample,to??0,eventTime);
           if(!Number.isFinite(position))return;
-          let reconciled=false;
-          return {position,reconcile:trigger=>{
-            if(reconciled)return;
-            reconciled=true;
-            claimedTouch={sourceId,bank:bankIndex,pad:padIndex,sample};
-            try{trigger();}finally{claimedTouch=null;}
-          }};
+          return touchReceipt(sourceId,bankIndex,padIndex,sample,position);
         }catch{}
       }
     };
-    addEventListener('pagehide',()=>{try{window.__beatmakerPerformance?.regions('{}');lastPadMap='';}catch{}});
+    addEventListener('pagehide',()=>{try{if(nativePadAvailable)invoke('padTouchRegions',null).catch(()=>{});else window.__beatmakerPerformance?.regions('{}');lastPadMap='';}catch{}});
   }
   const invoke = (name, ...params) => {
     if(name==='padSample'&&params[0]?.cmd==='trigger'){
@@ -96,6 +115,10 @@
     });
   };
   window.__pluginInvoke = invoke;
+  if(nativePadAvailable){
+    const update=state=>{nativePadState=state;syncPadMap();};
+    backend.addEventListener('pluginPadInputState',update);invoke('padTouchState').then(update).catch(console.error);
+  }
   // Native Mac hosted editors route musical keyboard presses directly to the
   // host responder. Tell that router when keys must instead stay in text/UI.
   if(window.__pluginHosted){
@@ -133,7 +156,7 @@
   }
   addEventListener('error',event=>{invoke('diagnostic','error: '+event.message).catch(()=>{});});
   addEventListener('unhandledrejection',event=>{invoke('diagnostic','promise: '+String(event.reason?.message||event.reason)).catch(()=>{});});
-  invoke('diagnostic','Beatmaker Cues 1.0.5 plug-in bridge started').catch(()=>{});
+  invoke('diagnostic','Beatmaker Cues 1.0.6 plug-in bridge started').catch(()=>{});
   window.__musikeTransport = async request => {
     const response=await invoke('http',{url:request.url,method:request.method,headers:request.headers,data:request.body});
     return {status:response.status,headers:response.headers||{},body:typeof response.data==='string'?response.data:JSON.stringify(response.data)};
@@ -301,6 +324,7 @@
   backend.addEventListener('pluginAudio',({event,payload})=>{
     if((event==='track'||event==='snapshot')&&payload.trackId!=null){performanceTrackId=payload.trackId;syncPadMap();}
     window.__musikeAudioEvent?.(event,payload);
+    if(event==='ready'||event==='track'||event==='snapshot')syncPadMap();
   });
   backend.addEventListener('pluginParameters',state=>window.__pluginStores?.player.setState(state));
   backend.addEventListener('pluginPadSamples',pads=>window.dispatchEvent(new CustomEvent('plugin-pad-samples',{detail:pads})));

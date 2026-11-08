@@ -19,6 +19,7 @@ public:
     enum class Action { pad, markNext, play, pause, seek, cue, clearBank, setIn, setOut, toggleLoop };
     enum class RemoteAction {play,pause,toggle,seek,next,previous};
     struct Command { Action action; int bank = 0, pad = -1; double value = 0; bool overwrite = false;
+        int sourceGeneration=-1,nativeTicket=0;bool nativePerformance=false;double nativeStartedMs=0;
        #if JUCE_ANDROID
         bool androidPerformance=false;int androidTicket=0,androidGeneration=-1;double androidStartedMs=0;
        #endif
@@ -57,6 +58,10 @@ public:
     void setStateInformation(const void*, int) override;
 
     bool submit(Command); // Non-audio producers; audio-thread consumer never locks.
+    bool submitNativePadInput(Command,double startedMs);
+    int audioGeneration() const {return loadGeneration.load();}
+    std::atomic<int> nativePadInputAccepted{0},nativePadInputRendered{0};
+    std::atomic<double> nativePadInputRenderMs{0};
    #if JUCE_ANDROID
     bool submitAndroidPerformance(Command);
     int androidAudioGeneration() const {return loadGeneration.load();}
@@ -152,8 +157,9 @@ private:
     std::array<std::array<std::atomic<double>, 16>, 10> cues;
     juce::AbstractFifo commands{256};
     std::array<Command, 256> commandData;
+    std::mutex commandWriter;
+    int nativeRenderingTicket=0;double nativeRenderingStarted=0;bool nativeRenderingNeedsAudio=false;
    #if JUCE_ANDROID
-    std::mutex androidCommandWriter;
     int androidRenderingTicket=0;double androidRenderingStarted=0;
     bool androidRenderingNeedsAudio=false;
    #endif

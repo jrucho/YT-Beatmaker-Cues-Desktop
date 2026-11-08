@@ -19,6 +19,7 @@ parser.add_argument('--delivery', default=f'release/Beatmaker-Cues-Local-Deliver
 parser.add_argument('--windows', required=True, help='Downloaded Windows CI artifacts, merged into one directory')
 parser.add_argument('--sources', default=f'release/source-{version}')
 parser.add_argument('--output', default=f'release/github-v{version}')
+parser.add_argument('--native-only', action='store_true', help='Stage native Mac/Windows/iOS and source without full studio/Android installers')
 args = parser.parse_args()
 delivery, windows, sources, output = [Path(value).resolve() for value in [args.delivery, args.windows, args.sources, args.output]]
 sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
@@ -34,6 +35,8 @@ records = [
     windows / f'Main-Build-Windows-{version}.json',
     sources / f'Source-Build-{version}.json',
 ]
+if args.native_only:
+    records = [file for file in records if file.name.startswith(('Plugin-Build-', 'AUv3-Build-', 'Source-Build-')) and '-Android-' not in file.name]
 builds = {}
 for file in records:
     value = json.loads(file.read_text())
@@ -59,6 +62,8 @@ assets = [
     sources / f'Beatmaker-Cues-Source-{version}.tar.gz',
     sources / f'Beatmaker-Cues-Plugin-Source-{version}.zip',
 ]
+if args.native_only:
+    assets = [file for file in assets if not file.name.startswith('YT-Beatmaker-Cues-Desktop-') and not file.name.endswith('-Android-arm64.apk')]
 native_expectations = {
     f'Beatmaker-Cues-Plugin-Standalone-{version}-macOS-universal.zip': 'Beatmaker-Cues-Standalone/Beatmaker Cues.app/Contents/MacOS/Beatmaker Cues',
     f'Beatmaker-Cues-Plugin-Standalone-{version}-Windows-x64.zip': 'Beatmaker-Cues-Standalone/Beatmaker Cues.exe',
@@ -100,7 +105,7 @@ for file in assets:
 
 # Cross-check the desktop build records against the exact installers being staged.
 by_name = {file.name: file for file in assets}
-for platform in ['macOS', 'Windows']:
+for platform in ([] if args.native_only else ['macOS', 'Windows']):
     for name, value in builds[f'Main-Build-{platform}-{version}.json']['files'].items():
         if name not in by_name or digest(by_name[name]) != value['sha256']:
             raise RuntimeError(f'Desktop installer does not match its build record: {name}')
@@ -115,9 +120,10 @@ for file in assets + records:
 shutil.copy2(root / 'docs' / f'release-{version}-notes.md', output / f'Release-Notes-{version}.md')
 inventory = [{'name': file.name, 'bytes': file.stat().st_size, 'sha256': digest(file)} for file in sorted(output.iterdir()) if file.name not in {f'Release-Build-{version}.json', f'SHA256SUMS-{version}.txt'}]
 manifest = {'version': version, 'sourceCommit': sha, 'workingTreeDirty': False,
-            'scope': ['macOS', 'Windows', 'Android', 'iOS'],
+             'scope': ['macOS', 'Windows', 'iOS'] if args.native_only else ['macOS', 'Windows', 'Android', 'iOS'],
+             'nativeOnly': args.native_only,
             'nativeStandalone': ['macOS-universal', 'Windows-x64'],
-            'fullDesktopStudio': ['macOS-arm64', 'macOS-x64', 'Windows-x64'],
+             'fullDesktopStudio': [] if args.native_only else ['macOS-arm64', 'macOS-x64', 'Windows-x64'],
             'iosSigning': 'unsigned', 'iosPhysicalScreenOffCheck': 'pending',
             'buildRecords': builds, 'files': inventory}
 (output / f'Release-Build-{version}.json').write_text(json.dumps(manifest, indent=2) + '\n')
