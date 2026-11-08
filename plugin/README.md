@@ -6,9 +6,9 @@ The separate full desktop studio retains the original stems/VJ/FX implementation
 The 1.0.6 native release includes iOS/AUv3, Mac AU/VST3/standalone and Windows
 VST3/standalone. [Download native 1.0.6](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.6).
 See the [release notes](../docs/release-1.0.6-notes.md) and
-[native input verification](../docs/native-input-1.0.6.md). Full desktop studio
-and Android downloads remain in the
-[v1.0.5 release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.5).
+[native input verification](../docs/native-input-1.0.6.md). Android and the separate
+full desktop studio also have [1.0.6 downloads](../docs/downloads-1.0.6.md);
+the full studio is a maintenance/version-alignment build with 1.0.5 features/audio.
 
 ## Native pad input in 1.0.6
 

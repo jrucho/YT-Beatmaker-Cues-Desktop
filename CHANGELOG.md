@@ -2,6 +2,7 @@
 
 ## 1.0.6
 
+- Add a signed Android 1.0.6 maintenance APK and full desktop studio 1.0.6 installers for Mac Apple Silicon/Intel and Windows x64. Desktop studio features/audio match 1.0.5; Android retains the verified native touch/adaptive-output/cache path. Use real versioned builds and per-asset provenance while preserving the original native release tag.
 - Add native UIKit touch-down forwarding for iOS/AUv3, Cocoa mouse-down forwarding for Mac AU/VST3/standalone, and scoped Windows WebView2 pointer forwarding. Saved cue/sample hits enter the native audio queue before WebView event processing; event-time receipts reconcile the interface once.
 - Isolate adapters to their own embedded browser, including sibling plug-in editors sharing a host window. Invalidate resized/stale layouts and guard audio generations, native track revisions, blocked controls, dialogs, sample editing and zoomed views.
 - Ship the selected-bank cue attack cache and chunked playback-window refill on the new native Apple/desktop builds, retaining the same 16 MiB PCM budget, native decoding, Signalsmith stretch, tuning and cue transitions.

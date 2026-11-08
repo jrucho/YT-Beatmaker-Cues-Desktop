@@ -9,6 +9,10 @@ on:
         description: Build native plug-ins/standalone only; retain existing full desktop installer
         type: boolean
         default: false
+      desktop_only:
+        description: Build the full desktop studio only
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,6 +50,7 @@ jobs:
             release/Main-Build-Windows-*.json
           if-no-files-found: error
   windows-vst3:
+    if: ${{ !inputs.desktop_only }}
     runs-on: windows-latest
     timeout-minutes: 50
     steps:
