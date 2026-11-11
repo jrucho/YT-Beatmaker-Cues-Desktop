@@ -20,6 +20,8 @@
   renaming, original-audio export/share and managed-audio deletion.
 - **Performance settings:** per-song speed/mode/tuning, saved 16/12-pad numbering,
   velocity On/Off, paired A/F–E/J banks, compressor and song/sample mixer.
+  Background session saves retain newer control edits instead of reapplying an
+  older snapshot's preferences.
 - **Internal event loopers:** record/play/overdub, layer undo/redo, native hold and
   release gestures, and saved active-looper colour/pulse feedback.
 - **Smooth playback display:** frame-rate playhead and transport animation without

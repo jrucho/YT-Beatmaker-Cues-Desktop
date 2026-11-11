@@ -695,7 +695,7 @@ void CueProcessor::failLoad(const juce::String& error,int generation){
 }
 juce::var CueProcessor::unloadSong(){
     prepareLooperSong({});
-    const auto previous=getWebCues();setWebState(sessionUiState());
+    const auto previous=getWebCues();setWebState(sessionUiState(),false);
     std::lock_guard<std::mutex> lock(metadataMutex);
     ++loadGeneration;++queueGeneration;manualQueueRequest.store(0);manualQueueIntent.store(-1);needAdvance.store(false);restartAtZero.store(false);
     nativeQueue=waveformObject({{"tracks",juce::Array<juce::var>{}},{"index",0},{"repeat","off"}});nativeIndex.store(0);webTrack={};samplePath={};
@@ -940,7 +940,7 @@ void CueProcessor::setStateInformation(const void* data, int size) {
         if (bank >= 0 && bank < 10 && pad >= 0 && pad < 16 && time >= 0 && std::isfinite(time)) cues[(size_t) bank][(size_t) pad].store(time);
     }
     const auto path = state->getStringAttribute("file");
-    setWebState(sessionUiState());
+    setWebState(sessionUiState(),false);
     if (path == "demo:") loadDemo(true);
     else if (path.isNotEmpty()) loadFile(juce::File(path), true);
     restoreRevision.fetch_add(1);
@@ -991,18 +991,22 @@ juce::var CueProcessor::waveformSnapshot(){
     return waveformObject({{"peaks",juce::var(peaks)},{"progress",waveformTotalFrames>0?(double)waveformReadFrames/waveformTotalFrames:0.0},{"duration",getDuration()}});
 }
 
-void CueProcessor::setWebState(const juce::String& state) {
+void CueProcessor::setWebState(const juce::String& state,bool restorePreferences) {
     if (state.getNumBytesAsUTF8() > 16 * 1024 * 1024) return;
     auto parsed=juce::JSON::parse(state);
-    if(parsed["musike:transitions"].isString())try{setTransitions(juce::JSON::parse(parsed["musike:transitions"].toString()));}catch(...) {}
-    if(hostedInput()&&parsed["musike:audio:routes"].isString()){const auto audio=juce::JSON::parse(parsed["musike:audio:routes"].toString());if(audio["input"].toString()=="host")restoreHostAudio(audio);}
-    if(parsed.hasProperty("musike:midi:velocity"))midiVelocityEnabled.store(parsed["musike:midi:velocity"].toString()!="off");
+    // A native save is derived state, not a restore request. Reapplying its
+    // preferences can overwrite a newer control edit made during serialization.
+    if(restorePreferences){
+        if(parsed["musike:transitions"].isString())try{setTransitions(juce::JSON::parse(parsed["musike:transitions"].toString()));}catch(...) {}
+        if(hostedInput()&&parsed["musike:audio:routes"].isString()){const auto audio=juce::JSON::parse(parsed["musike:audio:routes"].toString());if(audio["input"].toString()=="host")restoreHostAudio(audio);}
+        if(parsed.hasProperty("musike:midi:velocity"))midiVelocityEnabled.store(parsed["musike:midi:velocity"].toString()!="off");
+    }
     {std::lock_guard<std::mutex> lock(metadataMutex);if(parsed.hasProperty("plugin-file:library.json"))legacyState=state;}
     if(auto* fields=parsed.getDynamicObject()){
         fields->removeProperty("plugin-file:library.json");fields->removeProperty("plugin-file:library.tmp.json");
     }
     std::lock_guard<std::mutex> lock(metadataMutex);
-    if(songPlaybackEnabled.load()&&parsed.hasProperty("musike:track-playback")){
+    if(restorePreferences&&songPlaybackEnabled.load()&&parsed.hasProperty("musike:track-playback")){
         const auto playback=juce::JSON::parse(parsed["musike:track-playback"].toString());
         if(const auto* saved=playback.getDynamicObject()){
             if(!trackPlaybackSettings.isObject())trackPlaybackSettings=juce::var(new juce::DynamicObject);
@@ -1648,7 +1652,7 @@ void CueProcessor::runQueue(){
         if(cacheFailed){failLoad("Audio page decoding failed; select the song again.",cacheGeneration);continue;}
         if((openEditors.load()==0||backgroundPlayback.load())&&getWebState().length()>2&&juce::Time::getMillisecondCounter()-lastSaved>=1000&&
            (cueRevision.load()!=savedCues||nativeTrackRevision.load()!=savedTrack||std::abs(playhead.load()-savedPosition)>0.5)){
-            try{const auto snapshot=sessionUiState();setWebState(snapshot);libraryStore.writePreferences(snapshot,getSessionId());savedCues=cueRevision.load();savedTrack=nativeTrackRevision.load();savedPosition=playhead.load();lastSaved=juce::Time::getMillisecondCounter();}
+            try{const auto snapshot=sessionUiState();setWebState(snapshot,false);libraryStore.writePreferences(snapshot,getSessionId());savedCues=cueRevision.load();savedTrack=nativeTrackRevision.load();savedPosition=playhead.load();lastSaved=juce::Time::getMillisecondCounter();}
             catch(const std::exception& error){juce::Logger::outputDebugString("Automatic session save: "+juce::String(error.what()));lastSaved=juce::Time::getMillisecondCounter();}
         }
         const auto request=manualQueueRequest.exchange(0);
@@ -1684,7 +1688,7 @@ void CueProcessor::runQueue(){
                 if(cancelled()){if(fadeRequested.load()==ticket)fadeRequested.store(0);continue;}
             }
             fadeInNext.store(transitionsEnabled.load()&&requestedPlay.load());
-            setWebState(sessionUiState());
+            setWebState(sessionUiState(),false);
             {std::lock_guard<std::mutex> lock(metadataMutex);if(generation!=queueGeneration.load())continue;nativeAdvancing.store(true);ready.store(false);published.store(nullptr);nativeIndex.store(next);nativeTrackRevision.fetch_add(1);}
             const auto state=juce::JSON::parse(getWebState());const auto all=juce::JSON::parse(state["musike:cues:v1"].toString());const auto bankMap=all[juce::Identifier(id)];
             for(int b=0;b<10;++b)for(int p=0;p<16;++p){const auto value=bankMap[juce::Identifier(juce::String::charToString((juce::juce_wchar)('A'+b)))][juce::Identifier(juce::String(p+1))];cues[(size_t)b][(size_t)p].store(value.isVoid()?-1:(double)value);}

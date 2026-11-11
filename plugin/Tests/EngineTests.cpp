@@ -402,7 +402,10 @@ static void trackPlaybackTests(){
     const auto verify=[&](double speed,const juce::String& mode,double tuning){const auto snapshot=processor.nativeSnapshot();const auto value=snapshot["playback"];
         if(!(std::abs((double)value["speed"]-speed)<.01&&value["speedMode"].toString()==mode&&std::abs((double)value["tuning"]-tuning)<.01))throw std::runtime_error("Per-song native controls expected "+juce::String(speed).toStdString()+"/"+mode.toStdString()+"/"+juce::String(tuning).toStdString()+" got "+juce::JSON::toString(snapshot,true).toStdString());};
     queue(0);processor.loadRemote("beatmaker-local://"+tracks[0]["id"].toString(),0,tracks[0]["id"].toString());check(wait(0),"Per-song audio fixture did not load");verify(30,"pitch",5);
+    const auto staleSnapshot=processor.sessionUiState();
     check(processor.setTrackPlayback(tracks[0]["id"].toString(),juce::JSON::parse("{\"speed\":25,\"speedMode\":\"pitch\",\"tuning\":3}")),"Current song playback setting was rejected");verify(25,"pitch",3);
+    processor.setWebState(staleSnapshot,false);verify(25,"pitch",3);
+    check((double)processor.trackPlayback(tracks[0]["id"].toString())["speed"]==25,"A delayed native save overwrote newer per-song preferences");
     processor.backgroundPlayback.store(true);
     check(processor.performRemoteAction(CueProcessor::RemoteAction::next)&&wait(1),"Background next did not select the second song");verify(0,"speed",0);
     check(!processor.setTrackPlayback(tracks[0]["id"].toString(),juce::JSON::parse("{\"speed\":99}")),"A delayed old-song rate command changed the new song");verify(0,"speed",0);

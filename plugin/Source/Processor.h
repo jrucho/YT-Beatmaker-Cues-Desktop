@@ -110,7 +110,7 @@ public:
     juce::var padSamples() const {return padSampler.snapshot();}
     bool hasPadSample(int bank,int pad) const {return bank>=0&&bank<10&&pad>=0&&pad<16&&padSampler.assigned(bank*16+pad);}
     std::atomic<int>& padSampleRevision() {return padSampler.revision;}
-    void setWebState(const juce::String&);
+    void setWebState(const juce::String&,bool restorePreferences=true);
     juce::String getWebState() const;
     juce::String getSessionId() const {std::lock_guard<std::mutex> lock(metadataMutex);return sessionId;}
     juce::String sessionUiState() const;

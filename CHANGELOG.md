@@ -6,6 +6,7 @@
 - Correct the Android import menu's zero-height panel and supported audio/video file MIME types. Preserve real native touch/hold/release ownership and smooth visual playback updates.
 - Add an optional disabled-by-default DAW Recorder-input bus, keeping hardware routing host-owned and monitoring Off by default. Capture input before output rendering and monitor after playback recording.
 - Record the user's successful manual Android and VST acceptance. Rebuild the normal Android APK with the original production app ID and persistent release certificate.
+- Prevent a background native session snapshot from reapplying stale per-song settings over a newer edit; verify the interleaved save/edit case in the native engine suite.
 - Align the full desktop studio to 1.0.7 without functional changes. Build from the exact published 1.0.6 desktop source, changing only product-version metadata; include a separate corresponding desktop-source archive and verify source identity before recording the installers.
 - Build and verify stable packages on a dedicated release branch; include exact source provenance, build records and SHA-256 checksums.
 
