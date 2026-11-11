@@ -23,6 +23,9 @@ public:
     void migrate(const juce::String& legacyUi);
     void registerMedia(const juce::String& id,const juce::var& metadata);
     juce::var media(const juce::String& id);
+    juce::var allMedia();
+    juce::var renameLocalMedia(const juce::String& id,const juce::String& title);
+    juce::var eraseLocalMedia(const juce::String& id,const juce::StringArray& protectedPaths);
     juce::File mediaDirectory() const {return sharedStore?sharedStore->mediaDirectory():folder.getChildFile("Media");}
     void importLegacy(const juce::String& source,const juce::var& library,const juce::var& media = {});
     bool hasImported(const juce::String& source);

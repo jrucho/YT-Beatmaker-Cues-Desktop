@@ -18,6 +18,12 @@ export const isHex = (v: unknown): v is string => typeof v === "string" && /^#[0
 const toRgb = (hex: string): Rgb => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as Rgb;
 const toHex = (c: Rgb) => `#${c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`;
 
+/** Rotate hue by half a turn while retaining the accent's saturation/lightness. */
+export function complementaryColor(hex: string): string {
+  const base = toRgb(hex), sum = Math.max(...base) + Math.min(...base);
+  return toHex(base.map(value => sum - value) as Rgb);
+}
+
 function luminance([r, g, b]: Rgb): number {
   const lin = (v: number) => {
     const s = v / 255;

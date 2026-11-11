@@ -2,24 +2,24 @@ import { useLayoutEffect } from "react";
 import type { PadSample } from "./padSamples";
 
 interface Bounds { x: number; y: number; w: number; h: number }
-interface Region extends Bounds { pad: number; sample: boolean; to: number }
+interface Region extends Bounds { pad: number; sample: boolean; looper?:boolean; to: number }
 interface PadMap { trackId: string | null; bank: string; aspect: number; width: number; height: number; dpr: number; pads: Region[]; blocked: Bounds[] }
 export interface TouchReceipt { position: number; reconcile(trigger: () => void): void }
 interface PadTouchBridge {
   configure(map: PadMap | null): void;
-  take(bank: string, pad: number, sample: boolean, to: number, eventTime: number): TouchReceipt | Promise<TouchReceipt | undefined> | undefined;
+  take(bank: string, pad: number, sample: boolean, to: number, eventTime: number, pointerType?: string, looper?:boolean): TouchReceipt | Promise<TouchReceipt | undefined> | undefined;
 }
 declare global { interface Window { __pluginPadTouch?: PadTouchBridge } }
 
 /** Native shells supply this adapter; other players retain their normal input path. */
-export const takeNativePadTouch = (bank: string, pad: number, sample: boolean, to: number, eventTime: number) =>
-  window.__pluginPadTouch?.take(bank, pad, sample, to ?? 0, eventTime);
+export const takeNativePadTouch = (bank: string, pad: number, sample: boolean, to: number, eventTime: number, pointerType?: string, looper?:boolean) =>
+  window.__pluginPadTouch?.take(bank, pad, sample, to ?? 0, eventTime, pointerType,looper);
 
 export function useNativePadTouch(options: {
   trackId: string | null; bank: string; cues: Record<number, number>;
-  samples: Record<string, PadSample>; disabled: boolean; padCount: number;
+  samples: Record<string, PadSample>; loopers?:Record<string,unknown>; disabled: boolean; padCount: number;
 }) {
-  const { trackId, bank, cues, samples, disabled, padCount } = options;
+  const { trackId, bank, cues, samples, loopers, disabled, padCount } = options;
   useLayoutEffect(() => {
     const bridge = window.__pluginPadTouch;
     if (!bridge) return;
@@ -40,14 +40,14 @@ export function useNativePadTouch(options: {
       };
       const pads: Region[] = [];
       grid.querySelectorAll<HTMLButtonElement>(".cue-pad").forEach((button, index) => {
-        const pad = index + 1, sample = samples[`${bank}:${pad}`];
-        if (pad > padCount || (!sample && cues[pad] == null)) return;
+        const pad = index + 1, looper=!!loopers?.[`${bank}:${pad}`],sample = !looper&&samples[`${bank}:${pad}`];
+        if (pad > padCount || (!sample&&!looper&&cues[pad] == null)) return;
         const rect = button.getBoundingClientRect();
         const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
         if (button.disabled || !hit || !button.contains(hit)) return;
         // The wrapper does not scale with pressed-pad feedback, so neighbouring
         // touches keep the same hit regions throughout a performance.
-        pads.push({ ...bounds(button.parentElement!), pad: index, sample: !!sample, to: sample ? 0 : cues[pad] });
+        pads.push({ ...bounds(button.parentElement!), pad: index, sample: !!sample,looper, to: sample||looper ? 0 : cues[pad] });
       });
       const blocked = Array.from(grid.querySelectorAll("button:not(.cue-pad)"), bounds);
       bridge.configure({ trackId, bank, aspect: width / height, width, height, dpr: window.devicePixelRatio || 1, pads, blocked });
@@ -79,5 +79,5 @@ export function useNativePadTouch(options: {
       document.removeEventListener("visibilitychange", schedule);
       bridge.configure(null);
     };
-  }, [trackId, bank, cues, samples, disabled, padCount]);
+  }, [trackId, bank, cues, samples, loopers,disabled, padCount]);
 }

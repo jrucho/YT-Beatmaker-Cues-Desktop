@@ -8,10 +8,11 @@ juce::var data(std::initializer_list<std::pair<juce::Identifier,juce::var>> fiel
 }
 
 void PadInputRouter::setSource(int id,const juce::String& track){
+    cancelTouches();
     sourceId=id;trackId=track;observedGeneration=engine.audioGeneration();observedTrackRevision=engine.nativeTrackRevision.load();
     map={};
 }
-void PadInputRouter::invalidateLayout(){map={};++layoutRevision;}
+void PadInputRouter::invalidateLayout(){cancelTouches();map={};++layoutRevision;}
 void PadInputRouter::configure(const juce::var& value){
     map={};if(!value.isObject())return;
     Map next;next.source=(int)value["sourceId"];next.generation=(int)value["generation"];
@@ -20,13 +21,13 @@ void PadInputRouter::configure(const juce::var& value){
     const auto bounds=[](const juce::var& row){return Bounds{(double)row["x"],(double)row["y"],(double)row["w"],(double)row["h"]};};
     if(const auto* pads=value["pads"].getArray())for(const auto& row:*pads){
         if(next.pads.size()>=16)break;Region region;static_cast<Bounds&>(region)=bounds(row);
-        region.pad=(int)row["pad"];region.to=(double)row["to"];region.sample=(bool)row["sample"];next.pads.push_back(region);
+        region.pad=(int)row["pad"];region.to=(double)row["to"];region.sample=(bool)row["sample"];region.looper=(bool)row["looper"];next.pads.push_back(region);
     }
     if(const auto* holes=value["blocked"].getArray())for(const auto& row:*holes){if(next.blocked.size()>=32)break;next.blocked.push_back(bounds(row));}
     if(next.bank<0||next.bank>=10||!std::isfinite(next.width)||!std::isfinite(next.height)||!std::isfinite(next.dpr)||next.width<=0||next.height<=0)return;
     map=std::move(next);
 }
-bool PadInputRouter::pointerDown(double x,double y,double width,double height,bool physicalPixels,double eventEpochMs,double ageMs){
+bool PadInputRouter::pointerDown(double x,double y,double width,double height,bool physicalPixels,double eventEpochMs,double ageMs,uint64_t gesture){
     if(!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(width)||!std::isfinite(height)||!std::isfinite(eventEpochMs)||!std::isfinite(ageMs))return false;
     if(!map.enabled||map.source!=sourceId||map.layoutRevision!=layoutRevision||engine.backgroundPlayback.load())return false;
     const double scale=physicalPixels?map.dpr:1;
@@ -35,31 +36,40 @@ bool PadInputRouter::pointerDown(double x,double y,double width,double height,bo
     for(const auto& hole:map.blocked)if(hole.contains(x,y))return false;
     for(const auto& pad:map.pads){
         if(pad.pad<0||pad.pad>=engine.padCount()||!pad.contains(x,y))continue;
-        if(engine.hasPadSample(map.bank,pad.pad)!=pad.sample)return false;
-        if(!pad.sample&&(!engine.ready.load()||engine.nativeAdvancing.load()||map.generation!=engine.audioGeneration()
+        if(engine.hasPadLooper(map.bank,pad.pad)!=pad.looper||(!pad.looper&&engine.hasPadSample(map.bank,pad.pad)!=pad.sample))return false;
+        if(pad.looper&&(map.generation!=engine.audioGeneration()||map.trackRevision!=engine.nativeTrackRevision.load()))return false;
+        if(!pad.sample&&!pad.looper&&(!engine.ready.load()||engine.nativeAdvancing.load()||map.generation!=engine.audioGeneration()
             ||map.trackRevision!=engine.nativeTrackRevision.load()||!std::isfinite(pad.to)||pad.to<0))return false;
         const double origin=engine.playhead.load();
-        CueProcessor::Command command{pad.sample?CueProcessor::Action::pad:CueProcessor::Action::cue,map.bank,pad.pad,pad.to};
+        CueProcessor::Command command{pad.sample||pad.looper?CueProcessor::Action::pad:CueProcessor::Action::cue,map.bank,pad.pad,pad.to};
         if(!pad.sample)command.sourceGeneration=map.generation;
         if(!engine.submitNativePadInput(command,juce::Time::getMillisecondCounterHiRes()-juce::jlimit(0.0,60000.0,ageMs)))return false;
         while(receipts.size()>=256)receipts.pop_front();
-        receipts.push_back({map.source,map.bank,pad.pad,map.generation,map.trackRevision,pad.sample,pad.to,origin,eventEpochMs,juce::Time::getMillisecondCounterHiRes()});
-        if(!pad.sample)engine.requestedPlay.store(true);
+        receipts.push_back({map.source,map.bank,pad.pad,map.generation,map.trackRevision,pad.sample,pad.looper,pad.to,origin,eventEpochMs,juce::Time::getMillisecondCounterHiRes()});
+        if(pad.looper)loopTouches[gesture]={map.bank,pad.pad,map.generation};
+        if(!pad.sample&&!pad.looper)engine.requestedPlay.store(true);
         ++accepted;return true;
     }
     return false;
 }
+void PadInputRouter::pointerUp(uint64_t gesture){const auto found=loopTouches.find(gesture);if(found==loopTouches.end())return;const auto held=found->second;loopTouches.erase(found);CueProcessor::Command command{CueProcessor::Action::looperControl,held.bank,held.pad,(double)PadLooper::release};command.sourceGeneration=held.generation;engine.submit(command);}
+void PadInputRouter::cancelTouches(){while(!loopTouches.empty())pointerUp(loopTouches.begin()->first);}
 juce::var PadInputRouter::claim(const juce::var& request){
     const int source=(int)request["sourceId"],bank=(int)request["bank"],pad=(int)request["pad"];
     const bool sample=(bool)request["sample"];const double target=(double)request["to"],epoch=(double)request["eventEpochMs"];
     const auto now=juce::Time::getMillisecondCounterHiRes();
     for(auto it=receipts.begin();it!=receipts.end();){
         if(now-it->at>60000){it=receipts.erase(it);continue;}
-        if(it->bank==bank&&it->pad==pad&&std::abs(it->eventEpoch-epoch)<=40){
+        // UIKit and WebKit can timestamp secondary fingers against different
+        // events/clocks. Touch downs arrive in order on this UI thread: consume
+        // one queued hit for this pad rather than replaying it on a clock miss.
+        // Mouse input keeps strict event-time matching; this is not a debounce.
+        const bool orderedTouch=(bool)request["orderedTouch"]&&it->source==source;
+        if(it->bank==bank&&it->pad==pad&&(orderedTouch||std::abs(it->eventEpoch-epoch)<=40)){
             const auto receipt=*it;receipts.erase(it);++claimed;
             // The same event may reach React after its source/assignment changed.
             // Consume it as stale rather than replaying the new cue/sample.
-            const bool stale=receipt.source!=source||receipt.sample!=sample||(!sample&&(std::abs(receipt.to-target)>=.0001
+            const bool stale=receipt.source!=source||receipt.sample!=sample||receipt.looper!=(bool)request["looper"]||(!sample&&(std::abs(receipt.to-target)>=.0001
                 ||receipt.generation!=engine.audioGeneration()||receipt.trackRevision!=engine.nativeTrackRevision.load()));
             return data({{"accepted",true},{"stale",stale},{"position",receipt.origin}});
         }
@@ -86,7 +96,7 @@ juce::var PadInputRouter::diagnostics(bool supported) const {
     fields->setProperty("viewportWidth",map.width);fields->setProperty("viewportHeight",map.height);return result;
 }
 NativePadInput::NativePadInput(CueProcessor& engine,juce::Component& browser):router(std::make_shared<PadInputRouter>(engine)),monitor(createNativePadInputMonitor(router,browser)){}
-NativePadInput::~NativePadInput(){monitor.reset();}
+NativePadInput::~NativePadInput(){monitor.reset();router->cancelTouches();}
 
 #if !JUCE_MAC && !JUCE_IOS && !JUCE_WINDOWS
 std::unique_ptr<NativePadInputMonitor> createNativePadInputMonitor(std::shared_ptr<PadInputRouter>,juce::Component&){return {};}

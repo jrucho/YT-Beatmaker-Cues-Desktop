@@ -1,5 +1,6 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { cn } from "../lib/format";
+import { usePlaybackFrame } from '../player/usePlaybackFrame';
 
 interface Props {
   value: number;
@@ -15,6 +16,7 @@ interface Props {
   showThumb?: boolean;
   onScrub?: (v: number | null) => void;
   className?: string;
+  playback?: boolean;
 }
 
 export function Slider({
@@ -29,12 +31,20 @@ export function Slider({
   showThumb,
   onScrub,
   className,
+  playback = false,
 }: Props) {
   const track = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<number | null>(null);
   const shown = drag ?? value;
   const pct = max > 0 ? Math.min(100, Math.max(0, (shown / max) * 100)) : 0;
   const bufPct = max > 0 && buffered ? Math.min(100, (buffered / max) * 100) : 0;
+  const progress=useRef<HTMLDivElement>(null),thumb=useRef<HTMLDivElement>(null);
+  usePlaybackFrame(seconds=>{
+    if(drag!==null)return;
+    const ratio=max>0?Math.max(0,Math.min(1,seconds/max)):0;
+    if(progress.current)progress.current.style.transform=`scaleX(${ratio})`;
+    if(thumb.current)thumb.current.style.left=`${ratio*100}%`;
+  },playback);
 
   const valueAt = (clientX: number) => {
     const r = track.current!.getBoundingClientRect();
@@ -102,14 +112,17 @@ export function Slider({
       <div ref={track} className="relative h-1 w-full overflow-hidden rounded-full bg-surface-4 transition-[height] duration-200 group-hover:h-1.5">
         <div className="absolute inset-y-0 left-0 bg-fg-3/40" style={{ width: `${bufPct}%` }} />
         <div
+          ref={progress}
+          data-slider-fill
           className={cn(
             "absolute inset-y-0 left-0 rounded-full transition-colors",
             drag !== null ? "bg-accent" : "bg-fg group-hover:bg-accent",
           )}
-          style={{ width: `${pct}%` }}
+          style={{ width: '100%', transform: `scaleX(${pct/100})`, transformOrigin: 'left' }}
         />
       </div>
       <div
+        ref={thumb}
         className={cn(
           "pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg shadow-[0_1px_4px_rgb(0_0_0/0.4)] transition-opacity",
           showThumb || drag !== null ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",

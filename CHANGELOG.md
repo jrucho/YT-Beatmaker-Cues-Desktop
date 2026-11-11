@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.7
+
+- Release the iPhone-first recording, import/gallery, editing, numbering/velocity/bank, per-song playback, event-looper, compressor/mixer, monitoring and song-transition feature set across the native Android and responsive plug-in/standalone edition.
+- Correct the Android import menu's zero-height panel and supported audio/video file MIME types. Preserve real native touch/hold/release ownership and smooth visual playback updates.
+- Add an optional disabled-by-default DAW Recorder-input bus, keeping hardware routing host-owned and monitoring Off by default. Capture input before output rendering and monitor after playback recording.
+- Record the user's successful manual Android and VST acceptance. Rebuild the normal Android APK with the original production app ID and persistent release certificate.
+- Align the full desktop studio to 1.0.7 without functional changes. Build from the exact published 1.0.6 desktop source, changing only product-version metadata; include a separate corresponding desktop-source archive and verify source identity before recording the installers.
+- Build and verify stable packages on a dedicated release branch; include exact source provenance, build records and SHA-256 checksums.
+
 ## 1.0.6
 
 - Add a signed Android 1.0.6 maintenance APK and full desktop studio 1.0.6 installers for Mac Apple Silicon/Intel and Windows x64. Desktop studio features/audio match 1.0.5; Android retains the verified native touch/adaptive-output/cache path. Use real versioned builds and per-asset provenance while preserving the original native release tag.

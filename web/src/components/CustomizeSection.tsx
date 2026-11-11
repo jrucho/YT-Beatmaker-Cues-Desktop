@@ -1,24 +1,31 @@
-import { CheckIcon, PaletteIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, CheckIcon, PaletteIcon } from "@phosphor-icons/react";
 import { useT } from "../i18n";
-import { inkFor } from "../lib/accent";
+import { complementaryColor, inkFor } from "../lib/accent";
 import { cn } from "../lib/format";
 import { ACCENTS, useAppearance } from "../stores/appearance";
 import { useUi } from "../stores/ui";
 
 /** Ready-made accent swatches plus any colour from the system picker. */
-export function AccentPicker() {
+export function AccentPicker({ looper = false }: { looper?: boolean } = {}) {
   const t = useT();
-  const accent = useAppearance((s) => s.accent);
+  const appAccent = useAppearance((s) => s.accent);
+  const looperColor = useAppearance((s) => s.looperColor);
   const set = useAppearance((s) => s.set);
-  const custom = !ACCENTS.some((a) => a.color === accent);
+  const value = looper ? looperColor : appAccent;
+  const automatic = looper && value === 'complementary';
+  const accent = automatic ? complementaryColor(appAccent) : value;
+  const choose = (color: string) => set(looper ? { looperColor: color } : { accent: color });
+  const custom = !automatic && !ACCENTS.some((a) => a.color === accent);
+  const label = looper ? 'Looper pad colour' : t.customize.accent;
   const swatch = "grid size-8 shrink-0 place-items-center rounded-full ring-offset-2 ring-offset-surface-2 transition-transform active:scale-90";
 
   return (
     <div className="flex flex-col gap-2 pt-1">
-      <p className="text-[13px] text-fg-2">{t.customize.accent}</p>
-      <div role="radiogroup" aria-label={t.customize.accent} className="flex flex-wrap items-center gap-2.5">
+      <p className="text-[13px] text-fg-2">{label}</p>
+      <div role="radiogroup" aria-label={label} className="flex flex-wrap items-center gap-2.5">
+        {looper && <button type="button" role="radio" aria-checked={automatic} aria-label="Complementary to accent" title="Automatic · complementary to accent" onClick={() => choose('complementary')} className={cn(swatch, automatic && 'ring-2 ring-fg')} style={{background: complementaryColor(appAccent), color: inkFor(complementaryColor(appAccent))}}>{automatic ? <CheckIcon size={15} weight="bold"/> : <ArrowsClockwiseIcon size={15}/>}</button>}
         {ACCENTS.map(({ id, color }) => {
-          const on = accent === color;
+          const on = !automatic && accent === color;
           return (
             <button
               key={id}
@@ -27,7 +34,7 @@ export function AccentPicker() {
               aria-checked={on}
               aria-label={t.customize.colors[id]}
               title={t.customize.colors[id]}
-              onClick={() => set({ accent: color })}
+              onClick={() => choose(color)}
               className={cn(swatch, on && "ring-2 ring-fg")}
               style={{ background: color }}
             >
@@ -43,8 +50,8 @@ export function AccentPicker() {
           <input
             type="color"
             value={accent}
-            onChange={(e) => set({ accent: e.target.value })}
-            aria-label={t.customize.customColor}
+            onChange={(e) => choose(e.target.value)}
+            aria-label={looper ? 'Custom looper colour' : t.customize.customColor}
             className="absolute inset-0 size-full cursor-pointer rounded-full opacity-0"
           />
           {custom ? (

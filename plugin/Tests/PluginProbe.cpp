@@ -31,6 +31,18 @@ int main(int argc, char** argv) {
             if(editor->getWidth()!=bounds.x||editor->getHeight()!=bounds.y){std::cerr<<"Host editor rejected a valid aspect ratio\n";return 1;}
         }
         if (description->pluginFormatName == "VST3") {
+           if(!description->name.contains("Desktop Beta")){
+            if(instance->getBusCount(true)!=1||instance->getTotalNumInputChannels()!=0){std::cerr<<"VST3 recorder sidechain is missing or unexpectedly enabled\n";return 1;}
+            instance->releaseResources();auto sidechain=instance->getBusesLayout();sidechain.inputBuses.getReference(0)=juce::AudioChannelSet::stereo();
+            if(!instance->setBusesLayout(sidechain)){std::cerr<<"VST3 host could not enable the optional input bus\n";return 1;}instance->prepareToPlay(48000,256);
+            for(int c=0;c<2;++c)for(int i=0;i<256;++i)audio.setSample(c,i,c?-.25f:.125f);midi.clear();instance->processBlock(audio,midi);
+            if(audio.getMagnitude(0,256)!=0){std::cerr<<"Disabled monitoring passed DAW input to output\n";return 1;}
+            juce::XmlElement monitored("BeatmakerCuesPrototype");monitored.setAttribute("version",1);monitored.createNewChildElement("HostAudioInput")->addTextElement(R"({"inputEnabled":true,"monitor":true,"monitorLevel":0.5})");juce::MemoryBlock monitorProcessor,monitorHost;juce::AudioProcessor::copyXmlToBinary(monitored,monitorProcessor);juce::XmlElement monitorEnvelope("VST3PluginState");monitorEnvelope.createNewChildElement("IComponent")->addTextElement(monitorProcessor.toBase64Encoding());juce::AudioProcessor::copyXmlToBinary(monitorEnvelope,monitorHost);instance->setStateInformation(monitorHost.getData(),(int)monitorHost.getSize());
+            for(int c=0;c<2;++c)for(int i=0;i<256;++i)audio.setSample(c,i,c?-.25f:.125f);midi.clear();instance->processBlock(audio,midi);
+            if(std::abs(audio.getSample(0,255)-.0625f)>1e-6||std::abs(audio.getSample(1,255)+.125f)>1e-6){std::cerr<<"VST3 optional input did not reach the native monitor\n";return 1;}
+            instance->releaseResources();sidechain.inputBuses.getReference(0)=juce::AudioChannelSet::disabled();instance->setBusesLayout(sidechain);instance->prepareToPlay(48000,256);
+            std::cout<<"PASS: real VST3 optional DAW input bus, default silent monitoring and exact stereo monitored PCM through host state\n";
+           }
             juce::MemoryBlock resizedState;instance->getStateInformation(resizedState);
             const auto envelopeState=juce::AudioProcessor::getXmlFromBinary(resizedState.getData(),(int)resizedState.getSize());
             const auto* component=envelopeState?envelopeState->getChildByName("IComponent"):nullptr;

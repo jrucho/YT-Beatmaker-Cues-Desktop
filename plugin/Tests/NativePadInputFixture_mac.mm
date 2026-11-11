@@ -18,6 +18,11 @@ void sendPointer(NSView* web,double x,double y,bool down){
 }
 }
 
+void showNativeWebIntegration(MobileWebEditor& editor){
+    auto* web=webView(editor);if(!web)return;[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];if(![NSApp isRunning])[NSApp finishLaunching];[[web window] makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];[[web window] display];
+}
+void pumpNativeWebIntegration(){while(auto* event=[NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode dequeue:YES])[NSApp sendEvent:event];[NSApp updateWindows];}
+
 bool checkNativePadInputRouting(CueProcessor& processor,MobileWebEditor& editor){
     editor.setSize(760,760);
     bool passed=true;juce::AudioBuffer<float> output(2,128);juce::MidiBuffer midi;

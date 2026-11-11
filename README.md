@@ -4,13 +4,14 @@
 
 A standalone desktop music and beatmaking app combining [Musike](https://github.com/Ernani1234/musike)'s music player with the original **YT Beatmaker Cues 2.4.5** engine. A dark workspace puts your library, cue banks and performance tools in one window.
 
-**[Download v1.0.6 — apps, plug-ins and source](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.6)** · [All downloads](docs/downloads-1.0.6.md) · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
+**[Download v1.0.7 — apps, plug-ins and source](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.7)** · [All downloads](docs/downloads-1.0.7.md) · [Usage guide](docs/beatmaker-desktop.md) · [Release notes](CHANGELOG.md)
 
-**Native 1.0.6:** iOS/AUv3 and desktop plug-ins gain native pad input with one-hit
-UI reconciliation, plus the selected-bank cue-cache improvements.
-[Native release notes and verification status](docs/release-1.0.6-notes.md).
-Android is also available as a 1.0.6 maintenance update; newly built full desktop
-studio installers align the version while retaining 1.0.5 studio features/audio.
+**Native 1.0.7:** recording/import/gallery, precise pad editing and undo/redo,
+event loopers, compressor/mixer, per-song settings, optional DAW recorder input,
+monitor restoration and smooth song transitions. The user accepted Android and
+VST after manual testing. [Release notes](docs/release-1.0.7-notes.md).
+**Full desktop studio 1.0.7** is a version-only rebuild of the published 1.0.6
+source, retaining its features, layout and audio behavior.
 
 **1.0.5** adds minimal native pads, a default linear **16-pad plug-in mapping**, accent-coloured controls/logos, improved smaller iPad/landscape playlists, stable artwork sizing and a Recently Played list/grid switch. Native sample pads and focused-window DAW keyboard routing are included. [1.0.4 remains available](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.4).
 
@@ -18,12 +19,12 @@ The [Android input-latency refresh](docs/android-latency-1.0.5.md) sends saved c
 
 The **full desktop studio** retains the original stems, VJ, FX, sequencer and sidechain. The **native cue standalone** uses the same cue/sample-pad interface as the plug-ins and mobile apps. Desktop editions share a merge-safe library while keeping separate session state; iOS storage is private unless an entitled App Group is configured. [Native build and usage guide](plugin/README.md).
 
-| Native edition | v1.0.6 download |
+| Native edition | v1.0.7 download |
 | --- | --- |
-| Mac cue standalone — Apple Silicon + Intel | [Standalone app ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.6/Beatmaker-Cues-Plugin-Standalone-1.0.6-macOS-universal.zip) |
-| Windows cue standalone — x64 | [Standalone EXE ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.6/Beatmaker-Cues-Plugin-Standalone-1.0.6-Windows-x64.zip) |
-| Mac AU + VST3 | [Universal plug-in ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.6/Beatmaker-Cues-Plug-ins-1.0.6-macOS-universal.zip) |
-| Windows VST3 | [x64 plug-in ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.6/Beatmaker-Cues-Plug-ins-1.0.6-Windows-x64.zip) |
+| Mac cue standalone — Apple Silicon + Intel | [Standalone app ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Standalone-1.0.7-macOS-universal.zip) |
+| Windows cue standalone — x64 | [Standalone EXE ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Standalone-1.0.7-Windows-x64.zip) |
+| Mac AU + VST3 | [Universal plug-in ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-macOS-universal.zip) |
+| Windows VST3 | [x64 plug-in ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-Windows-x64.zip) |
 
 For sample pads, open **Cues**, enable the **music-note button beside MIDI**, select a pad and choose **Load sample…**. Turn editing off to perform. A loaded sample plays an independent one-shot and never marks/jumps a cue; removing it restores normal cue behavior.
 
@@ -47,8 +48,8 @@ Requires macOS 12 or newer.
 
 | Mac | Download |
 | --- | --- |
-| Apple Silicon — M1 and newer | [macOS ARM64 DMG](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.6/YT-Beatmaker-Cues-Desktop-1.0.6-macOS-arm64.dmg) |
-| Intel | [macOS x64 DMG](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.6/YT-Beatmaker-Cues-Desktop-1.0.6-macOS-x64.dmg) |
+| Apple Silicon — M1 and newer | [macOS ARM64 DMG](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/YT-Beatmaker-Cues-Desktop-1.0.7-macOS-arm64.dmg) |
+| Intel | [macOS x64 DMG](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/YT-Beatmaker-Cues-Desktop-1.0.7-macOS-x64.dmg) |
 
 Open the DMG and drag **YT Beatmaker Cues Desktop** to **Applications**. The first launch downloads yt-dlp, Deno and FFmpeg for playback.
 
@@ -79,11 +80,11 @@ AirDrop adds a quarantine flag to everything it sends, so an app sent that way s
 
 ## Install on Windows
 
-Download the [full desktop studio Windows x64 installer](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.6/YT-Beatmaker-Cues-Desktop-1.0.6-Windows.exe) for Windows 10 or 11. Run it and choose an installation folder. User data is preserved when upgrading. The native cue standalone and VST3 are separate downloads in the table above.
+Download the [full desktop studio Windows x64 installer](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/YT-Beatmaker-Cues-Desktop-1.0.7-Windows.exe) for Windows 10 or 11. Run it and choose an installation folder. User data is preserved when upgrading. The native cue standalone and VST3 are separate downloads in the table above.
 
 ## Install on Linux
 
-The latest verified Linux installers remain v1.0.3; the v1.0.6 release inventory covers Mac, Windows, Android and iOS.
+The latest full desktop Linux installers remain v1.0.3. Native Linux VST3/standalone packages are included in [1.0.7](docs/downloads-1.0.7.md).
 
 | Processor | Portable AppImage | Debian / Ubuntu |
 | --- | --- | --- |
@@ -94,10 +95,10 @@ For AppImage, enable **Allow executing as a program** in the file's properties, 
 
 ## Android and iOS — Beatmaker Cues
 
-- [Native Android 1.0.6 APK](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.6/Beatmaker-Cues-1.0.6-Android-arm64.apk) — Android 7/API 24+, arm64, persistent release-key signature; updates 1.0.5 in place. See [migration from the older app](docs/android-1.0.4-migration.md).
-- [Native iOS 1.0.6 IPA with AUv3](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.6/Beatmaker-Cues-1.0.6-iOS-unsigned.ipa) — unsigned; sign it with your Apple account before installing. Renewed provisioning is required for local physical-device acceptance.
-- [Portable native iOS Xcode project](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.6/Beatmaker-Cues-Plugin-Xcode-1.0.6.zip) — Xcode, iPhone/iPad on iOS 15+; includes dependency sources and the embedded AUv3 target.
-- [Portable native Mac Xcode project](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.6/Beatmaker-Cues-Plugin-Xcode-1.0.6-macOS.zip) — standalone, AU and VST3 targets.
+- [Native Android 1.0.7 APK](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-1.0.7-Android-arm64.apk) — Android 7/API 24+, arm64, original release-key signature; updates the normal 1.0.6 app in place. See [migration from the older app](docs/android-1.0.4-migration.md).
+- [Native iOS 1.0.7 IPA with AUv3](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-1.0.7-iOS-unsigned.ipa) — unsigned; sign it with your Apple account before installing.
+- [Portable native iOS Xcode project](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Xcode-1.0.7.zip) — Xcode, iPhone/iPad on iOS 15+; includes dependency sources and the embedded AUv3 target.
+- Current Mac native build sources are in the [1.0.7 source downloads](docs/downloads-1.0.7.md); generate the standalone, AU and VST3 targets with CMake.
 
 Both mobile apps share sixteen cue pads, ten saved banks, sequential **Mark across banks**, IN/OUT loops, **1% speed faders**, independent semitone tuning and native MIDI inputs. The native players own the playlist and prepare the next track so screen-off track changes do not depend on WebView JavaScript. Desktop also has sixteen pads, cross-bank Mark and the same MIDI presets.
 

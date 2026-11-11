@@ -15,7 +15,7 @@ struct WindowsPadTouchState {
     std::shared_ptr<PadInputRouter> router;
     juce::Component::SafePointer<juce::Component> browser;
     bool enabled=true;
-    bool down(HWND target,POINT screen,DWORD timestamp){
+    bool down(HWND target,POINT screen,DWORD timestamp,uint64_t gesture){
         if(!enabled||!browser||!browser->isShowing())return false;
         if(GetAsyncKeyState(VK_CONTROL)<0||GetAsyncKeyState(VK_MENU)<0||GetAsyncKeyState(VK_LWIN)<0||GetAsyncKeyState(VK_RWIN)<0)return false;
         const auto root=nativeBrowser(*browser);
@@ -24,7 +24,7 @@ struct WindowsPadTouchState {
         if(juce::String(name).indexOfIgnoreCase("Chrome_")<0)return false;
         RECT bounds{};GetClientRect(root,&bounds);POINT point=screen;ScreenToClient(root,&point);
         const double age=(DWORD)(GetTickCount()-timestamp);
-        return router->pointerDown(point.x,point.y,bounds.right-bounds.left,bounds.bottom-bounds.top,true,juce::Time::currentTimeMillis()-age,age);
+        return router->pointerDown(point.x,point.y,bounds.right-bounds.left,bounds.bottom-bounds.top,true,juce::Time::currentTimeMillis()-age,age,gesture);
     }
 };
 struct Registry {
@@ -34,18 +34,20 @@ struct Registry {
     ~Registry(){if(mouse)UnhookWindowsHookEx(mouse);if(messages)UnhookWindowsHookEx(messages);}
 };
 thread_local Registry registry;
-bool dispatch(HWND target,POINT point,DWORD time){
+bool dispatch(HWND target,POINT point,DWORD time,uint64_t gesture=0){
     if(registry.hasInput&&time==registry.lastInputTime&&point.x==registry.lastInputPoint.x&&point.y==registry.lastInputPoint.y)return false;
     bool accepted=false;
-    for(auto it=registry.states.begin();it!=registry.states.end();){if(auto state=it->lock()){accepted=state->down(target,point,time)||accepted;++it;}else it=registry.states.erase(it);}
+    for(auto it=registry.states.begin();it!=registry.states.end();){if(auto state=it->lock()){accepted=state->down(target,point,time,gesture)||accepted;++it;}else it=registry.states.erase(it);}
     if(accepted){registry.hasInput=true;registry.lastInputTime=time;registry.lastInputPoint=point;}
     return accepted;
 }
+void release(uint64_t gesture,bool cancel=false){for(auto& value:registry.states)if(auto state=value.lock()){if(cancel)state->router->cancelTouches();else state->router->pointerUp(gesture);}}
 struct DpiScope {
     DPI_AWARENESS_CONTEXT previous=SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     ~DpiScope(){if(previous)SetThreadDpiAwarenessContext(previous);}
 };
 LRESULT CALLBACK mouseHook(int code,WPARAM action,LPARAM value){
+    if(code==HC_ACTION&&action==WM_LBUTTONUP)release(0);
     if(code==HC_ACTION&&action==WM_LBUTTONDOWN){
         const auto& event=*(const MSLLHOOKSTRUCT*)value;
         // Also observe the OS's promoted touch mouse-down: WebView2 may own
@@ -59,10 +61,12 @@ LRESULT CALLBACK messageHook(int code,WPARAM action,LPARAM value){
         const auto& message=*(const MSG*)value;
         if(message.message==WM_POINTERDOWN){
             POINTER_INFO info{};
-            if(GetPointerInfo(GET_POINTERID_WPARAM(message.wParam),&info)){DpiScope dpi;dispatch(message.hwnd,info.ptPixelLocation,info.dwTime);}
+            if(GetPointerInfo(GET_POINTERID_WPARAM(message.wParam),&info)){DpiScope dpi;dispatch(message.hwnd,info.ptPixelLocation,info.dwTime,GET_POINTERID_WPARAM(message.wParam));}
         }else if(message.message==WM_LBUTTONDOWN){
             DpiScope dpi;dispatch(message.hwnd,message.pt,message.time);
-        }
+        }else if(message.message==WM_POINTERUP)release(GET_POINTERID_WPARAM(message.wParam));
+        else if(message.message==WM_LBUTTONUP)release(0);
+        else if(message.message==WM_CANCELMODE||message.message==WM_CAPTURECHANGED)release(0,true);
     }
     return CallNextHookEx(nullptr,code,action,value);
 }
@@ -74,7 +78,7 @@ public:
         if(!registry.messages)registry.messages=SetWindowsHookExW(WH_GETMESSAGE,messageHook,nullptr,GetCurrentThreadId());
     }
     ~WindowsNativePadInput() override {
-        state->enabled=false;state.reset();
+        state->enabled=false;state->router->cancelTouches();state.reset();
         registry.states.erase(std::remove_if(registry.states.begin(),registry.states.end(),[](const auto& value){return value.expired();}),registry.states.end());
         if(registry.states.empty()){if(registry.mouse)UnhookWindowsHookEx(registry.mouse);if(registry.messages)UnhookWindowsHookEx(registry.messages);registry.mouse=nullptr;registry.messages=nullptr;}
     }

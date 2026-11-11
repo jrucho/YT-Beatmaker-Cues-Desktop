@@ -9,7 +9,7 @@ export default async (environment) => {
   const config = await original({ ...environment, mode: 'native' });
   config.root = path.join(root, 'web');
   config.base = './';
-   config.define = { ...config.define, __APP_VERSION__: JSON.stringify((desktopBeta ? 'Desktop beta ' : '')+JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version) };
+   config.define = { ...config.define, __APP_VERSION__: JSON.stringify(process.env.BEATMAKER_UI_VERSION || (desktopBeta ? 'Desktop beta ' : '')+JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version) };
   config.build = { ...config.build, outDir: process.env.BEATMAKER_PLUGIN_WEB_OUTPUT, emptyOutDir: true };
   config.plugins.push({
     name: 'beatmaker-plugin-adapter',
@@ -42,7 +42,8 @@ export default async (environment) => {
       if (id.endsWith('/web/src/native/streams.ts')) return code.replace('const ios = Capacitor.getPlatform() === "ios";', 'const ios = true;');
       if (id.endsWith('/web/src/native/midi.ts')) return code.replace('Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("MusikeMidi")', 'true');
        if (id.endsWith('/web/src/views/Cues.tsx')) return code.replace('min={-50}','min={-75}').replace('(speed+50)/150','(speed+75)/175').replace('const [overwrite, setOverwrite] = useState(false);', `const [overwrite, setOverwrite] = useState(false);
-        useEffect(() => { void (window as any).__pluginInvoke('midiOptions', { overwrite }); }, [overwrite]);`);
+          useEffect(() => { void (window as any).__pluginInvoke('midiOptions', { overwrite, fineEdit, ...(((window as any).__pluginFeatures || (window as any).__pluginIOSPreview) ? {velocityEnabled} : {}) }); }, [overwrite, velocityEnabled, fineEdit]);
+         useEffect(() => () => { void (window as any).__pluginInvoke('midiOptions', {fineEdit:false}); }, []);`);
       if (!id.endsWith('/web/src/main.tsx')) return;
        return code + `\nimport ${JSON.stringify(fileURLToPath(new URL('./responsive.css',import.meta.url)).split(path.sep).join('/'))};
 import {usePlayer as pluginPlayer} from './player/player';

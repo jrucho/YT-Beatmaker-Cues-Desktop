@@ -14,6 +14,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--apk', required=True)
 parser.add_argument('--output', default='release')
 parser.add_argument('--checks', default='native-build,apk-signature')
+parser.add_argument('--development', action='store_true', help='Package the isolated debug feature-test app, not the normal release app')
+parser.add_argument('--feature-report', help='Attach the real Android feature-fixture report')
 parser.add_argument('--latency-report', action='append', default=[], help='Attach a measured benchmark JSON to the build record')
 parser.add_argument('--comparison-source-commit', help='Source of historical routing/baseline measurements')
 parser.add_argument('--cue-residency-baseline', help='Historical later-bank cache comparison JSON')
@@ -33,9 +35,10 @@ apk = Path(args.apk).resolve()
 sdk = Path(os.environ.get('ANDROID_HOME', os.environ.get('ANDROID_SDK_ROOT', '')))
 signer = sdk / 'build-tools/36.0.0/apksigner'
 badging = subprocess.check_output([str(sdk / 'build-tools/36.0.0/aapt2'), 'dump', 'badging', str(apk)], text=True)
-if not re.search(r"package: name='app\.owaega\.beatmakercuesstandalone'", badging):
+application_id = 'app.owaega.beatmakercuesstandalone' + ('.development' if args.development else '')
+if f"package: name='{application_id}'" not in badging:
     raise RuntimeError('Public APK must use the normal application ID, not an internal latency probe')
-if 'application-debuggable' in badging:
+if 'application-debuggable' in badging and not args.development:
     raise RuntimeError('Package the non-debuggable release APK')
 parts = [int(part) for part in version.split('.')]
 code = parts[0] * 10000 + parts[1] * 100 + parts[2]
@@ -45,9 +48,10 @@ verification = subprocess.check_output([str(signer), 'verify', '--verbose', '--p
 certificate = re.search(r'Signer #1 certificate SHA-256 digest: ([0-9a-f]+)', verification)
 if not certificate:
     raise RuntimeError('Missing APK signing certificate')
-expected = (root / 'mobile/android/release-certificate.sha256').read_text().strip().lower()
-if certificate.group(1) != expected:
-    raise RuntimeError('Standalone must use the persistent Android release certificate')
+if not args.development:
+    expected = (root / 'mobile/android/release-certificate.sha256').read_text().strip().lower()
+    if certificate.group(1) != expected:
+        raise RuntimeError('Standalone must use the persistent Android release certificate')
 with zipfile.ZipFile(apk) as archive:
     libraries = [name for name in archive.namelist() if name.startswith('lib/') and name.endswith('.so')]
     if libraries != ['lib/arm64-v8a/libjuce_jni.so']:
@@ -57,11 +61,12 @@ with zipfile.ZipFile(apk) as archive:
         raise RuntimeError('Missing real arm64 native ELF binary')
 output = Path(args.output).resolve()
 output.mkdir(parents=True, exist_ok=True)
-target = output / f'Beatmaker-Cues-{version}-Android-arm64.apk'
+suffix = '-development' if args.development else ''
+target = output / f'Beatmaker-Cues-{version}-Android-arm64{suffix}.apk'
 shutil.copy2(apk, target)
 info = dict(version=version, productName='Beatmaker Cues', platform='Android', architecture='arm64-v8a', edition='main',
-            applicationId='app.owaega.beatmakercuesstandalone', formats=['Standalone'],
-            signing='persistent-release-key', certificateSha256=certificate.group(1),
+            applicationId=application_id, formats=['Standalone'],
+            signing='debug-development-key' if args.development else 'persistent-release-key', certificateSha256=certificate.group(1),
             checks=args.checks.split(','), **source_info(root))
 
 def measurement(name, source):
@@ -71,6 +76,12 @@ def measurement(name, source):
 
 
 comparison_source = args.comparison_source_commit or info.get('sourceCommit')
+if args.feature_report:
+    entry = measurement(args.feature_report, info.get('sourceCommit'))
+    if entry['result'].get('result') != 'PASS' or entry['result'].get('application') != application_id:
+        raise RuntimeError('Feature report must pass for this exact application ID')
+    info['featureVerification'] = entry
+info['developmentOnly'] = args.development
 if args.latency_report:
     info['latencyMeasurements'] = []
     for name in args.latency_report:
@@ -100,9 +111,9 @@ if args.device_latency_report:
             raise RuntimeError('Expected a physical Android input/render report')
         device['measurements'].append(entry)
     info['deviceLatency'] = device
-record = output / f'Plugin-Build-{version}-Android-arm64.json'
+record = output / f'Plugin-Build-{version}-Android-arm64{suffix}.json'
 record.write_text(json.dumps(info, indent=2) + '\n')
-checksums = output / f'SHA256SUMS-Plugins-{version}-Android-arm64.txt'
+checksums = output / f'SHA256SUMS-Plugins-{version}-Android-arm64{suffix}.txt'
 checksums.write_text(''.join(hashlib.sha256(file.read_bytes()).hexdigest() + '  ' + file.name + '\n'
                              for file in [target, record]))
 for file in [target, record, checksums]:

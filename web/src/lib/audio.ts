@@ -16,10 +16,13 @@ import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor
  */
 
 interface Bridge {
-  postMessage(message: unknown): void;
+  postMessage(message: unknown): unknown;
+  navigate?(request:NativeNavigation):Promise<boolean>;
   position?(sourceId: number): Promise<number>;
   snapshot?(): Promise<NativePayload>;
 }
+
+export interface NativeNavigation {index:number;action?:'next'|'previous';autoplay?:boolean}
 
 export interface NativePlaylist {
   index: number;
@@ -43,6 +46,9 @@ interface NativePayload {
   trackId?: string;
   url?: string;
   playing?: boolean;
+  advancing?: boolean;
+  buffering?: boolean;
+  rate?: number;
   ready?: boolean;
   resume?: boolean;
   bank?: string;
@@ -52,6 +58,7 @@ interface NativePayload {
 
 interface IOSAudioHandler {
   postMessage(message: unknown): Promise<NativePayload>;
+  navigate?:Bridge['navigate'];
 }
 
 const nativeBridge = (globalThis as { webkit?: { messageHandlers?: { musikeAudio?: IOSAudioHandler } } }).webkit?.messageHandlers
@@ -87,6 +94,10 @@ class NativeAudio extends EventTarget {
 
   private _rate = 1;
   private _preservePitch = true;
+  private _displayPosition = 0;
+  private _displayAt = performance.now();
+  private _displayRunning = false;
+  private _displayRate = 1;
 
   readyState = 0;
   networkState = 0;
@@ -121,6 +132,7 @@ class NativeAudio extends EventTarget {
     this._position = this._startAt;
     this._duration = NaN;
     this._seekTarget = null;
+    this.anchorDisplay(this._position, false);
     this.bridge.postMessage({ cmd: "load", url: value, sourceId: ++this._sourceId, startAt: this._startAt, queue: this._playlist });
     this._startAt = 0;
     this.pushLoop();
@@ -128,6 +140,21 @@ class NativeAudio extends EventTarget {
 
   get currentTime() {
     return this._position;
+  }
+
+  /** Visual-only clock: exact cue/record timing always uses native position().
+   * Extrapolation is bounded so missing native updates cannot run away. */
+  displayPosition() {
+    const elapsed = this._displayRunning ? Math.min(.25, Math.max(0, (performance.now() - this._displayAt) / 1000)) : 0;
+    let position = this._displayPosition + elapsed * this._displayRate;
+    const {from,to,on} = this._loop;
+    if (on && from != null && to != null && to > from && this._displayPosition >= from && this._displayPosition < to && position >= to) position = from + (position - from) % (to - from);
+    return Math.max(0, Number.isFinite(this._duration) ? Math.min(this._duration, position) : position);
+  }
+
+  private anchorDisplay(position: number, running: boolean, rate = this._rate) {
+    this._displayPosition = position;this._displayAt = performance.now();this._displayRunning = running;
+    this._displayRate = Number.isFinite(rate) && rate > 0 ? rate : this._rate;
   }
 
   startAt(seconds: number) { this._startAt = Number.isFinite(seconds) ? Math.max(0, seconds) : 0; }
@@ -144,6 +171,7 @@ class NativeAudio extends EventTarget {
   set currentTime(value: number) {
     this._position = value;
     this._seekTarget = value;
+    this.anchorDisplay(value, this._displayRunning && !this._paused);
     this.bridge.postMessage({ cmd: "seek", to: value, sourceId: this._sourceId });
   }
 
@@ -152,12 +180,15 @@ class NativeAudio extends EventTarget {
     this._seekTarget = value;
     this._paused = false;
     this._ended = false;
+    this.anchorDisplay(value, true);
     this.bridge.postMessage({ cmd: "cue", to: value, sourceId: this._sourceId, ...pad });
   }
 
   position(): Promise<number> {
     return this.bridge.position?.(this._sourceId) ?? Promise.resolve(this.currentTime);
   }
+
+  navigate(request:NativeNavigation){return this.bridge.navigate?.(request);}
 
   loop(value: AudioLoop) {
     this._loop = value;
@@ -195,6 +226,7 @@ class NativeAudio extends EventTarget {
   }
 
   set playbackRate(value: number) {
+    this.anchorDisplay(this.displayPosition(), this._displayRunning, value);
     this._rate = value;
     this.pushRate();
   }
@@ -255,10 +287,23 @@ class NativeAudio extends EventTarget {
 
   removeAttribute(name: string) {
     if (name !== "src") return;
+    void this.unload();
+  }
+
+  unload(): Promise<unknown> {
     this._src = "";
     this._position = 0;
+    this._duration = NaN;
+    this._bufferedEnd = 0;
+    this._paused = true;
+    this._ended = false;
+    this.readyState = 0;
+    this._startAt = 0;
     this._seekTarget = null;
-    this.bridge.postMessage({ cmd: "load", url: "", sourceId: ++this._sourceId });
+    this._loop = { from: null, to: null, on: false };
+    this.anchorDisplay(0, false);
+    this._playlist = { index: 0, repeat: 'off', tracks: [] };
+    return Promise.resolve(this.bridge.postMessage({ cmd: "load", url: "", sourceId: ++this._sourceId, queue: this._playlist }));
   }
 
   load() {
@@ -272,6 +317,7 @@ class NativeAudio extends EventTarget {
   }
 
   pause() {
+    this.anchorDisplay(this.displayPosition(), false);
     this._paused = true;
     this.bridge.postMessage({ cmd: "pause" });
     this.dispatchEvent(new Event("pause"));
@@ -295,6 +341,7 @@ class NativeAudio extends EventTarget {
         this.readyState = data.ready ? 4 : 0;
         this._bufferedEnd = data.buffered ?? 0;
         this._loop = data.loop ?? { from: null, to: null, on: false };
+        this.anchorDisplay(this._position, !!data.ready && !this._paused && !data.buffering, data.rate);
         this.dispatchEvent(new CustomEvent("nativetrackchange", { detail: data }));
         if (data.ready) {
           this.dispatchEvent(new Event("loadedmetadata"));
@@ -321,6 +368,7 @@ class NativeAudio extends EventTarget {
         }
         this._seekTarget = null;
         this._position = position;
+        this.anchorDisplay(position, !this._paused && (data.advancing ?? !data.buffering), data.rate);
         this._bufferedEnd = Math.max(this._bufferedEnd, position);
         this.dispatchEvent(new Event("timeupdate"));
         this.dispatchEvent(new Event("progress"));
@@ -330,6 +378,7 @@ class NativeAudio extends EventTarget {
         if (this._seekTarget !== null && Math.abs((data.position ?? this._position) - this._seekTarget) > 0.15) break;
         this._seekTarget = null;
         this._position = data.position ?? this._position;
+        this.anchorDisplay(this._position, !this._paused);
         this._bufferedEnd = Math.max(this._bufferedEnd, this._position);
         this.dispatchEvent(new Event("seeked"));
         this.dispatchEvent(new Event("timeupdate"));
@@ -338,18 +387,22 @@ class NativeAudio extends EventTarget {
       case "playing":
         this._paused = false;
         this.readyState = 4;
+        this.anchorDisplay(this.displayPosition(), true);
         this.dispatchEvent(new Event("playing"));
         break;
       case "pause":
+        this.anchorDisplay(data.position ?? this.displayPosition(), false);
         this._paused = true;
         this.dispatchEvent(new Event("pause"));
         break;
       case "ended":
+        this.anchorDisplay(Number.isFinite(this._duration) ? this._duration : this._position, false);
         this._ended = true;
         this._paused = true;
         this.dispatchEvent(new Event("ended"));
         break;
       case "error":
+        this.anchorDisplay(this.displayPosition(), false);
         this.error = { code: 4, message: data.message ?? "Playback failed" };
         this.dispatchEvent(new Event("error"));
         break;
@@ -425,12 +478,13 @@ function androidBridge(plugin: AndroidAudioPlugin): Bridge {
 export function createAudio(): HTMLAudioElement {
   if (nativeBridge) {
     const bridge: Bridge = {
-      postMessage: (message) => { void nativeBridge.postMessage(message).catch(() => {}); },
+      postMessage: (message) => nativeBridge.postMessage(message).catch(() => {}),
       position: (sourceId) => nativeBridge.postMessage({ cmd: "position", sourceId }).then((data) => {
         if (data.position == null || !Number.isFinite(data.position)) throw new Error("Invalid native playhead");
         return data.position;
       }),
       snapshot: () => nativeBridge.postMessage({ cmd: "snapshot" }),
+      navigate: nativeBridge.navigate,
     };
     return new NativeAudio(bridge, true) as unknown as HTMLAudioElement;
   }
@@ -455,6 +509,13 @@ export function createAudio(): HTMLAudioElement {
 export const supportsIndependentPitch = (media: HTMLMediaElement) =>
   media instanceof NativeAudio && media.independentPitch;
 
+/** Explicitly leave a song; native shells acknowledge before clearing the UI so
+ * any final native MIDI cue edits can be reconciled into the saved song first. */
+export async function unloadAudio(media: HTMLMediaElement) {
+  if(media instanceof NativeAudio)return media.unload();
+  media.pause();media.removeAttribute('src');media.load();
+}
+
 export function setAudioTuning(media: HTMLMediaElement, semitones: number) {
   if (media instanceof NativeAudio && media.independentPitch) media.tune(semitones);
 }
@@ -468,6 +529,14 @@ export function cueAudio(media: HTMLMediaElement, seconds: number, pad?: { bank:
 
 export function readAudioPosition(media: HTMLMediaElement): Promise<number> {
   return media instanceof NativeAudio ? media.position() : Promise.resolve(media.currentTime);
+}
+
+export function readDisplayAudioPosition(media: HTMLMediaElement): number {
+  return media instanceof NativeAudio ? media.displayPosition() : media.currentTime;
+}
+
+export function navigateAudio(media:HTMLMediaElement,request:NativeNavigation):Promise<boolean>|undefined {
+  return media instanceof NativeAudio ? media.navigate(request) : undefined;
 }
 
 /** Preserve a cue/resume position through asynchronous native file preparation. */

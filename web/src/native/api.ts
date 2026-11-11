@@ -59,7 +59,10 @@ const SYSTEM: SystemInfo = {
 export const api: MusikeApi = {
   searchPlaylists: (q, signal) => call(() => searchPlaylists(q.trim().slice(0, 200), getLang()), signal),
   youtubePlaylist: (id, signal, onProgress) => call(() => getPlaylist(id, getLang(),{signal,onProgress}), signal),
-  removeLibraryTrack: (id, scope) => call(() => library.removeTrack(id, scope)),
+  removeLibraryTrack: (id, scope) => call(async()=>{
+    if(scope!=='history'&&id.startsWith('loc')&&((globalThis as any).__pluginFeatures||(globalThis as any).__pluginIOSPreview)){await (globalThis as any).__pluginDeleteLocalAudio(id);return library.getLibrary();}
+    return library.removeTrack(id,scope);
+  }),
   search: (q, type, signal) =>
     call(async () => {
       if (!q.trim()) throw fail(400, "emptyQuery");

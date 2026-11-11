@@ -24,6 +24,7 @@
 :root[data-plugin-android] [class~="max-h-[45dvh]"] {max-height:calc(var(--plugin-vh)*45);}
 :root[data-plugin-android] [class~="max-h-[55dvh]"] {max-height:calc(var(--plugin-vh)*55);}
 :root[data-plugin-android] [class~="max-h-[70dvh]"] {max-height:calc(var(--plugin-vh)*70);}
+:root[data-plugin-android] .media-import-panel {max-height:calc(var(--plugin-vh)*68);}
 :root[data-plugin-android] [class~="h-[min(52dvh,560px)]"] {height:min(calc(var(--plugin-vh)*52),560px);}
 :root[data-plugin-android] [class~="max-w-[min(100%,46dvh)]"] {max-width:min(100%,calc(var(--plugin-vh)*46));}
 
@@ -254,3 +255,71 @@
 :root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-actions {padding-bottom:8px;}
 :root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-actions>button {max-width:44px;max-height:44px;}
 :root[data-plugin-layout="landscape"][data-plugin-compact="true"] .music-app:not(.cue-workspace-active) header.safe-top>div {height:40px;}
+
+/* iPhone preview: icon-only buttons have symmetric content boxes. The toolbar's
+   text-button padding otherwise leaves only 12px for a 16px note icon. */
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad-grid>div {--cue-pad-display-order:var(--cue-pad-standard-order);}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-compact="true"] .cue-pad-grid>div {--cue-pad-display-order:var(--cue-pad-compact-order);}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-overwrite-row .cue-sample-edit {display:grid;place-items:center;padding:0;line-height:0;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad-clear {padding:0;line-height:0;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-sample-edit>svg,
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad-clear>svg {display:block;flex-shrink:0;margin:0;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-theme="light"] .brand-logo-mark {color:var(--accent);}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-theme="light"] .brand-logo-play {fill:#fff;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-overwrite-row {width:100%;min-width:0;box-sizing:border-box;justify-content:flex-start;flex-wrap:nowrap;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-overwrite-row .cue-toolbar-icon {padding:0;line-height:0;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-preset {flex:0 1 84px;width:84px;min-width:64px;max-width:90px;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-dense="true"] .cue-preset {flex-basis:56px;width:56px;min-width:48px;max-width:64px;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-bank-buttons[data-bank-mode="paired"] {grid-template-columns:repeat(5,minmax(0,1fr));}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-bank-selected-letter {text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:2px;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-bank-second-active {animation:cue-bank-pulse 1.6s ease-in-out infinite;}
+@keyframes cue-bank-pulse {0%,100%{opacity:1;}50%{opacity:.6;}}
+@media(prefers-reduced-motion:reduce){:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-bank-second-active {animation:none;}}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-mark-actions {display:flex;align-items:center;gap:4px;grid-column:3;grid-row:1;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-fine-editor {display:flex;flex:none;flex-direction:column;gap:3px;min-height:0;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-fine-tools {display:flex;align-items:center;justify-content:space-between;gap:6px;height:25px;font:10px var(--font-mono,monospace);color:var(--fg-2);}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-fine-tools button {display:grid;place-items:center;width:25px;height:25px;padding:0;border-radius:50%;background:var(--surface-3);color:var(--fg);}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-fine-waveform {height:92px;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-song-import {padding:0;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-overwrite-row .cue-looper-edit {padding:0;line-height:0;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-overwrite-row .cue-record {margin-left:auto;padding:0;line-height:0;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-compact="true"] .cue-overwrite-row {gap:3px;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-compact="true"] .cue-overwrite-row :is(.cue-toolbar-icon,.cue-sample-edit,.cue-song-import,.cue-looper-edit,.cue-record) {width:24px;height:24px;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-compact="true"] .cue-overwrite-row :is(.cue-midi-settings,.cue-compressor) {padding-left:4px;padding-right:4px;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-dense="true"] .cue-performance {grid-template-columns:minmax(312px,1.35fr) minmax(0,1fr);}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-dense="true"] .cue-overwrite-row {gap:2px;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-dense="true"] .cue-overwrite-row :is(.cue-toolbar-icon,.cue-sample-edit,.cue-song-import,.cue-looper-edit,.cue-record) {width:24px;height:24px;}
+@media(max-width:380px){
+  :root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-overwrite-row {gap:3px;}
+  :root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-preset {min-width:56px;flex-basis:64px;}
+  :root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-overwrite-row :is(.cue-toolbar-icon,.cue-sample-edit,.cue-song-import,.cue-looper-edit,.cue-record) {width:24px;height:24px;}
+  :root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-overwrite-row :is(.cue-midi-settings,.cue-compressor) {padding-left:5px;padding-right:5px;font-size:9px;}
+}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .media-chop-waveform {height:96px;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .media-chop-range {position:absolute;top:0;bottom:0;border-left:2px solid var(--accent);border-right:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);pointer-events:none;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-fine-marker {position:absolute;top:0;bottom:0;width:1.5px;background:var(--accent);pointer-events:none;transform:translateX(-.75px);}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad-fine-selected {box-shadow:inset 0 0 0 2px var(--accent);}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad[data-pad-kind="looper"] {background:color-mix(in srgb,var(--cue-looper-color) 18%,var(--surface-2));color:var(--fg);}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad[data-looper-active="true"] {background:var(--cue-looper-color);color:var(--cue-looper-ink);animation:cue-looper-pulse 1.4s ease-in-out infinite;}
+@keyframes cue-looper-pulse {0%,100%{background-color:var(--cue-looper-color);}50%{background-color:color-mix(in srgb,var(--cue-looper-color) 82%,var(--surface-2));}}
+@media(prefers-reduced-motion:reduce){:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad[data-looper-active="true"] {animation:none;}}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad-jiggle {animation:cue-pad-jiggle .32s ease-in-out infinite alternate;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad-jiggle:nth-child(even) {animation-direction:alternate-reverse;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad-dragging {opacity:.65;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad-drop-target {box-shadow:inset 0 0 0 2px var(--accent);}
+@keyframes cue-pad-jiggle {from{transform:rotate(-.6deg);}to{transform:rotate(.6deg);}}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-compact="true"] .cue-fine-waveform {height:56px;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-dense="true"] .cue-header-fine {display:inline-flex;}
+@media(max-width:600px){
+  :root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-workspace>header>div {gap:5px;}
+  :root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-library-back {display:grid;place-items:center;width:28px;height:28px;padding:0;gap:0;font-size:0;}
+}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-dense="true"] .cue-library-back {font-size:0;width:28px;gap:0;padding:0;}
+:root[data-plugin-editor][data-plugin-ios-preview="true"][data-plugin-dense="true"] .ios-edit-history button {width:24px;height:24px;}
+@media(prefers-reduced-motion:reduce){:root[data-plugin-editor][data-plugin-ios-preview="true"] .cue-pad-jiggle {animation:none;}}
+:root[data-plugin-ios-preview="true"][data-plugin-cue-page="true"],
+:root[data-plugin-ios-preview="true"][data-plugin-cue-page="true"] body,
+:root[data-plugin-ios-preview="true"][data-plugin-cue-page="true"] #root {height:var(--plugin-viewport-height,100%);overflow:hidden;overscroll-behavior:none;}
+:root[data-plugin-ios-preview="true"][data-plugin-cue-page="true"] .cue-workspace-main {overflow:hidden;overscroll-behavior:none;}
+:root[data-plugin-ios-preview="true"] .cue-song-list,
+:root[data-plugin-ios-preview="true"] [role="dialog"] .scroll-area {overscroll-behavior:contain;}

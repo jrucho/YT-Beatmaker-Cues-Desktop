@@ -1,4 +1,5 @@
 #include "LibraryStore.h"
+#include "MonitorRouteGuard.h"
 #include <iostream>
 #include <stdexcept>
 #include <thread>
@@ -56,9 +57,36 @@ int main(int argc,char** argv){
             const auto count=juce::JSON::parse(cold.readLibrary())["playlists"].size();if(count!=48)std::cerr<<"Threaded store count: "<<count<<"\n";
             check(!failed.load()&&count==48,"Same-process store instances lost concurrent edits");
         }
+        {
+            MonitorRouteGuard monitor;const juce::StringArray none,sp404{"SP404-input"},cardOut{"SP404-output"},other{"Other-card"};
+            check(!monitor.update(sp404,cardOut,true),"Monitoring became active without being requested");
+            monitor.configure(true,sp404,cardOut);check(monitor.update(sp404,cardOut,true),"Connected interface monitoring did not enable");
+            const auto saved=monitor.route();
+            check(!monitor.update(none,none,true)&&monitor.requested(),"Disconnected interface fell back to live microphone/speaker monitoring");
+            check(!monitor.update(other,other,true),"A different interface consumed the pending monitor restore");
+            check(!monitor.update(sp404,none,true)&&!monitor.update(sp404,cardOut,false),"Monitoring resumed before both route ends/input callbacks were ready");
+            check(monitor.update(sp404,cardOut,true),"Reconnecting the original interface did not restore monitoring");
+            MonitorRouteGuard restarted;restarted.restore(true,saved);check(!restarted.update(none,none,true)&&restarted.update(sp404,cardOut,true),"Saved monitor ownership did not survive a restart");
+            monitor.configure(false,none,none);check(!monitor.update(sp404,cardOut,true)&&!monitor.requested(),"Manual monitor Off did not cancel automatic restore");
+            monitor.configure(true,none,none);check(monitor.update(none,none,true)&&monitor.update(sp404,none,true)&&!monitor.update(none,none,true),"Automatic monitoring did not bind a newly connected input before fallback");
+            monitor.configure(false,none,none);monitor.configure(true,other,none);check(monitor.update(other,none,true),"An explicit new monitoring choice did not replace route ownership");
+        }
+        {
+            const auto localDirectory=directory.getChildFile("renaming");LibraryStore local(localDirectory);
+            auto track=parse(R"({"id":"loc00000001","title":"Original take","duration":12,"kind":"song"})");
+            const auto originalFile=local.mediaDirectory().getChildFile("original.wav");originalFile.getParentDirectory().createDirectory();originalFile.replaceWithText("retained original audio bytes");track.getDynamicObject()->setProperty("path",originalFile.getFullPathName());local.registerMedia("loc00000001",track);
+            auto library=parse(R"({"favorites":[],"history":[],"playlists":[{"id":"imports","tracks":[]},{"id":"set","tracks":[]}]})");
+            library["favorites"].getArray()->add(track.clone());library["history"].getArray()->add(track.clone());for(auto& playlist:*library["playlists"].getArray())playlist["tracks"].getArray()->add(track.clone());local.commitLibrary(local.readLibrary(),juce::JSON::toString(library));
+            const auto stale=local.readLibrary(),beforeBytes=originalFile.loadFileAsString();const auto result=local.renameLocalMedia("loc00000001",juce::String::fromUTF8("  Take 02 – drums  "));
+            const auto title=juce::String::fromUTF8("Take 02 – drums");check(result["previousTitle"].toString()=="Original take"&&result["track"]["title"].toString()==title,"Local rename did not return the trimmed name/previous title");
+            const auto changed=juce::JSON::parse(result["library"].toString());check(changed["favorites"][0]["title"].toString()==title&&changed["history"][0]["title"].toString()==title,"Local rename missed favorites/history");for(const auto& playlist:*changed["playlists"].getArray())check(playlist["tracks"][0]["title"].toString()==title,"Local rename missed a playlist occurrence");
+            auto edited=juce::JSON::parse(stale);edited["history"].getArray()->add(track.clone());const auto reconciled=juce::JSON::parse(local.commitLibrary(stale,juce::JSON::toString(edited)));for(const auto& entry:*reconciled["history"].getArray())check(entry["title"].toString()==title,"Stale history restored the original imported title");
+            LibraryStore cold(localDirectory);check(cold.media("loc00000001")["title"].toString()==title&&cold.media("loc00000001")["path"].toString()==originalFile.getFullPathName()&&originalFile.loadFileAsString()==beforeBytes,"Rename changed retained audio/identity or failed cold restore");
+            bool rejected=false;try{local.renameLocalMedia("loc00000001","   ");}catch(...){rejected=true;}check(rejected,"Blank imported-song title was accepted");rejected=false;try{local.renameLocalMedia("remote00001","Title");}catch(...){rejected=true;}check(rejected,"Remote track was accepted by managed-audio rename");
+        }
         directory.getChildFile("library-v1.json").replaceWithText("{corrupt");
         check(juce::JSON::parse(reopened.readLibrary())["playlists"].size()==60,"Backup recovery failed");
-        std::cout<<"PASS: atomic durable saves, cold reopen, field/track merge, 60 multiprocess writes, missing references and corrupt-file recovery\n";
+        std::cout<<"PASS: atomic durable saves, cold reopen, field/track merge, 60 multiprocess writes, missing references, corrupt-file recovery and monitor disconnect/reconnect ownership\n";
         return 0;
     }catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<"\n";return 1;}
 }

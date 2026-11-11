@@ -28,8 +28,22 @@ def limit_experiments(source):
     return source
 
 
+def input_routing_hooks(source):
+    if 'BEATMAKER_ANDROID_INPUT_HOOKS_V2' in source:
+        return source
+    source = source.replace('if (stream->getDirection() == oboe::Direction::Output)\n                {', '{', 1)
+    source = source.replace('                    beatmakerAndroidOutputStarted (stream.get(), info);', '''                    // BEATMAKER_ANDROID_INPUT_HOOKS_V2
+                    if (stream->getDirection() == oboe::Direction::Output) beatmakerAndroidOutputStarted (stream.get(), info);
+                    else beatmakerAndroidInputStarted (stream.get(), info);''', 1)
+    source = source.replace('                 beatmakerAndroidOutputStopped (stream.get());', '                 beatmakerAndroidOutputStopped (stream.get());\n                 beatmakerAndroidInputStopped (stream.get());', 1)
+    source = source.replace('    void scanForDevices() override {}', '    void scanForDevices() override { inputDevices.clear(); outputDevices.clear(); checkAvailableDevices(); }', 1)
+    if 'BEATMAKER_ANDROID_INPUT_HOOKS_V2' not in source:
+        raise RuntimeError('Pinned JUCE Android input observer anchor changed')
+    return source
+
+
 if marker in text:
-    updated = limit_experiments(text)
+    updated = input_routing_hooks(limit_experiments(text))
     if updated != text:
         path.write_bytes(updated.replace('\n', newline).encode())
     print('JUCE Android output hooks ready')
@@ -142,6 +156,6 @@ new_body = '''
    #else
 ''' + old_body + '''
    #endif'''
-text = limit_experiments(text[:body] + new_body + text[end:])
+text = input_routing_hooks(limit_experiments(text[:body] + new_body + text[end:]))
 path.write_bytes(text.replace('\n', newline).encode())
 print('Applied JUCE Android output negotiation/observer hooks')

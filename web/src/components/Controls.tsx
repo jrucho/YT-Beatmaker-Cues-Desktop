@@ -107,7 +107,7 @@ export function Scrubber({ touch = false, className }: { touch?: boolean; classN
   if (touch) {
     return (
       <div className={className}>
-        <Slider label={t.player.progress} value={position} max={duration} buffered={buffered} onChange={seek} onScrub={setScrub} showThumb step={5} valueText={formatTime} />
+        <Slider playback label={t.player.progress} value={position} max={duration} buffered={buffered} onChange={seek} onScrub={setScrub} showThumb step={5} valueText={formatTime} />
         <div className="mt-0.5 flex justify-between">
           {time}
           {total}
@@ -118,7 +118,7 @@ export function Scrubber({ touch = false, className }: { touch?: boolean; classN
   return (
     <div className={cn("flex items-center gap-2", className)}>
       <span className="text-right">{time}</span>
-      <Slider label={t.player.progress} value={position} max={duration} buffered={buffered} onChange={seek} onScrub={setScrub} step={5} valueText={formatTime} className="flex-1" />
+      <Slider playback label={t.player.progress} value={position} max={duration} buffered={buffered} onChange={seek} onScrub={setScrub} step={5} valueText={formatTime} className="flex-1" />
       {total}
     </div>
   );

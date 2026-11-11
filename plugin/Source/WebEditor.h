@@ -3,6 +3,7 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "HostedKeyboard.h"
 #include "NativePadInput.h"
+#include "MediaGallery.h"
 
 class MobileWebEditor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
@@ -30,15 +31,26 @@ private:
     juce::String previousPadInputState;
     juce::ThreadPool requests{4};
     juce::ThreadPool storageWorker{1};
+    juce::ThreadPool mediaWorker{1};
     std::shared_ptr<std::atomic<bool>> cancelled=std::make_shared<std::atomic<bool>>(false);
     std::unique_ptr<juce::FileChooser> exporter;
+    std::unique_ptr<MediaGallery> gallery;
+    bool galleryBusy=false;
+    juce::ScopedMessageBox audioSharer;
+    bool audioExportBusy=false;
+    void shareAudio(const juce::String&,juce::WebBrowserComponent::NativeFunctionCompletion);
     int sourceId=0, lastRevision=-1;
     bool announced=false, previousPlaying=false;
     bool pendingLoad=false;
+    bool recordingMidiGuard=false;
+    void setRecordingMidiGuard(bool value){if(value!=recordingMidiGuard){recordingMidiGuard=value;engine.recordingMidiGuards.fetch_add(value?1:-1);}}
+    bool fineMidiEditor=false;
+    void setFineMidiEditor(bool value){if(value!=fineMidiEditor){fineMidiEditor=value;engine.fineMidiEditors.fetch_add(value?1:-1);}}
     juce::String sourceUrl;
-    void storageTask(std::function<juce::var()> action,juce::WebBrowserComponent::NativeFunctionCompletion);
+    void storageTask(std::function<juce::var()> action,juce::WebBrowserComponent::NativeFunctionCompletion,bool media=false);
     double lastPosition=0;
     std::array<unsigned int,160> previousPads{};
+    std::array<unsigned int,160> previousMidiPads{};
     int timerTicks=0;
     int previousTrackRevision=0,previousErrorRevision=0;
     int previousRestoreRevision=0;

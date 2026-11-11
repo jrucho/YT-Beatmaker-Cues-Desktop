@@ -1,14 +1,50 @@
-# Beatmaker Cues — native apps and plug-ins, 1.0.6
+# Beatmaker Cues — native apps and plug-ins, 1.0.7
+
+The approved iOS feature set is now enabled by default in the shared native
+Android, responsive plug-in and plug-in-standalone builds. Platform feature and
+verification status is in
+[`docs/native-feature-parity-1.0.7.md`](../docs/native-feature-parity-1.0.7.md).
+[Stable 1.0.7 downloads](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.7)
+include the normal release-signed Android update, native plug-ins/standalones and
+the unchanged full desktop studio rebuilt as 1.0.7.
+
+### New performance and recording controls
+
+- MIDI offers saved 16/12-pad numbering, velocity On/Off and A/F–E/J bank pairs.
+- Hold a cue/sample pad alone for over three seconds to move/swap its contents
+  between fixed numbered pads; edit undo/redo preserves cues, samples and loopers.
+- The drum button manages samples. The file/audio button opens **Files, Phone
+  gallery (video files on desktop), Record audio, New empty track**. Imports and
+  finished recordings enter **Imports** and load in Cues automatically. Song menus
+  offer rename, audio export/share and permanent managed-audio deletion.
+- Fine waveform edits are silent by default; holding the selected pad auditions
+  the changing marker. Settings can enable always-audition. The playhead and
+  transport fill animate independently from the static waveform.
+- Comp toggles the native compressor; hold opens the two-bus mixer. Event-loop
+  pads record/play/overdub internal cue/sample performances and retain their layers
+  per song/bank/pad. Active loopers pulse, with a saved Settings colour choice.
+- Song navigation fades out/in by default (350 ms); **Settings → Song transitions**
+  can select Instant/Off or change the duration. Cue jumps stay immediate.
+- Standalone recording captures the accepted microphone/interface input or
+  Beatmaker playback. Audio settings show actual routes and monitor state. Lost
+  device monitoring mutes until the same route returns; manual Off cancels restore.
+- Hosted VST3/AU/AUv3 expose a disabled-by-default **Recorder input** bus (a VST3
+  sidechain). Enable and route it in the DAW before choosing **DAW audio input**.
+  Monitoring defaults Off; sound-card selection stays with the DAW. Input recording
+  captures raw input, and playback recording excludes separately monitored input.
+
+Android candidate 715's title-only Import audio panel is corrected in candidate
+716: its maximum height uses the measured native viewport rather than Android
+WebView's zero-valued `dvh`. Emulator checks now use real touch input and assert
+that every source button is visible/reachable.
 
 The native iOS and Android app shells are named **Beatmaker Cues** and use the
 original iOS icon. The native VST3/AU edition uses the same responsive interface.
 The separate full desktop studio retains the original stems/VJ/FX implementation.
-The 1.0.6 native release includes iOS/AUv3, Mac AU/VST3/standalone and Windows
-VST3/standalone. [Download native 1.0.6](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.6).
-See the [release notes](../docs/release-1.0.6-notes.md) and
-[native input verification](../docs/native-input-1.0.6.md). Android and the separate
-full desktop studio also have [1.0.6 downloads](../docs/downloads-1.0.6.md);
-the full studio is a maintenance/version-alignment build with 1.0.5 features/audio.
+See the [1.0.7 release notes](../docs/release-1.0.7-notes.md),
+[download list](../docs/downloads-1.0.7.md) and
+[original native input verification](../docs/native-input-1.0.6.md). The full
+desktop studio is a version-only maintenance build of the published 1.0.6 source.
 
 ## Native pad input in 1.0.6
 
@@ -58,7 +94,7 @@ library. Full transport sits at the bottom above the four navigation buttons.
 
 ## Sample pads (native desktop and mobile)
 
-Enable the **music-note button** beside MIDI, then tap a pad and choose **Load
+Enable the **drum button** beside MIDI, then tap a pad and choose **Load
 sample…**. Switch the music-note button off to perform. A sample pad shows **SMP**
 and its filename; it plays a polyphonic one-shot by touch, mouse or MIDI, with or
 without a song loaded. It never marks or jumps to a song cue, even in Overwrite

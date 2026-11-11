@@ -18,10 +18,14 @@ std::atomic<int> minimumBufferFrames{0},requestedBufferFrames{0},initialXRuns{-1
 std::atomic<int> forcedBufferBursts{0};
  #endif
 jclass bridge=nullptr;jmethodID publishMethod=nullptr,shutdownMethod=nullptr,backgroundMethod=nullptr,nativeRateMethod=nullptr;
+jmethodID galleryMethod=nullptr;
+jmethodID audioDevicesMethod=nullptr;
 class AndroidNowPlaying final:public StandaloneNowPlaying,private juce::Timer {
 public:
-    explicit AndroidNowPlaying(CueProcessor& value):engine(value){{std::lock_guard<std::mutex> lock(engineAccess);current.store(&engine);}if(bridge&&backgroundMethod)engine.backgroundPlayback.store(juce::getEnv()->CallStaticBooleanMethod(bridge,backgroundMethod));startTimer(20);}
+    explicit AndroidNowPlaying(CueProcessor& value):engine(value),routes(createStandaloneAudioRoutes(value)){{std::lock_guard<std::mutex> lock(engineAccess);current.store(&engine);}if(bridge&&backgroundMethod)engine.backgroundPlayback.store(juce::getEnv()->CallStaticBooleanMethod(bridge,backgroundMethod));startTimer(20);}
     ~AndroidNowPlaying() override {stopTimer();{std::lock_guard<std::mutex> lock(engineAccess);current.store(nullptr);}if(bridge&&shutdownMethod)juce::getEnv()->CallStaticVoidMethod(bridge,shutdownMethod);}
+    juce::var audioRoutes() override{return routes?routes->audioRoutes():StandaloneNowPlaying::audioRoutes();}
+    void configureAudio(const juce::var& value,std::function<void(juce::var)> complete) override{if(routes)routes->configureAudio(value,std::move(complete));else StandaloneNowPlaying::configureAudio(value,std::move(complete));}
 private:
     void updateAudioConfiguration() {
        #if BEATMAKER_ANDROID_LATENCY_PROBE
@@ -94,7 +98,7 @@ private:
         }
     }
     void timerCallback() override {
-        updateAudioConfiguration();
+        if(!engine.recorder.hasTake())updateAudioConfiguration();
         if(!bridge||!publishMethod)return;
         auto data=engine.nativeSnapshot();auto* fields=data.getDynamicObject();
         fields->setProperty("wantedPlaying",engine.requestedPlay.load()&&!engine.nativeEnded.load());
@@ -104,6 +108,7 @@ private:
         if(juce::getEnv()->ExceptionCheck()){juce::getEnv()->ExceptionDescribe();juce::getEnv()->ExceptionClear();}
     }
     CueProcessor& engine;
+    std::unique_ptr<StandaloneNowPlaying> routes;
     bool audioConfigured=false;
     juce::AudioIODevice* configuredDevice=nullptr;
     int configuredOutputRevision=-1;
@@ -117,6 +122,9 @@ std::unique_ptr<StandaloneNowPlaying> makeAndroid(CueProcessor& engine){if(engin
 const bool registered=[] {registerStandaloneNowPlayingFactory(makeAndroid);return true;}();
 }
 int androidInsetsRevision(){return insetsRevision.load();}
+bool androidOpenGallery(){return bridge&&galleryMethod&&juce::getEnv()->CallStaticBooleanMethod(bridge,galleryMethod);}
+juce::var androidAudioDevices(){if(!bridge||!audioDevicesMethod)return juce::var(juce::Array<juce::var>{});const auto text=juce::LocalRef<jstring>((jstring)juce::getEnv()->CallStaticObjectMethod(bridge,audioDevicesMethod));return juce::JSON::parse(juce::juceString(text.get()));}
+extern "C" JNIEXPORT void JNICALL Java_app_musike_android_StandaloneBridge_audioDevicesChanged(JNIEnv*,jclass){androidAudioDevicesChanged();}
 juce::var androidPlatformState(){
     auto* result=new juce::DynamicObject;
     const char* names[]{"left","top","right","bottom"};
@@ -157,6 +165,8 @@ extern "C" JNIEXPORT void JNICALL Java_app_musike_android_StandaloneBridge_bind(
     if(bridge)env->DeleteGlobalRef(bridge);bridge=(jclass)env->NewGlobalRef(type);
     publishMethod=env->GetStaticMethodID(type,"publish","(Ljava/lang/String;)V");shutdownMethod=env->GetStaticMethodID(type,"shutdown","()V");backgroundMethod=env->GetStaticMethodID(type,"isBackground","()Z");
     nativeRateMethod=env->GetStaticMethodID(type,"nativeSampleRate","()I");
+    galleryMethod=env->GetStaticMethodID(type,"pickGallery","()Z");
+    audioDevicesMethod=env->GetStaticMethodID(type,"audioDevices","()Ljava/lang/String;");
 }
 extern "C" JNIEXPORT jboolean JNICALL Java_app_musike_android_StandaloneBridge_performance(JNIEnv*,jclass,jint action,jint sourceId,jdouble value,jint bank,jint pad){
    #if BEATMAKER_ANDROID_LATENCY_PROBE
@@ -182,23 +192,25 @@ extern "C" JNIEXPORT jdouble JNICALL Java_app_musike_android_StandaloneBridge_pe
     std::lock_guard<std::mutex> lock(engineAccess);auto* engine=current.load();
     return engine&&engine->ready.load()&&engine->androidBridgeSourceId.load()==sourceId?engine->playhead.load():std::numeric_limits<double>::quiet_NaN();
 }
-extern "C" JNIEXPORT jdouble JNICALL Java_app_musike_android_StandaloneBridge_performanceTouch(JNIEnv*,jclass,jint sourceId,jint generation,jdouble target,jint bank,jint pad,jboolean sample,jboolean enabled,jdouble ageMs){
+extern "C" JNIEXPORT jdouble JNICALL Java_app_musike_android_StandaloneBridge_performanceTouch(JNIEnv*,jclass,jint sourceId,jint generation,jdouble target,jint bank,jint pad,jboolean sample,jboolean looper,jboolean enabled,jdouble ageMs){
     std::lock_guard<std::mutex> lock(engineAccess);auto* engine=current.load();
     const auto unavailable=std::numeric_limits<double>::quiet_NaN();
     if(!engine||engine->backgroundPlayback.load()||bank<0||bank>=10||pad<0||pad>=16)return unavailable;
-    if(engine->hasPadSample(bank,pad)!=(bool)sample)return unavailable;
-    if(!sample&&(!engine->ready.load()||engine->nativeAdvancing.load()||engine->androidBridgeSourceId.load()!=sourceId||engine->androidAudioGeneration()!=generation||!std::isfinite(target)||target<0))return unavailable;
+    if(engine->hasPadLooper(bank,pad)!=(bool)looper||(!looper&&engine->hasPadSample(bank,pad)!=(bool)sample))return unavailable;
+    if(looper&&engine->androidAudioGeneration()!=generation)return unavailable;
+    if(!sample&&!looper&&(!engine->ready.load()||engine->nativeAdvancing.load()||engine->androidBridgeSourceId.load()!=sourceId||engine->androidAudioGeneration()!=generation||!std::isfinite(target)||target<0))return unavailable;
     const auto started=juce::Time::getMillisecondCounterHiRes()-juce::jlimit(0.0,60000.0,(double)ageMs);
     if(!enabled){engine->androidTouchStartedMs[(size_t)(bank*16+pad)].store(started);return unavailable;} // Internal comparison: timestamp the normal UI route.
     const auto origin=engine->playhead.load();
-    CueProcessor::Command command{sample?CueProcessor::Action::pad:CueProcessor::Action::cue,bank,pad,target};
+    CueProcessor::Command command{sample||looper?CueProcessor::Action::pad:CueProcessor::Action::cue,bank,pad,target};
     command.androidStartedMs=started;
     if(!sample)command.androidGeneration=generation;
     const bool accepted=engine->submitAndroidPerformance(command);
     if(!accepted)return unavailable;
-    engine->androidNativeTouches.fetch_add(1);if(!sample)engine->requestedPlay.store(true);
+    engine->androidNativeTouches.fetch_add(1);if(!sample&&!looper)engine->requestedPlay.store(true);
     return origin;
 }
+extern "C" JNIEXPORT void JNICALL Java_app_musike_android_StandaloneBridge_performanceRelease(JNIEnv*,jclass,jint bank,jint pad,jint generation){std::lock_guard<std::mutex> lock(engineAccess);if(auto* engine=current.load()){CueProcessor::Command command{CueProcessor::Action::looperControl,bank,pad,(double)PadLooper::release};command.sourceGeneration=generation;engine->submit(command);}}
 extern "C" JNIEXPORT void JNICALL Java_app_musike_android_StandaloneBridge_background(JNIEnv*,jclass,jboolean value){if(auto* engine=current.load())engine->backgroundPlayback.store(value);}
 extern "C" JNIEXPORT jboolean JNICALL Java_app_musike_android_StandaloneBridge_transport(JNIEnv* env,jclass,jstring command,jdouble position){
     const auto action=juce::juceString(command);CueProcessor::RemoteAction target;

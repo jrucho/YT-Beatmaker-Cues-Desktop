@@ -7,6 +7,11 @@ on:
       source_sha:
         required: true
         type: string
+      main_only:
+        description: Build the released native edition without the separate desktop-layout beta
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -16,53 +21,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [macos-15, windows-latest, ubuntu-24.04]
+        edition: ${{ fromJSON(inputs.main_only && '["main"]' || '["main", "desktop-beta"]') }}
         include:
           - os: macos-15
             platform: macOS
             arch: universal
-            edition: main
-            beta: 'OFF'
-            product: Beatmaker Cues
-            ui_arg: ''
           - os: windows-latest
             platform: Windows
             arch: x64
-            edition: main
-            beta: 'OFF'
-            product: Beatmaker Cues
-            ui_arg: ''
           - os: ubuntu-24.04
             platform: Linux
             arch: x64
-            edition: main
-            beta: 'OFF'
-            product: Beatmaker Cues
-            ui_arg: ''
-          - os: macos-15
-            platform: macOS
-            arch: universal
-            edition: desktop-beta
-            beta: 'ON'
-            product: Beatmaker Cues Desktop Beta
-            ui_arg: --desktop-beta
-          - os: windows-latest
-            platform: Windows
-            arch: x64
-            edition: desktop-beta
-            beta: 'ON'
-            product: Beatmaker Cues Desktop Beta
-            ui_arg: --desktop-beta
-          - os: ubuntu-24.04
-            platform: Linux
-            arch: x64
-            edition: desktop-beta
-            beta: 'ON'
-            product: Beatmaker Cues Desktop Beta
-            ui_arg: --desktop-beta
     runs-on: ${{ matrix.os }}
     env:
-      PLUGIN_PRODUCT: ${{ matrix.product }}
-      PLUGIN_CODE: ${{ matrix.beta == 'ON' && 'BmDB' || 'BmCP' }}
+      PLUGIN_PRODUCT: ${{ matrix.edition == 'desktop-beta' && 'Beatmaker Cues Desktop Beta' || 'Beatmaker Cues' }}
+      PLUGIN_CODE: ${{ matrix.edition == 'desktop-beta' && 'BmDB' || 'BmCP' }}
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v5
@@ -88,16 +62,16 @@ jobs:
         shell: pwsh
         run: if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg --yes --no-progress }
       - name: Build real mobile interface
-        run: python3 plugin/Scripts/build_mobile_ui.py . ${{ matrix.ui_arg }}
+        run: python3 plugin/Scripts/build_mobile_ui.py . ${{ matrix.edition == 'desktop-beta' && '--desktop-beta' || '' }}
       - name: Configure macOS universal plug-ins
         if: runner.os == 'macOS'
-        run: cmake -S plugin -B plugin/build-release -DCMAKE_BUILD_TYPE=Release '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 -DBEATMAKER_DESKTOP_BETA=${{ matrix.beta }}
+        run: cmake -S plugin -B plugin/build-release -DCMAKE_BUILD_TYPE=Release '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 -DBEATMAKER_DESKTOP_BETA=${{ matrix.edition == 'desktop-beta' && 'ON' || 'OFF' }}
       - name: Configure Windows native plug-ins
         if: runner.os == 'Windows'
-        run: cmake -S plugin -B plugin/build-release -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DJUCE_WEBVIEW2_PACKAGE_LOCATION="${{ github.workspace }}/plugin/build-deps" -DBEATMAKER_DESKTOP_BETA=${{ matrix.beta }}
+        run: cmake -S plugin -B plugin/build-release -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DJUCE_WEBVIEW2_PACKAGE_LOCATION="${{ github.workspace }}/plugin/build-deps" -DBEATMAKER_DESKTOP_BETA=${{ matrix.edition == 'desktop-beta' && 'ON' || 'OFF' }}
       - name: Configure Linux native plug-ins
         if: runner.os == 'Linux'
-        run: cmake -S plugin -B plugin/build-release -DCMAKE_BUILD_TYPE=Release -DBEATMAKER_DESKTOP_BETA=${{ matrix.beta }}
+        run: cmake -S plugin -B plugin/build-release -DCMAKE_BUILD_TYPE=Release -DBEATMAKER_DESKTOP_BETA=${{ matrix.edition == 'desktop-beta' && 'ON' || 'OFF' }}
       - run: cmake --build plugin/build-release --config Release --parallel 3
       - name: Build cross-process desktop library lock helper
         run: node desktop/scripts/build-native.mjs

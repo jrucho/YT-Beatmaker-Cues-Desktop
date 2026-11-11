@@ -5,6 +5,7 @@ def appVersion = new groovy.json.JsonSlurper().parse(new File(repository, 'packa
 def versionParts = appVersion.tokenize('.').collect { it.find(/\d+/).toInteger() }
 def signing = { String name -> System.getenv(name) }
 def latencyProbe = project.hasProperty('beatmakerLatencyProbe')
+def featureProbe = project.hasProperty('beatmakerFeatureProbe')
 
 android {
     namespace 'app.musike.android'
@@ -13,7 +14,8 @@ android {
     defaultConfig {
         applicationId 'app.owaega.beatmakercuesstandalone'
         if (latencyProbe) applicationIdSuffix '.latencyprobe'
-        manifestPlaceholders = [beatmakerApplicationLabel: latencyProbe ? 'Beatmaker Cues (latency test)' : 'Beatmaker Cues']
+        if (featureProbe) applicationIdSuffix '.development'
+        manifestPlaceholders = [beatmakerApplicationLabel: latencyProbe ? 'Beatmaker Cues (latency test)' : featureProbe ? 'Beatmaker Cues (development)' : 'Beatmaker Cues']
         minSdk 24
         targetSdk 36
         versionName appVersion

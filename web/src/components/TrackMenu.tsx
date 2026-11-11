@@ -7,6 +7,8 @@ import {
   QueueIcon,
   RadioIcon,
   TrashIcon,
+  DownloadSimpleIcon,
+  PencilSimpleIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -16,8 +18,12 @@ import { useT } from "../i18n";
 import { cn } from "../lib/format";
 import { usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
-import { useUi } from "../stores/ui";
+import { toast, useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
+import { iosPadLayoutEnabled } from '../mobile/padLayout';
+import { renameLocalAudio, shareLocalAudio } from '../mobile/mediaEditing';
+import type { Track } from '../lib/types';
+import { Modal } from './Modal';
 
 function Item({ icon, children, onClick, danger }: { icon: ReactNode; children: ReactNode; onClick: () => void; danger?: boolean }) {
   return (
@@ -53,6 +59,7 @@ export function TrackMenu() {
   const box = useRef<HTMLDivElement>(null);
   const t = useT();
   const [pos, setPos] = useState({ left: 0, top: 0 });
+  const [renaming,setRenaming]=useState<Track|null>(null),[songName,setSongName]=useState(''),[savingName,setSavingName]=useState(false);
 
   useLayoutEffect(() => {
     if (!menu || !isMd || !box.current) return;
@@ -78,6 +85,7 @@ export function TrackMenu() {
     fn();
     close();
   };
+  const youtubeTrack=!!menu&&!menu.track.id.startsWith('loc')&&/^[A-Za-z0-9_-]{11}$/.test(menu.track.id);
 
   const content = menu && (
     <div role="menu" aria-label={t.trackMenu.actionsFor(menu.track.title)} data-escape-closes className="flex flex-col">
@@ -103,6 +111,8 @@ export function TrackMenu() {
       <Item icon={<PlaylistIcon size={18} />} onClick={() => openAddToPlaylist([menu.track])}>
         {t.trackMenu.addToPlaylist}
       </Item>
+      {iosPadLayoutEnabled()&&menu.track.id.startsWith('loc')&&<Item icon={<DownloadSimpleIcon size={18}/>} onClick={run(()=>{void shareLocalAudio(menu.track).catch(error=>toast(error.message,'error'));})}>Download / Share audio</Item>}
+      {iosPadLayoutEnabled()&&menu.track.id.startsWith('loc')&&<Item icon={<PencilSimpleIcon size={18}/>} onClick={run(()=>{setRenaming(menu.track);setSongName(menu.track.title);})}>Rename song</Item>}
       {menu.playlistId && (
         <Item
           danger
@@ -114,20 +124,20 @@ export function TrackMenu() {
       )}
       {inLibrary && (
         <Item danger icon={<TrashIcon size={18} />} onClick={run(() => void useLibrary.getState().removeTrack(menu.track.id))}>
-          {t.trackMenu.removeFromLibrary}
+          {iosPadLayoutEnabled()&&menu.track.id.startsWith('loc')?'Delete audio from library':t.trackMenu.removeFromLibrary}
         </Item>
       )}
-      <div className="mx-3 my-1 h-px bg-line" />
+      {youtubeTrack&&<><div className="mx-3 my-1 h-px bg-line" />
       <Item
         icon={<ArrowSquareOutIcon size={18} />}
         onClick={run(() => window.open(`https://www.youtube.com/watch?v=${menu.track.id}`, "_blank", "noopener"))}
       >
         {t.trackMenu.openYoutube}
-      </Item>
+      </Item></>}
     </div>
   );
 
-  return createPortal(
+  return <>{createPortal(
     <AnimatePresence>
       {menu && (
         <div className="fixed inset-0 z-50" onContextMenu={(e) => e.preventDefault()}>
@@ -176,5 +186,11 @@ export function TrackMenu() {
       )}
     </AnimatePresence>,
     document.body,
-  );
+  )}<Modal open={!!renaming} onClose={()=>{if(!savingName)setRenaming(null);}} title="Rename song">
+    <form className="flex flex-col gap-3" onSubmit={event=>{event.preventDefault();if(!renaming||savingName||!songName.trim())return;setSavingName(true);void renameLocalAudio(renaming,songName).then(()=>setRenaming(null)).catch(error=>toast(error.message,'error')).finally(()=>setSavingName(false));}}>
+      <label htmlFor="song-name" className="text-sm text-fg-2">Song name</label>
+      <input id="song-name" autoFocus value={songName} maxLength={200} disabled={savingName} onChange={event=>setSongName(event.target.value)} className="h-12 rounded-full border border-line-strong bg-surface-1 px-5 text-[15px] focus:border-accent focus:outline-none"/>
+      <div className="flex justify-end gap-2"><button type="button" disabled={savingName} onClick={()=>setRenaming(null)} className="h-11 rounded-full px-5 text-sm text-fg-2">{t.common.cancel}</button><button type="submit" disabled={savingName||!songName.trim()} className="h-11 rounded-full bg-accent px-6 text-sm font-semibold text-accent-ink disabled:opacity-40">{savingName?'Saving…':t.collection.save}</button></div>
+    </form>
+  </Modal></>;
 }

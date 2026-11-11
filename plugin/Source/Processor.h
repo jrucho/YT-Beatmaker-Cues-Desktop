@@ -13,10 +13,12 @@
 #include "dsp/FxGraph.h"
 #include "StandaloneNowPlaying.h"
 #include "PadSampler.h"
+#include "AudioRecorder.h"
+#include "PadLooper.h"
 
-class CueProcessor final : public juce::AudioProcessor {
+class CueProcessor final : public juce::AudioProcessor, private juce::VST3ClientExtensions {
 public:
-    enum class Action { pad, markNext, play, pause, seek, cue, clearBank, setIn, setOut, toggleLoop };
+    enum class Action { pad, markNext, play, pause, seek, cue, clearBank, setIn, setOut, toggleLoop, auditionSample, auditionSource, looperControl };
     enum class RemoteAction {play,pause,toggle,seek,next,previous};
     struct Command { Action action; int bank = 0, pad = -1; double value = 0; bool overwrite = false;
         int sourceGeneration=-1,nativeTicket=0;bool nativePerformance=false;double nativeStartedMs=0;
@@ -40,7 +42,9 @@ public:
     ~CueProcessor() override;
     const juce::String getName() const override { return JucePlugin_Name; }
     void prepareToPlay(double, int) override;
-    void releaseResources() override {}
+    void releaseResources() override;
+    juce::VST3ClientExtensions* getVST3ClientExtensions() override{return this;}
+    bool getPluginHasMainInput() const override{return false;} // Optional instrument input is a DAW sidechain.
     bool isBusesLayoutSupported(const BusesLayout&) const override;
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     bool hasEditor() const override { return true; }
@@ -48,7 +52,7 @@ public:
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return juce::jmax(fxTailSeconds.load(),padSampleTail.load()); }
+    double getTailLengthSeconds() const override { return juce::jmax(fxTailSeconds.load(),padSampleTail.load(),compressorEnabled.load()?.21:0.0); }
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
@@ -74,13 +78,35 @@ public:
    #endif
     void loadFile(const juce::File&, bool preserveCues = false,int ticket = 0);
     void loadDemo(bool preserveCues = false);
+    juce::var unloadSong();
     void loadFromApp(const juce::String& videoId, int port);
     void loadRemote(const juce::String& url, double startAt, juce::String trackId = {},bool prefetch=false,bool preservePlayIntent=false);
     juce::var cachedTrack(const juce::String&);
     juce::var importLocalFile(const juce::File&);
+    juce::var importLocalAudio(const juce::URL&);
+    juce::var prepareLocalAudioExport(const juce::String& id);
+    juce::var eraseLocalAudio(const juce::String& id);
+    juce::var recording(const juce::var&);
+    juce::var audioRoutes();
+    void configureAudio(const juce::var&,std::function<void(juce::var)>);
+    AudioRecorder recorder;
+    std::atomic<double> inputRate{0},playbackRate{44100};
+    std::atomic<int> inputChannels{0};
+    std::atomic<float> inputPeak{0},monitorLevel{.5f};
+    std::atomic<bool> monitorInput{false};
+    juce::var samplerSource(const juce::var& track,const std::function<bool()>& cancelled={});
+    juce::var previewSamplerSource(const juce::var& request);
+    juce::var chopSamplerSource(const juce::var& request,const std::function<bool()>& cancelled={});
+    juce::var assignPadSamples(const juce::var& assignments);
+    void clearSamplerPreview(){padSampler.clear(PadSampler::previewSlot);}
+    int reserveSamplerPreview(){return padSampler.reserve(PadSampler::previewSlot);}
     juce::var importPadSample(int bank,int pad,const juce::File&);
     juce::var importPadSample(int bank,int pad,const juce::URL&);
     juce::var removePadSample(int bank,int pad);
+    juce::var editPadSample(int bank,int pad,double start);
+    juce::var restorePadSample(int bank,int pad,const juce::var& descriptor);
+    juce::var remapPadSamples(const juce::var& mappings);
+    juce::var waveformRegion(const juce::var&);
     juce::var padSamples() const {return padSampler.snapshot();}
     bool hasPadSample(int bank,int pad) const {return bank>=0&&bank<10&&pad>=0&&pad<16&&padSampler.assigned(bank*16+pad);}
     std::atomic<int>& padSampleRevision() {return padSampler.revision;}
@@ -88,6 +114,9 @@ public:
     juce::String getWebState() const;
     juce::String getSessionId() const {std::lock_guard<std::mutex> lock(metadataMutex);return sessionId;}
     juce::String sessionUiState() const;
+    std::atomic<bool> songPlaybackEnabled{false};
+    bool setTrackPlayback(const juce::String& trackId,const juce::var& settings);
+    juce::var trackPlayback(const juce::String& trackId) const;
     juce::String getLegacyState() const {std::lock_guard<std::mutex> lock(metadataMutex);return legacyState;}
     void syncWebCues(const juce::var&);
     juce::var getWebCues() const;
@@ -95,6 +124,9 @@ public:
     void setNativeQueue(const juce::var&);
     juce::var nativeSnapshot() const;
     bool performRemoteAction(RemoteAction,double position=0);
+    bool navigateTo(int index,bool autoplay=true);
+    juce::var transitions() const;
+    void setTransitions(const juce::var&);
     juce::String getStatus() const;
     juce::var loadDiagnostics() const;
     juce::var waveformSnapshot();
@@ -102,6 +134,13 @@ public:
     juce::var effectKernelState() const;
     void setFxGraph(const juce::var&);
     juce::var fxGraphState() const;
+    juce::var mixerState() const;
+    void setMixer(const juce::var&);
+    bool hasPadLooper(int bank,int pad) const{return padLooper.assigned(bank,pad);}
+    juce::var looperState(bool events=false) const;
+    juce::var looperAction(const juce::var&);
+    juce::var looperData();
+    void remapLoopers(const juce::var&,const juce::String& scope);
     double getCue(int bank, int pad) const { return cues[(size_t) bank][(size_t) pad].load(); }
     double getDuration() const;
     static Target mapNote(int preset, int channel, int note, int selectedBank);
@@ -118,7 +157,15 @@ public:
     juce::int64 waveformReadFrames=0,waveformTotalFrames=0;
     bool waveformLoading=false;
     std::atomic<int> selectedBank{0}, preset{0}, activePad{-1};
+    std::atomic<int> lastTriggeredPad{-1};
+    std::atomic<int> lastMidiPad{-1};
+    std::array<std::atomic<unsigned int>,160> midiPadHits{};
     std::atomic<bool> overwrite{false}, playing{false}, loopEnabled{false};
+    std::atomic<bool> midiVelocityEnabled{true};
+    std::atomic<bool> compressorEnabled{false};
+    std::atomic<float> songLevel{1},sampleLevel{1},compressorLevel{1.5f};
+    std::atomic<int> recordingMidiGuards{0}; // Transient, editor-owned; not musical state.
+    std::atomic<int> fineMidiEditors{0}; // Select/audition existing pads without MIDI cue marking.
     std::atomic<double> playhead{0}, loopIn{-1}, loopOut{-1};
     std::atomic<int> droppedCommands{0};
     std::atomic<bool> ready{false}, requestedPlay{false};
@@ -144,12 +191,13 @@ private:
     void hit(int bank, int pad, bool replace, float velocity);
     void jump(double seconds, float velocity);
     void render(juce::AudioBuffer<float>&, int start, int count);
+    void renderCore(juce::AudioBuffer<float>&,int start,int count);
     bool prepareAudio(double from,double to);
     void renderBuffering(juce::AudioBuffer<float>&,int start,int count);
     float processEffect(float sample,int channel) const;
     void outputFrame(juce::AudioBuffer<float>&,int frame,beatmaker::dsp::Stereo voice,float gain);
     void handleMidi(const juce::MidiMessage&);
-    void padEvent(int bank,int pad,bool down,bool triggered,float velocity);
+    void padEvent(int bank,int pad,bool down,bool triggered,float velocity,bool updateHeld=true);
     float read(double position, int channel) const;
     void publish(std::unique_ptr<Sample>, int generation, bool preserveCues);
     void failLoad(const juce::String&,int generation);
@@ -171,6 +219,8 @@ private:
     std::mutex padSamplePersistenceMutex;
     void restorePadSamples(const juce::var&);
     void persistPadSamples();
+    void persistPadSamples(const juce::var&);
+    juce::var registerRecording(const juce::File&,const juce::String& source);
     juce::File padSampleManifest() const;
     std::atomic<int> loadGeneration{0};
     std::atomic<int> measuredLoadGeneration{0};
@@ -185,6 +235,8 @@ private:
     juce::String legacyState;
     juce::String sessionId;
     juce::var nativeQueue;
+    juce::var trackPlaybackSettings;
+    void applyTrackPlayback(const juce::String& trackId);
     std::atomic<int> nativeIndex{0},queueGeneration{0};
     std::atomic<juce::uint64> manualQueueRequest{0};
     std::atomic<int> manualQueueIntent{-1};
@@ -202,6 +254,18 @@ private:
     float cueFadeIn() const { return fadeRemaining > 0 ? cueFade[(size_t)(fadeLength-fadeRemaining)] : 1.0f; }
     std::atomic<double> restorePosition{0};
     juce::SmoothedValue<float> outputGain{0.8f};
+    bool hostedInput() const{return BEATMAKER_PERFORMANCE_FEATURES&&!BEATMAKER_DESKTOP_BETA&&wrapperType!=wrapperType_Standalone&&wrapperType!=wrapperType_Undefined;}
+    juce::var hostAudioState() const;
+    void restoreHostAudio(const juce::var&);
+    std::atomic<bool> hostInputEnabled{true},hostMonitorRequested{false};
+    std::atomic<int> hostBusChannels{0};
+    juce::AudioBuffer<float> hostMonitorCopy;
+    juce::SmoothedValue<float> songFade{1.0f};
+    std::atomic<bool> transitionsEnabled{true},fadeInNext{false};
+    std::atomic<double> transitionSeconds{.35};
+    std::atomic<juce::uint32> fadeRequested{0},fadeCompleted{0},fadeSerial{0};
+    juce::uint32 fadeObserved=0;
+    void cancelSongChange();
     juce::SmoothedValue<float> smoothedSpeed{1.0f},smoothedTuning{0.0f};
     double stretchReadPosition=0;
     std::atomic<float>* gainValue=nullptr;
@@ -224,5 +288,21 @@ private:
     std::atomic<double> fxTailSeconds{0.003},fxControlRate{44100};
     double stretchFraction=0;
     int stretchBlock=512;
+    beatmaker::dsp::Dynamics performanceCompressor;
+    juce::SmoothedValue<float> smoothSongLevel{1},smoothSampleLevel{1},smoothCompressorLevel{1.5f};
+    bool previousCompressor=false;
+    PadLooper padLooper;
+    bool replayingLoop=false;
+    mutable std::mutex looperMutex;
+    std::mutex looperFileMutex;
+    juce::var looperSongs{new juce::DynamicObject};
+    juce::String looperSong{"@empty"};
+    int looperGeneration=0;
+    std::atomic<int> lastLooperSaved{-1};
+    std::atomic<bool> looperDirty{false};
+    void prepareLooperSong(const juce::String&);
+    void saveLoopers();
+    void captureLooperSong();
+    juce::File looperManifest() const;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(CueProcessor)
 };

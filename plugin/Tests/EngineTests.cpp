@@ -90,6 +90,336 @@ static void padSampleTests(){
     std::cout<<"PASS: native sample pads without a song, sample-accurate MIDI, stereo/rate/velocity/polyphony, no cue overwrite, cue fallback, retained files, isolated state recall and allocation-free rendering\n";
 }
 
+static void sampleStartEditingTests(){
+    const auto folder=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("beatmaker-start-edit",{});folder.createDirectory();
+    struct Cleanup{juce::File folder;~Cleanup(){folder.deleteRecursively();}}cleanup{folder};const auto input=folder.getChildFile("Attack.wav");
+    {juce::WavAudioFormat wav;std::unique_ptr<juce::AudioFormatWriter> writer(wav.createWriterFor(input.createOutputStream().release(),24000,2,24,{},0));check(writer!=nullptr,"Cannot create start-edit fixture");
+        juce::AudioBuffer<float> data(2,12000);data.clear();for(int i=6000;i<12000;++i){data.setSample(0,i,.25f);data.setSample(1,i,-.125f);}check(writer->writeFromAudioSampleBuffer(data,0,12000),"Cannot write start-edit fixture");}
+    CueProcessor processor;processor.prepareToPlay(48000,512);processor.importPadSample(0,0,input);
+    const auto retained=juce::File(processor.padSamples()[0]["path"].toString());juce::MemoryBlock original;retained.loadFileAsData(original);
+    juce::AudioBuffer<float> audio(2,512);juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1,48,(juce::uint8)127),23);renderChecked(processor,audio,midi);check(audio.getMagnitude(0,512)==0,"Unedited sample should begin with the retained silent lead-in");
+    processor.submit({CueProcessor::Action::auditionSample,0,0,.25});renderChecked(processor,audio,midi);
+    check(audio.getMagnitude(0,512)>.1f&&(double)processor.padSamples()[0]["start"]==0,"Live start audition was silent or committed its temporary start");
+    processor.editPadSample(0,0,.25);midi.addEvent(juce::MidiMessage::allSoundOff(1),0);renderChecked(processor,audio,midi);
+    midi.addEvent(juce::MidiMessage::noteOn(1,48,(juce::uint8)127),23);renderChecked(processor,audio,midi);
+    check(audio.getMagnitude(0,0,23)==0&&std::abs(audio.getSample(0,511)-.2f)<1e-5f&&std::abs(audio.getSample(1,511)+.1f)<1e-5f,"Edited sample start lost MIDI offset, stereo or original PCM");
+    juce::MemoryBlock unchanged;retained.loadFileAsData(unchanged);check(original==unchanged,"Start editing destructively changed the retained file");
+    const auto region=processor.waveformRegion(juce::JSON::parse("{\"sample\":true,\"bank\":\"A\",\"pad\":1,\"from\":0.24,\"to\":0.26,\"bins\":128}"));
+    check(region["peaks"].size()==128&&(double)region["peaks"][0]==0&&(double)region["peaks"][127]>.2,"Zoomed sample waveform did not represent the original attack boundary");
+    const auto descriptor=processor.padSamples()[0];processor.removePadSample(0,0);processor.restorePadSample(0,0,descriptor);
+    check(processor.hasPadSample(0,0)&&std::abs((double)processor.padSamples()[0]["start"]-.25)<1e-6,"Retained sample undo did not restore its start/assignment");
+    juce::MemoryBlock saved;processor.getStateInformation(saved);CueProcessor recalled;recalled.prepareToPlay(48000,512);recalled.setStateInformation(saved.getData(),(int)saved.getSize());
+    for(int i=0;i<1000;++i){if(recalled.padSamples().size()&&(bool)recalled.padSamples()[0]["ready"])break;juce::Thread::sleep(2);}
+    check(recalled.padSamples().size()&&std::abs((double)recalled.padSamples()[0]["start"]-.25)<1e-6,"State restart lost the edited sample start");
+    bool rejected=false;try{processor.editPadSample(0,0,NAN);}catch(const std::exception&){rejected=true;}check(rejected,"Non-finite sample start was accepted");
+    const auto swap=juce::JSON::parse(R"([{"bank":"A","pads":[2,1,3,4,5,6,7,8,9,10,11,12,13,14,15,16]}])");
+    processor.remapPadSamples(swap);
+    check(!processor.hasPadSample(0,0)&&processor.hasPadSample(0,1)&&(int)processor.padSamples()[0]["pad"]==2&&std::abs((double)processor.padSamples()[0]["start"]-.25)<1e-6,"Content move changed/lost the sample or start instead of moving it to the fixed destination");
+    midi.addEvent(juce::MidiMessage::allSoundOff(1),0);renderChecked(processor,audio,midi);processor.submit({CueProcessor::Action::pad,0,1});renderChecked(processor,audio,midi);
+    check(audio.getMagnitude(0,512)>.1f,"Moved PCM did not play from the destination pad");
+    processor.getStateInformation(saved);recalled.setStateInformation(saved.getData(),(int)saved.getSize());
+    for(int i=0;i<1000;++i){if(recalled.hasPadSample(0,1)&&recalled.padSamples().size()&&(bool)recalled.padSamples()[0]["ready"])break;juce::Thread::sleep(2);}
+    check(!recalled.hasPadSample(0,0)&&recalled.hasPadSample(0,1)&&(bool)recalled.padSamples()[0]["ready"],"Moved sample assignment did not survive state restore");
+    rejected=false;try{processor.remapPadSamples(juce::JSON::parse(R"([{"bank":"A","pads":[1,1]}])"));}catch(const std::exception&){rejected=true;}
+    check(rejected&&processor.hasPadSample(0,1),"Invalid content permutation destroyed an assignment");
+    processor.remapPadSamples(swap);check(processor.hasPadSample(0,0)&&!processor.hasPadSample(0,1),"Inverse content move did not restore the original assignment");
+    juce::MemoryBlock movedFile;check(retained.loadFileAsData(movedFile)&&original==movedFile,"Moving sample contents changed the original PCM file");
+    const auto track=processor.importLocalFile(input);auto* queue=new juce::DynamicObject;queue->setProperty("tracks",juce::Array<juce::var>{track});queue->setProperty("index",0);processor.setNativeQueue(juce::var(queue));processor.loadRemote("beatmaker-local://"+track["id"].toString(),0,track["id"].toString());
+    for(int i=0;i<1000&&!processor.ready.load();++i){renderChecked(processor,audio,midi);juce::Thread::sleep(2);}check(processor.ready.load(),"Zoomed song fixture did not load");
+    auto request=juce::JSON::parse("{\"from\":0.24,\"to\":0.26,\"bins\":128}");request.getDynamicObject()->setProperty("trackId",track["id"]);const auto song=processor.waveformRegion(request);
+    check(song["peaks"].size()==128&&(double)song["peaks"][0]==0&&(double)song["peaks"][127]>.2,"High-resolution song waveform missed the local PCM boundary");
+    std::cout<<"PASS: non-destructive sample-start editing, MIDI offsets/stereo/PCM, retained-file undo, compatible restart, finite validation and zoomed song/sample waveforms; no callback allocation\n";
+}
+
+static void mediaEditingTests(){
+    const auto folder=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("beatmaker-media-edit",{});folder.createDirectory();
+    struct Cleanup{juce::File folder;~Cleanup(){folder.deleteRecursively();}}cleanup{folder};const auto input=folder.getChildFile("Four regions.wav");
+    {juce::WavAudioFormat format;std::unique_ptr<juce::AudioFormatWriter> writer(format.createWriterFor(input.createOutputStream().release(),24000,2,24,{},0));check(writer!=nullptr,"Cannot create chop fixture");
+        juce::AudioBuffer<float> pcm(2,24000);const float levels[]={.1f,.2f,-.1f,.3f};for(int i=0;i<24000;++i){pcm.setSample(0,i,levels[i/6000]);pcm.setSample(1,i,-levels[i/6000]*.5f);}check(writer->writeFromAudioSampleBuffer(pcm,0,24000),"Cannot write chop fixture");}
+    CueProcessor processor;processor.prepareToPlay(48000,512);processor.preset.store(3);
+    const auto track=processor.importLocalAudio(juce::URL(input));const auto retained=juce::File(track["path"].toString());juce::MemoryBlock original;retained.loadFileAsData(original);input.deleteFile();
+    const auto source=processor.samplerSource(track);
+    check(source["id"].toString()==track["id"].toString()&&source["peaks"].size()==2048&&std::abs((double)source["duration"]-1)<1e-6,"Retained library source/overview did not survive removal of the original file");
+    const auto exported=processor.prepareLocalAudioExport(track["id"].toString());const auto exportFolder=juce::File(exported["folder"].toString());Cleanup exportCleanup{exportFolder};
+    juce::MemoryBlock exportedBytes;check(juce::File(exported["path"].toString()).loadFileAsData(exportedBytes)&&exportedBytes==original&&exported["name"].toString()=="Four regions.wav","Local audio export changed bytes or lost the original file name/format");
+    bool exportRejected=false;try{processor.prepareLocalAudioExport("abcdefghijk");}catch(const std::exception&){exportRejected=true;}check(exportRejected&&retained.existsAsFile(),"Remote audio export was accepted or the managed original was removed");
+    auto preview=juce::JSON::parse(R"({"from":0.25,"to":0.5})");preview.getDynamicObject()->setProperty("sourceId",source["id"]);
+    processor.previewSamplerSource(preview);juce::AudioBuffer<float> audio(2,512);juce::MidiBuffer midi;renderChecked(processor,audio,midi);
+    check(std::abs(audio.getSample(0,511)-.16f)<1e-5&&processor.padSamples().size()==0&&!processor.playing.load()&&processor.getCue(0,0)<0,"Source preview replaced a pad, changed transport or rendered wrong PCM");
+    processor.clearSamplerPreview();renderChecked(processor,audio,midi);check(audio.getMagnitude(0,64,448)==0,"Source-preview stop left an audible voice");
+    preview.getDynamicObject()->setProperty("ticket",processor.reserveSamplerPreview());processor.clearSamplerPreview();processor.previewSamplerSource(preview);renderChecked(processor,audio,midi);
+    check(audio.getMagnitude(0,512)==0,"A cancelled source preview published/played after close");
+    auto request=juce::JSON::parse(R"({"from":0.25,"to":0.75,"slices":2,"bank":"A","pad":5})");request.getDynamicObject()->setProperty("sourceId",source["id"]);
+    const auto pads=processor.chopSamplerSource(request);check(pads.size()==2&&(int)pads[0]["pad"]==5&&(int)pads[1]["pad"]==6&&pads[0]["peaks"].size()==256,"Chops did not assign to fixed destination pads with ready waveform overviews");
+    check(std::abs((double)pads[0]["duration"]-.25)<1e-6&&std::abs((double)pads[1]["duration"]-.25)<1e-6,"Chop boundaries lost source frames");
+    processor.submit({CueProcessor::Action::pad,0,4});renderChecked(processor,audio,midi);check(std::abs(audio.getSample(0,511)-.16f)<1e-5&&std::abs(audio.getSample(1,511)+.08f)<1e-5,"First chop PCM/stereo is incorrect");
+    midi.addEvent(juce::MidiMessage::allSoundOff(1),0);renderChecked(processor,audio,midi);midi.addEvent(juce::MidiMessage::noteOn(1,41,(juce::uint8)127),23);renderChecked(processor,audio,midi);
+    check(audio.getMagnitude(0,0,23)==0&&std::abs(audio.getSample(0,511)+.08f)<1e-5,"Second chop lost native MIDI sample-offset playback");
+    juce::MemoryBlock unchanged;retained.loadFileAsData(unchanged);check(original==unchanged,"Chopping changed the retained original source");
+    juce::Array<juce::var> restore;for(const auto& pad:*pads.getArray()){auto* entry=new juce::DynamicObject;entry->setProperty("bank",pad["bank"]);entry->setProperty("pad",pad["pad"]);entry->setProperty("descriptor",pad);restore.add(juce::var(entry));}
+    processor.assignPadSamples(juce::JSON::parse(R"([{"bank":"A","pad":5,"descriptor":null},{"bank":"A","pad":6,"descriptor":null}])"));check(!processor.hasPadSample(0,4)&&!processor.hasPadSample(0,5),"Batch chop undo did not clear destination assignments");
+    processor.assignPadSamples(juce::var(restore));check(processor.hasPadSample(0,4)&&processor.hasPadSample(0,5),"Retained chop redo did not restore assignments");
+    bool rejected=false;auto invalid=juce::var(restore).clone();(*invalid.getArray())[1].getDynamicObject()->setProperty("descriptor",juce::JSON::parse(R"({"path":"/missing/chop.wav"})"));
+    try{processor.assignPadSamples(invalid);}catch(const std::exception&){rejected=true;}check(rejected&&processor.hasPadSample(0,4)&&processor.hasPadSample(0,5),"Failed batch replacement partially destroyed existing pads");
+    const auto before=juce::JSON::toString(processor.padSamples());rejected=false;request.getDynamicObject()->setProperty("pad",16);try{processor.chopSamplerSource(request);}catch(const std::exception&){rejected=true;}
+    check(rejected&&juce::JSON::toString(processor.padSamples())==before,"Out-of-bank chops altered saved assignments");
+    juce::MemoryBlock saved;processor.getStateInformation(saved);CueProcessor recalled;recalled.prepareToPlay(48000,512);recalled.setStateInformation(saved.getData(),(int)saved.getSize());
+    for(int i=0;i<1000;++i){const auto state=recalled.padSamples();if(state.size()==2&&(bool)state[0]["ready"]&&(bool)state[1]["ready"])break;juce::Thread::sleep(2);}
+    check(recalled.hasPadSample(0,4)&&recalled.hasPadSample(0,5)&&(bool)recalled.padSamples()[0]["ready"],"Chop assignments did not survive state restore");
+    std::cout<<"PASS: retained URL/file import, source peaks/preview/cancellation, exact stereo chop PCM and MIDI offsets, atomic batch replacement/undo/redo, original preservation and state recall; no callback allocation\n";
+}
+
+static void recordingTests(){
+    CueProcessor processor;processor.prepareToPlay(48000,256);processor.installSampleForTest(sample());
+    juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;renderChecked(processor,audio,midi);
+    processor.recording(juce::JSON::parse(R"({"cmd":"start","source":"playback"})"));processor.submit({CueProcessor::Action::play});
+    juce::AudioBuffer<float> expected(2,256*20);
+    for(int i=0;i<20;++i){renderChecked(processor,audio,midi);for(int c=0;c<2;++c)expected.copyFrom(c,i*256,audio,c,0,256);}
+    const auto stopped=processor.recording(juce::JSON::parse(R"({"cmd":"stop"})")),track=stopped["track"];
+    check(track["id"].toString().startsWith("loc")&&(bool)track["recorded"]&&std::abs((double)track["duration"]-5120.0/48000)<1e-6,"Playback recording did not register exact length as managed local audio");
+    juce::AudioFormatManager formats;formats.registerBasicFormats();auto reader=std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(juce::File(track["path"].toString())));
+    check(reader&&reader->lengthInSamples==5120&&reader->numChannels==2,"Recorded WAV lost frame/channel count");
+    juce::AudioBuffer<float> recorded(2,5120);reader->read(&recorded,0,5120,0,true,true);for(int c=0;c<2;++c)for(int i=0;i<5120;++i)check(std::abs(recorded.getSample(c,i)-expected.getSample(c,i))<2e-6,"Playback recording PCM differs from actual rendered cue audio");
+    check(processor.cachedTrack(track["id"].toString()).isObject(),"Finished recording could not load through the native local resolver");
+    const auto exported=processor.prepareLocalAudioExport(track["id"].toString());const juce::File exportedFile(exported["path"].toString());juce::MemoryBlock takeBytes,copyBytes;
+    check(juce::File(track["path"].toString()).loadFileAsData(takeBytes)&&exportedFile.loadFileAsData(copyBytes)&&takeBytes==copyBytes&&exportedFile.getFileExtension()==".wav","Recording download/share preparation altered the retained WAV");juce::File(exported["folder"].toString()).deleteRecursively();
+    const auto directory=processor.libraryStore.mediaDirectory().getChildFile("Recordings");const auto inputFile=directory.getChildFile("Recording-input-test-"+juce::Uuid().toString()+".wav");
+    processor.recorder.start(inputFile,48000,false);juce::AudioBuffer<float> input(1,256);for(int i=0;i<256;++i)input.setSample(0,i,i==0?NAN:.125f);
+    const auto before=audioAllocations;onAudioThread=true;processor.recorder.capture(input.getArrayOfReadPointers(),1,256,48000,true);processor.recorder.capture(input.getArrayOfReadPointers(),1,256,48000,false);onAudioThread=false;
+    check(audioAllocations==before,"Input recording allocated in its callback");
+    processor.recorder.interrupt();onAudioThread=true;processor.recorder.capture(input.getArrayOfReadPointers(),1,256,48000,false);onAudioThread=false;
+    check(!(bool)processor.recorder.state()["recording"]&&(double)processor.recorder.state()["seconds"]==256.0/48000,"Interrupted input take continued appending or captured the wrong producer");
+    const auto finished=processor.recorder.finish();check((juce::int64)finished["frames"]==256&&finished["message"].toString().isNotEmpty(),"Interrupted input take lost frame count/error status");
+    reader.reset(formats.createReaderFor(inputFile));check(reader&&reader->lengthInSamples==256&&reader->numChannels==2,"Input take could not be recovered after route interruption");
+    recorded.setSize(2,256);reader->read(&recorded,0,256,0,true,true);check(recorded.getSample(0,0)==0&&std::abs(recorded.getSample(0,255)-.125f)<1e-6&&recorded.getSample(0,255)==recorded.getSample(1,255),"Input recording did not sanitize NaN/duplicate mono to stereo");
+    const auto recovered=processor.recording(juce::JSON::parse(R"({"cmd":"recover"})"));bool found=false;for(const auto& entry:*recovered.getArray())if(entry["path"].toString()==inputFile.getFullPathName())found=true;
+    check(found&&processor.recording(juce::JSON::parse(R"({"cmd":"recover"})")).size()==0,"Unfiled recording recovery missed/duplicated a retained take");
+    const auto rateFile=directory.getChildFile("Recording-rate-test-"+juce::Uuid().toString()+".wav");processor.recorder.start(rateFile,48000,false);processor.recorder.capture(input.getArrayOfReadPointers(),1,256,44100,false);
+    check(!(bool)processor.recorder.state()["recording"]&&processor.recorder.state()["message"].toString().contains("Sample rate"),"Recorder silently accepted a mid-take sample-rate change");processor.recorder.finish();rateFile.deleteFile();
+    std::cout<<"PASS: exact native rendered-playback WAV, microphone/USB producer isolation, allocation-free input capture, mono/stereo/NaN, route/rate interruption and idempotent retained-take recovery\n";
+}
+
+#if BEATMAKER_PERFORMANCE_FEATURES && !BEATMAKER_DESKTOP_BETA
+static void hostedInputTests(){
+    juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_VST3);CueProcessor processor;juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_Undefined);
+    check(processor.getBusCount(true)==1&&processor.getTotalNumInputChannels()==0&&!processor.getVST3ClientExtensions()->getPluginHasMainInput(),"Hosted recording input must be an optional disabled sidechain");
+    const auto configure=[&](const char* json){juce::var result;bool done=false;processor.configureAudio(juce::JSON::parse(json),[&](juce::var value){result=value;done=true;});check(done,"Hosted routing unexpectedly waited for device access");return result;};
+    check(configure(R"({"inputEnabled":true})").hasProperty("__error"),"Hosted input was falsely accepted before the DAW bus was connected");
+    auto layout=processor.getBusesLayout();layout.inputBuses.getReference(0)=juce::AudioChannelSet::stereo();check(processor.setBusesLayout(layout),"DAW stereo recorder input was rejected");processor.prepareToPlay(48000,128);
+    check((bool)processor.audioRoutes()["hostManaged"]&&(bool)processor.audioRoutes()["inputActive"]&&!(bool)processor.audioRoutes()["monitor"],"Hosted route status/monitor default is incorrect");
+    juce::AudioBuffer<float> audio(2,128);juce::MidiBuffer midi;const auto fill=[&]{for(int i=0;i<128;++i){audio.setSample(0,i,.125f);audio.setSample(1,i,-.25f);}};fill();renderChecked(processor,audio,midi);check(audio.getMagnitude(0,128)==0,"Unmonitored DAW input leaked into the instrument output");
+    processor.recording(juce::JSON::parse(R"({"cmd":"start","source":"input"})"));check(!configure(R"({"monitor":true,"monitorLevel":0.5})").hasProperty("__error"),"Hosted monitor could not enable on an accepted DAW bus");
+    for(int block=0;block<4;++block){fill();renderChecked(processor,audio,midi);check(std::abs(audio.getSample(0,127)-.0625f)<1e-7&&std::abs(audio.getSample(1,127)+.125f)<1e-7,"Hosted monitoring changed stereo routing/gain");}
+    const auto inputTake=processor.recording(juce::JSON::parse(R"({"cmd":"stop"})"));juce::AudioFormatManager formats;formats.registerBasicFormats();auto reader=std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(juce::File(inputTake["track"]["path"].toString())));check(reader&&reader->lengthInSamples==512,"Hosted input WAV lost its sample count");juce::AudioBuffer<float> pcm(2,512);reader->read(&pcm,0,512,0,true,true);check(std::abs(pcm.getSample(0,511)-.125f)<1e-6&&std::abs(pcm.getSample(1,511)+.25f)<1e-6,"Hosted input recording captured monitor gain instead of the raw DAW input");
+    processor.recording(juce::JSON::parse(R"({"cmd":"start","source":"playback"})"));for(int block=0;block<4;++block){fill();renderChecked(processor,audio,midi);}const auto playbackTake=processor.recording(juce::JSON::parse(R"({"cmd":"stop"})"));reader.reset(formats.createReaderFor(juce::File(playbackTake["track"]["path"].toString())));check(reader&&reader->lengthInSamples==512,"Hosted playback WAV was not retained");reader->read(&pcm,0,512,0,true,true);check(pcm.getMagnitude(0,512)==0&&audio.getMagnitude(0,128)>.01f,"Resampling captured separately monitored DAW input");
+    check(configure(R"({"input":"usb"})").hasProperty("__error"),"Hosted plug-in attempted to own the DAW's sound card");check(configure(R"({"monitorLevel":2})").hasProperty("__error"),"Hosted monitor accepted an invalid level");
+    processor.releaseResources();check(!processor.monitorInput.load()&&(bool)processor.audioRoutes()["monitorSuspended"],"DAW input stop left monitoring live");processor.prepareToPlay(48000,128);check(processor.monitorInput.load(),"Same DAW bus did not restore its requested monitoring state");configure(R"({"monitor":false})");processor.releaseResources();processor.prepareToPlay(48000,128);check(!processor.monitorInput.load(),"DAW reinitialization overrode explicit monitoring Off");
+    configure(R"({"monitor":true,"monitorLevel":0.25})");processor.releaseResources();layout.inputBuses.getReference(0)=juce::AudioChannelSet::disabled();check(processor.setBusesLayout(layout),"DAW could not disable the optional recorder bus");processor.prepareToPlay(48000,128);check(!(bool)processor.audioRoutes()["inputActive"]&&(bool)processor.audioRoutes()["monitorRequested"]&&!processor.monitorInput.load(),"Disconnected DAW bus did not mute while retaining the request");
+    layout.inputBuses.getReference(0)=juce::AudioChannelSet::mono();check(processor.setBusesLayout(layout),"Mono DAW input was rejected");processor.prepareToPlay(48000,128);fill();renderChecked(processor,audio,midi);check(std::abs(audio.getSample(0,127)-.03125f)<1e-7&&audio.getSample(0,127)==audio.getSample(1,127),"Mono hosted input did not duplicate to the stereo monitor");
+    layout.inputBuses.getReference(0)=juce::AudioChannelSet::stereo();layout.outputBuses.getReference(0)=juce::AudioChannelSet::mono();check(processor.setBusesLayout(layout),"Stereo input/mono output host layout was rejected");processor.prepareToPlay(48000,128);fill();renderChecked(processor,audio,midi);check(std::abs(audio.getSample(0,127)-.03125f)<1e-7&&audio.getSample(1,127)==0,"Hosted mono output leaked an unrendered input channel");
+    juce::MemoryBlock saved;processor.getStateInformation(saved);juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_VST3);CueProcessor restored;juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_Undefined);restored.setStateInformation(saved.getData(),(int)saved.getSize());check((bool)restored.audioRoutes()["monitorRequested"]&&!restored.monitorInput.load()&&std::abs((double)restored.audioRoutes()["monitorLevel"]-.25)<1e-7,"Host input preferences were lost or went live before bus reconnection");
+    std::cout<<"PASS: optional DAW sidechain, no default input-through, exact raw stereo input WAV, separate monitor/playback capture, mono layouts, bus stop/reconnect/Off and host-state recall; no callback allocation\n";
+}
+#endif
+
+static void emptyTrackTests(){
+    CueProcessor processor;processor.prepareToPlay(48000,512);processor.preset.store(3);processor.installSampleForTest(sample());
+    processor.importPadSample(0,0,juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));
+    juce::AudioBuffer<float> audio(2,512);juce::MidiBuffer midi;renderChecked(processor,audio,midi);
+    processor.setWebState(R"({"musike:cues:v1":"{\"empty-source\":{\"A\":{\"2\":0.125}}}","musike:player":"{\"queue\":[{\"id\":\"empty-source\"}],\"index\":0}"})");
+    processor.syncWebCues(juce::JSON::parse(R"({"trackId":"empty-source","bank":"A","preset":"linear16","cues":{"A":{"2":0.125}}})"));
+    processor.setNativeQueue(juce::JSON::parse(R"({"tracks":[{"id":"empty-source"}],"index":0,"repeat":"one"})"));
+    processor.submit({CueProcessor::Action::cue,0,1,.125});renderChecked(processor,audio,midi);
+    processor.submit({CueProcessor::Action::pad,0,2,0,true});renderChecked(processor,audio,midi);const auto marked=processor.getCue(0,2);
+    CueProcessor::Command late{CueProcessor::Action::cue,0,1,.125};late.sourceGeneration=processor.audioGeneration();processor.submit(late);
+    const auto previous=processor.unloadSong();renderChecked(processor,audio,midi);
+    check(previous["trackId"].toString()=="empty-source"&&std::abs((double)previous["cues"]["A"]["3"]-marked)<1e-6,"Empty track did not preserve the final native cue snapshot");
+    check(!processor.ready.load()&&!processor.playing.load()&&processor.getDuration()==0&&processor.playhead.load()==0&&audio.getMagnitude(0,512)==0,"Empty track retained old song PCM/transport or accepted an old queued cue");
+    const auto snapshot=processor.nativeSnapshot();check(!(bool)snapshot["canNext"]&&!(bool)snapshot["canPrevious"]&&snapshot["trackId"].isVoid(),"Old native queue/Now Playing survived creating an empty track");
+    const auto saved=juce::JSON::parse(processor.getWebState()),all=juce::JSON::parse(saved["musike:cues:v1"].toString());check(std::abs((double)all["empty-source"]["A"]["3"]-marked)<1e-6,"Empty track erased saved song-specific cues");
+    midi.addEvent(juce::MidiMessage::noteOn(1,37,(juce::uint8)127),0);renderChecked(processor,audio,midi);
+    check(processor.getCue(0,1)<0&&audio.getMagnitude(0,512)==0,"MIDI on an unassigned empty-track pad marked/replayed the old song");
+    processor.recording(juce::JSON::parse(R"({"cmd":"start","source":"playback"})"));midi.addEvent(juce::MidiMessage::noteOn(1,36,(juce::uint8)127),23);renderChecked(processor,audio,midi);
+    check(processor.hasPadSample(0,0)&&audio.getMagnitude(0,512)>.001f&&audio.getMagnitude(0,0,23)==0&&!processor.ready.load(),"Empty track lost sample playback or MIDI sample offsets");
+    const auto take=processor.recording(juce::JSON::parse(R"({"cmd":"stop"})"));juce::AudioFormatManager formats;formats.registerBasicFormats();
+    auto reader=std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(juce::File(take["track"]["path"].toString())));check(reader&&reader->lengthInSamples==512,"Sample-only recording on an empty track did not produce a retained take");
+    juce::AudioBuffer<float> recorded(2,512);reader->read(&recorded,0,512,0,true,true);for(int c=0;c<2;++c)for(int i=0;i<512;++i)check(std::abs(recorded.getSample(c,i)-audio.getSample(c,i))<2e-6,"Empty-track recording mixed in old song audio or changed sample PCM");
+    std::cout<<"PASS: native empty-track unload, stale-command/queue cancellation, final MIDI cue preservation, no old-song triggers, and sample-only MIDI/recording with exact PCM; no callback allocation\n";
+}
+
+static void recordingMidiGuardTests(){
+    CueProcessor processor;processor.prepareToPlay(48000,512);processor.preset.store(3);processor.installSampleForTest(sample());
+    processor.importPadSample(0,0,juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));
+    juce::AudioBuffer<float> audio(2,512);juce::MidiBuffer midi;renderChecked(processor,audio,midi);
+    processor.syncWebCues(juce::JSON::parse(R"({"trackId":"midi-record-guard","bank":"A","preset":"linear16","cues":{"A":{"2":0.125}}})"));
+    midi.addEvent(juce::MidiMessage::noteOn(1,37,(juce::uint8)127),23);renderChecked(processor,audio,midi);
+    check(processor.playing.load()&&(processor.padStates[1].load()&1u)!=0,"Unblocked recording MIDI fixture did not trigger/hold its cue");
+    const auto cueHits=processor.padStates[1].load()>>1,sampleHits=processor.padStates[0].load()>>1;
+    processor.recordingMidiGuards.store(1);processor.submit({CueProcessor::Action::pause});
+    midi.addEvent(juce::MidiMessage::noteOff(1,37),0);midi.addEvent(juce::MidiMessage::noteOn(1,36,(juce::uint8)127),10);
+    midi.addEvent(juce::MidiMessage::noteOn(1,37,(juce::uint8)127),20);midi.addEvent(juce::MidiMessage::noteOn(1,38,(juce::uint8)127),30);
+    midi.addEvent(juce::MidiMessage::controllerEvent(1,22,127),40);renderChecked(processor,audio,midi);
+    check(!processor.playing.load()&&audio.getMagnitude(0,512)==0&&(processor.padStates[1].load()>>1)==cueHits&&(processor.padStates[0].load()>>1)==sampleHits,"Suspended MIDI retriggered a cue or sample");
+    check((processor.padStates[1].load()&1u)==0&&processor.getCue(0,1)==.125&&processor.getCue(0,2)<0,"MIDI guard blocked a release or created/overwrote a cue");
+    processor.inputChannels.store(2);processor.inputRate.store(48000);processor.recording(juce::JSON::parse(R"({"cmd":"start","source":"input"})"));
+    juce::AudioBuffer<float> input(2,512);for(int i=0;i<512;++i){input.setSample(0,i,.125f);input.setSample(1,i,-.25f);}
+    const auto allocations=audioAllocations;onAudioThread=true;processor.recorder.capture(input.getArrayOfReadPointers(),2,512,48000,false);onAudioThread=false;
+    check(audioAllocations==allocations,"Guarded input recording allocated on the audio callback");
+    const auto take=processor.recording(juce::JSON::parse(R"({"cmd":"stop"})"));juce::AudioFormatManager formats;formats.registerBasicFormats();
+    auto reader=std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(juce::File(take["track"]["path"].toString())));check(reader&&reader->lengthInSamples==512,"MIDI suspension interrupted audio-input capture");
+    juce::AudioBuffer<float> captured(2,512);reader->read(&captured,0,512,0,true,true);check(std::abs(captured.getSample(0,511)-.125f)<1e-6&&std::abs(captured.getSample(1,511)+.25f)<1e-6,"MIDI guard changed external input PCM");
+    processor.submit({CueProcessor::Action::pad,0,0});renderChecked(processor,audio,midi);check((processor.padStates[0].load()>>1)==sampleHits+1,"MIDI guard incorrectly disabled direct on-screen pad commands");
+    processor.recordingMidiGuards.store(0);midi.addEvent(juce::MidiMessage::noteOn(1,37,(juce::uint8)127),23);renderChecked(processor,audio,midi);
+    check(processor.playing.load()&&(processor.padStates[1].load()>>1)==cueHits+1,"MIDI pad control did not resume after releasing the recording guard");
+    processor.submit({CueProcessor::Action::cue,0,1,.125});renderChecked(processor,audio,midi);check((processor.padStates[1].load()&1u)!=0,"On-screen playback erased a physically held MIDI pad");
+    processor.fineMidiEditors.store(1);processor.overwrite.store(true);midi.addEvent(juce::MidiMessage::noteOn(1,37,(juce::uint8)100),0);midi.addEvent(juce::MidiMessage::noteOn(1,38,(juce::uint8)100),1);renderChecked(processor,audio,midi);
+    check(processor.getCue(0,1)==.125&&processor.getCue(0,2)<0&&processor.playing.load(),"Fine-mode MIDI overwrote/created a cue instead of selecting/auditioning");
+    processor.fineMidiEditors.store(0);processor.overwrite.store(false);
+    processor.recordingMidiGuards.store(1);midi.addEvent(juce::MidiMessage::noteOn(1,37,(juce::uint8)0),0);renderChecked(processor,audio,midi);check((processor.padStates[1].load()&1u)==0,"Guarded velocity-zero release stuck a held MIDI pad");
+    midi.addEvent(juce::MidiMessage::allSoundOff(1),0);renderChecked(processor,audio,midi);check(!processor.playing.load()&&audio.getMagnitude(0,64,448)==0,"Recording MIDI guard suppressed All Sound Off");
+    juce::MemoryBlock state;processor.getStateInformation(state);CueProcessor recalled;recalled.prepareToPlay(48000,512);recalled.setStateInformation(state.getData(),(int)state.getSize());check(recalled.recordingMidiGuards.load()==0,"Transient recording MIDI suspension leaked into saved musical state");
+    std::cout<<"PASS: recording MIDI guard blocks cue/sample/mark/CC presses, preserves note-off/zero-velocity/panic and input PCM, keeps direct pads, restores triggering and is not saved; no callback allocation\n";
+}
+
+static void mixerTests(){
+    CueProcessor processor;processor.prepareToPlay(48000,512);processor.installSampleForTest(sample());juce::AudioBuffer<float> audio(2,512);juce::MidiBuffer midi;renderChecked(processor,audio,midi);processor.submit({CueProcessor::Action::play});
+    processor.setMixer(juce::JSON::parse(R"({"enabled":false,"song":0.5,"samples":1,"output":1.5})"));for(int i=0;i<3;++i)renderChecked(processor,audio,midi);
+    check(std::abs(audio.getSample(0,511)-.2f)<1e-6&&std::abs(audio.getSample(1,511)+.1f)<1e-6,"Song bus fader did not scale native cue audio");
+    beatmaker::dsp::Dynamics reference;reference.prepare(48000);reference.configure(-30,0,20,.01f,.2f);reference.reset();processor.setMixer(juce::JSON::parse(R"({"enabled":true})"));
+    for(int block=0;block<12;++block){renderChecked(processor,audio,midi);for(int i=0;i<512;++i){const auto expected=reference.process({.25f,-.125f});check(std::abs(audio.getSample(0,i)-expected[0]*1.5f*.8f)<2e-6&&std::abs(audio.getSample(1,i)-expected[1]*1.5f*.8f)<2e-6,"Native compressor differs from the original desktop default curve/post gain");}}
+    check(processor.getLatencySamples()==288,"Enabled compressor did not report its native look-ahead latency");
+    processor.setMixer(juce::JSON::parse(R"({"enabled":false,"song":1,"samples":0})"));for(int i=0;i<3;++i)renderChecked(processor,audio,midi);check(processor.getLatencySamples()==0&&std::abs(audio.getSample(0,511)-.4f)<1e-6,"Compressor bypass changed timing or dry song audio");
+    const auto before=juce::JSON::toString(processor.mixerState());bool rejected=false;try{processor.setMixer(juce::JSON::parse(R"({"song":0.2,"samples":9})"));}catch(const std::exception&){rejected=true;}check(rejected&&juce::JSON::toString(processor.mixerState())==before,"Invalid mixer input partially applied");
+    juce::MemoryBlock state;processor.getStateInformation(state);CueProcessor recalled;recalled.prepareToPlay(48000,512);recalled.setStateInformation(state.getData(),(int)state.getSize());check((double)recalled.mixerState()["samples"]==0,"Host state did not restore mixer levels");
+    auto legacy=juce::AudioProcessor::getXmlFromBinary(state.getData(),(int)state.getSize());legacy->deleteAllChildElementsWithTagName("Mixer");juce::MemoryBlock old;juce::AudioProcessor::copyXmlToBinary(*legacy,old);recalled.setStateInformation(old.getData(),(int)old.getSize());check((double)recalled.mixerState()["samples"]==1&&!(bool)recalled.mixerState()["enabled"],"Legacy state inherited non-neutral mixer settings");
+    CueProcessor samples;samples.prepareToPlay(48000,512);samples.importPadSample(0,0,juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));samples.setMixer(juce::JSON::parse(R"({"song":1,"samples":0})"));for(int i=0;i<3;++i)renderChecked(samples,audio,midi);samples.submit({CueProcessor::Action::pad,0,0});renderChecked(samples,audio,midi);check(audio.getMagnitude(0,512)==0,"Sample/drum bus mute did not silence sample pads independently");
+    std::cout<<"PASS: native two-bus mixer, original desktop compressor threshold/knee/ratio/attack/release/post gain, exact dry bypass, reported latency, validation and state; no callback allocation\n";
+}
+
+static void padLooperTests(){
+    PadLooper looper;looper.publish(PadLooper::restore({},1));std::vector<PadLooper::Event> notes;notes.reserve(256);
+    const auto rt=[&](auto&& work){const auto before=audioAllocations;onAudioThread=true;work();onAudioThread=false;check(audioAllocations==before,"Pad looper allocated on its real-time path");};
+    const auto fire=[&]{looper.fire([&](PadLooper::Event event){notes.push_back(event);});};
+    rt([&]{looper.beginBlock();looper.control(PadLooper::assign,0,15);looper.control(PadLooper::press,0,15);looper.control(PadLooper::release,0,15);looper.capture(0,0,.5f);looper.advance(32,48000);looper.capture(0,1,1);looper.advance(96,48000);looper.control(PadLooper::press,0,15);looper.control(PadLooper::release,0,15);fire();});
+    auto state=looper.snapshot(true);check((int)state["pads"][0]["length"]==128&&state["pads"][0]["events"].size()==2&&notes.size()==1&&notes[0].pad==0&&notes[0].velocity==64,"First loop did not retain exact event offsets/velocity/length");
+    check(looper.segment(512,48000)==32,"Looper did not split the renderer exactly at the next event");rt([&]{looper.advance(32,48000);fire();looper.advance(96,48000);fire();});check(notes.size()==3&&notes[1].pad==1&&notes[2].pad==0,"Loop cycle/event ordering is incorrect");
+    rt([&]{looper.advance(15000,48000);fire();looper.control(PadLooper::press,0,15);looper.control(PadLooper::release,0,15);looper.capture(0,2,1);});const size_t born=notes.size();rt([&]{fire();});check(notes.size()==born,"A newly overdubbed note replayed twice in its birth cycle");
+    rt([&]{looper.advance(128,48000);fire();});check(notes.back().pad==2,"Overdubbed notes did not repeat during continued overdubbing");
+    rt([&]{looper.advance(15000,48000);fire();});const size_t beforeCommit=notes.size();rt([&]{looper.control(PadLooper::press,0,15);looper.control(PadLooper::release,0,15);fire();});
+    check(notes.size()==beforeCommit,"Committing an overdub replayed already-processed notes");state=looper.snapshot(true);check((int)state["pads"][0]["layers"]==2&&state["pads"][0]["events"].size()==3,"Overdub did not retain its independent layer");const auto saved=state.clone();
+    rt([&]{looper.control(PadLooper::undo,0,15);looper.control(PadLooper::stop,0,15);looper.advance(15000,48000);looper.control(PadLooper::press,0,15);looper.control(PadLooper::release,0,15);});notes.clear();rt([&]{fire();looper.advance(24,48000);fire();});check(notes.size()==1&&notes[0].pad==0,"Last-layer undo replayed the removed overdub");
+    rt([&]{looper.control(PadLooper::undo,0,15);looper.control(PadLooper::stop,0,15);looper.advance(15000,48000);looper.control(PadLooper::press,0,15);looper.control(PadLooper::release,0,15);});notes.clear();rt([&]{fire();looper.advance(24,48000);fire();});check(notes.size()==2&&notes[1].pad==2,"Layer redo did not restore the recorded note");
+    rt([&]{looper.advance(1000,48000);looper.control(PadLooper::press,0,15);looper.advance(28800,48000);fire();looper.control(PadLooper::release,0,15);});check((bool)looper.snapshot(false)["pads"][0]["undone"],"Double-tap-and-hold did not undo the last layer");
+    rt([&]{looper.control(PadLooper::press,0,15);looper.control(PadLooper::release,0,15);looper.advance(1000,48000);looper.control(PadLooper::press,0,15);looper.advance(28800,48000);fire();looper.control(PadLooper::release,0,15);});state=looper.snapshot(false);check(!(bool)state["pads"][0]["undone"]&&(int)state["pads"][0]["layers"]==2,"Next double-hold discarded redo history instead of restoring the last layer");
+    PadLooper recalled;recalled.publish(PadLooper::restore(saved,2));rt([&]{recalled.beginBlock();});check(recalled.assigned(0,15)&&recalled.snapshot(true)["pads"][0]["events"].size()==3&&(int)recalled.snapshot(false)["pads"][0]["mode"]==PadLooper::stopped,"Looper restore lost events/layers or started playing automatically");
+    for(const double rate:{44100.0,96000.0}){
+        PadLooper timed;timed.publish(PadLooper::restore(saved,1));rt([&]{timed.beginBlock();timed.control(PadLooper::press,0,15);timed.control(PadLooper::release,0,15);});
+        std::vector<int> frames;frames.reserve(256);int frame=0;
+        while(frame<512){rt([&]{timed.fire([&](PadLooper::Event event){if(event.pad==1)frames.push_back(frame);});const int count=timed.segment(juce::jmin(13,512-frame),rate);timed.advance(count,rate);frame+=count;});}
+        check(!frames.empty(),"Resampled loop did not replay");for(size_t i=0;i<frames.size();++i)check(frames[i]==(int)std::ceil((32.0+128.0*i)*rate/48000.0-1e-8),"Looper introduced sample drift at a different device rate");
+    }
+    rt([&]{looper.advance(15000,48000);looper.control(PadLooper::press,0,15);looper.advance(57600,48000);fire();looper.control(PadLooper::release,0,15);});state=looper.snapshot(false);check(looper.assigned(0,15)&&(int)state["pads"][0]["count"]==0&&(int)state["pads"][0]["length"]==0,"Deliberate hold did not clear the loop while retaining assignment");
+    rt([&]{recalled.control(PadLooper::assign,0,14);recalled.control(PadLooper::press,0,15);recalled.control(PadLooper::release,0,15);recalled.control(PadLooper::press,0,14);recalled.control(PadLooper::release,0,14);});int active=0;const auto switched=recalled.snapshot(false);for(const auto& pad:*switched["pads"].getArray())if((int)pad["mode"]!=PadLooper::stopped)++active;check(active==1,"Switching loop pads left more than one clip active");
+    CueProcessor engine;engine.prepareToPlay(48000,512);engine.preset.store(3);engine.importPadSample(0,0,juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));juce::AudioBuffer<float> audio(2,512);juce::MidiBuffer midi;
+    engine.looperAction(juce::JSON::parse(R"({"cmd":"assign","bank":"A","pad":16})"));renderChecked(engine,audio,midi);check(engine.hasPadLooper(0,15),"Native looper assignment did not reach the audio owner");
+    midi.addEvent(juce::MidiMessage::noteOn(1,51,(juce::uint8)127),0);midi.addEvent(juce::MidiMessage::noteOff(1,51),1);renderChecked(engine,audio,midi);
+    midi.addEvent(juce::MidiMessage::noteOn(1,36,(juce::uint8)127),23);midi.addEvent(juce::MidiMessage::noteOff(1,36),24);renderChecked(engine,audio,midi);
+    midi.addEvent(juce::MidiMessage::noteOn(1,51,(juce::uint8)127),0);midi.addEvent(juce::MidiMessage::noteOff(1,51),1);renderChecked(engine,audio,midi);const auto hits=engine.padStates[0].load()>>1;
+    juce::AudioBuffer<float> shortBlock(2,23),single(2,1);renderChecked(engine,shortBlock,midi);check((engine.padStates[0].load()>>1)==hits,"Native loop event fired before its recorded sample offset");renderChecked(engine,single,midi);check((engine.padStates[0].load()>>1)==hits+1,"Native loop did not replay exactly at the recorded MIDI offset");
+    check((engine.padStates[0].load()&1u)==0,"Loop replay fabricated a held physical MIDI pad");
+    const auto loops=engine.looperData();check(loops["songs"]["@empty"]["pads"][0]["events"].size()==1,"Loop playback recursively recorded its own events");
+    juce::MemoryBlock host;engine.getStateInformation(host);CueProcessor hostRecall;hostRecall.prepareToPlay(48000,512);hostRecall.setStateInformation(host.getData(),(int)host.getSize());renderChecked(hostRecall,audio,midi);check(hostRecall.hasPadLooper(0,15)&&hostRecall.looperState(true)["pads"][0]["events"].size()==1,"Host state did not restore native pad-loop events");
+    const auto one=engine.importLocalFile(juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a")),two=engine.importLocalFile(juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));
+    const auto selectSong=[&](int index){auto* queue=new juce::DynamicObject;queue->setProperty("tracks",juce::Array<juce::var>{one,two});queue->setProperty("index",index);engine.setNativeQueue(juce::var(queue));const auto id=(index?two:one)["id"].toString();engine.loadRemote("beatmaker-local://"+id,0,id);for(int i=0;i<1000&&!engine.ready.load();++i){renderChecked(engine,audio,midi);juce::Thread::sleep(2);}check(engine.ready.load(),"Looper navigation source did not load");renderChecked(engine,audio,midi);};
+    selectSong(0);check(engine.looperState()["pads"].size()==0,"An unseen song inherited another song/empty-workspace loopers");
+    engine.looperAction(juce::JSON::parse(R"({"cmd":"assign","bank":"A","pad":15})"));renderChecked(engine,audio,midi);engine.looperAction(juce::JSON::parse(R"({"cmd":"press","bank":"A","pad":15})"));engine.looperAction(juce::JSON::parse(R"({"cmd":"release","bank":"A","pad":15})"));renderChecked(engine,audio,midi);
+    midi.addEvent(juce::MidiMessage::noteOn(1,36,(juce::uint8)90),40);renderChecked(engine,audio,midi);engine.looperAction(juce::JSON::parse(R"({"cmd":"press","bank":"A","pad":15})"));engine.looperAction(juce::JSON::parse(R"({"cmd":"release","bank":"A","pad":15})"));renderChecked(engine,audio,midi);
+    selectSong(1);check(engine.looperState()["pads"].size()==0,"Changing songs did not stop/isolate the active MIDI pad loop");selectSong(0);check(engine.hasPadLooper(0,14)&&engine.looperState(true)["pads"][0]["events"].size()==1&&(int)engine.looperState()["pads"][0]["mode"]==PadLooper::stopped,"Returning to a song lost its loop or resumed it without a press");
+    std::cout<<"PASS: exact native internal pad-loop timing/velocity, record/play/overdub, live overdub repeat/no double replay, independent layer undo/redo and hold gestures, exclusive switching and state; no callback allocation\n";
+}
+
+static void permanentLocalEraseTests(){
+    CueProcessor engine;engine.prepareToPlay(48000,512);engine.installSampleForTest(sample());juce::AudioBuffer<float> pcm(2,512);juce::MidiBuffer midi;renderChecked(engine,pcm,midi);engine.recording(juce::JSON::parse(R"({"cmd":"start","source":"playback"})"));engine.submit({CueProcessor::Action::play});renderChecked(engine,pcm,midi);
+    const auto take=engine.recording(juce::JSON::parse(R"({"cmd":"stop"})")),track=take["track"];const auto id=track["id"].toString();const juce::File file(track["path"].toString());engine.samplerSource(track);
+    auto library=juce::JSON::parse(engine.libraryStore.readLibrary());const auto baseline=juce::JSON::toString(library);library["favorites"].getArray()->add(track);library["history"].getArray()->add(track);
+    auto playlist=juce::JSON::parse(R"({"id":"erase-audio-fixture","name":"Delete fixture","tracks":[]})");playlist["tracks"].getArray()->add(track);library["playlists"].getArray()->add(playlist);engine.libraryStore.commitLibrary(baseline,juce::JSON::toString(library));
+    const auto beforeDelete=engine.libraryStore.readLibrary();auto removedOnly=juce::JSON::parse(beforeDelete);for(auto& item:*removedOnly["playlists"].getArray())if(item["id"].toString()=="erase-audio-fixture")item.getDynamicObject()->setProperty("tracks",juce::Array<juce::var>{});engine.libraryStore.commitLibrary(beforeDelete,juce::JSON::toString(removedOnly));
+    check(file.existsAsFile(),"Removing a playlist entry deleted retained audio");const auto result=engine.eraseLocalAudio(id);check((bool)result["erased"]&&!file.existsAsFile()&&!engine.libraryStore.media(id).isObject()&&engine.cachedTrack(id).isVoid(),"Remove from library did not erase the managed recording and registry entry");
+    const auto cache=engine.libraryStore.mediaDirectory().getChildFile("Waveforms/sampler-"+id+".json");check(!cache.existsAsFile(),"Permanent audio removal retained its sampler waveform cache");
+    auto stale=juce::JSON::parse(beforeDelete);auto resurrect=juce::JSON::parse(R"({"id":"stale-delete-fixture","name":"Stale edit","tracks":[]})");resurrect["tracks"].getArray()->add(track);stale["playlists"].getArray()->add(resurrect);engine.libraryStore.commitLibrary(beforeDelete,juce::JSON::toString(stale));
+    const auto committed=juce::JSON::parse(engine.libraryStore.readLibrary());for(const auto& item:*committed["playlists"].getArray())for(const auto& song:*item["tracks"].getArray())check(song["id"].toString()!=id,"A stale library edit resurrected a permanently deleted track");
+    const auto recovered=engine.recording(juce::JSON::parse(R"({"cmd":"recover"})"));for(const auto& entry:*recovered.getArray())check(entry["path"].toString()!=file.getFullPathName(),"Recording recovery resurrected a deleted take");
+    bool rejected=false;try{engine.prepareLocalAudioExport(id);}catch(const std::exception&){rejected=true;}check(rejected,"A permanently deleted take could still be exported");
+    const auto original=juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a");const auto imported=engine.importLocalFile(original);const auto importedPath=imported["path"].toString();const auto protectedResult=engine.libraryStore.eraseLocalMedia(imported["id"].toString(),juce::StringArray{importedPath});
+    check((bool)protectedResult["retainedForAnotherUse"]&&juce::File(importedPath).existsAsFile()&&original.existsAsFile(),"Permanent library removal erased another pad/track's audio or the external original");juce::File(importedPath).deleteFile();
+    std::cout<<"PASS: permanent managed recording/import deletion, waveform/registry cleanup, playlist-only preservation, stale-edit/recovery tombstones and independent original/other-use protection\n";
+}
+
+static void midiVelocityTests(){
+    {
+        CueProcessor processor;processor.prepareToPlay(48000,512);processor.installSampleForTest(sample());block(processor,512);
+        processor.submit({CueProcessor::Action::seek,0,0,.25});block(processor,512);processor.submit({CueProcessor::Action::pad,0,0,0,true});block(processor,512);
+        juce::AudioBuffer<float> audio(2,512);juce::MidiBuffer midi;
+        const auto hit=[&](bool enabled){processor.midiVelocityEnabled.store(enabled);processor.submit({CueProcessor::Action::pause});renderChecked(processor,audio,midi);
+            midi.addEvent(juce::MidiMessage::noteOn(1,48,(juce::uint8)32),37);renderChecked(processor,audio,midi);
+            check(audio.getMagnitude(0,0,37)==0,"Velocity option lost the MIDI sample offset");return audio.getSample(0,511);};
+        check(std::abs(hit(true)-.4f*32/127)<1e-6f,"Enabled MIDI velocity did not scale cue audio");
+        check(std::abs(hit(false)-.4f)<1e-6f,"Disabled MIDI velocity did not play cue audio at full level");
+        const auto before=processor.padStates[0].load()>>1;
+        midi.addEvent(juce::MidiMessage::noteOn(1,48,(juce::uint8)0),0);renderChecked(processor,audio,midi);
+        check((processor.padStates[0].load()>>1)==before&&(processor.padStates[0].load()&1u)==0,"Velocity-zero Note On became a trigger with velocity disabled");
+        juce::MemoryBlock saved;processor.getStateInformation(saved);CueProcessor recalled;recalled.prepareToPlay(48000,512);recalled.setStateInformation(saved.getData(),(int)saved.getSize());
+        check(!recalled.midiVelocityEnabled.load()&&juce::JSON::parse(recalled.sessionUiState())["musike:midi:velocity"].toString()=="off","State recall did not restore MIDI velocity in engine/UI state");
+        auto legacy=juce::AudioProcessor::getXmlFromBinary(saved.getData(),(int)saved.getSize());legacy->removeAttribute("midiVelocity");juce::MemoryBlock old;juce::AudioProcessor::copyXmlToBinary(*legacy,old);recalled.setStateInformation(old.getData(),(int)old.getSize());
+        check(recalled.midiVelocityEnabled.load(),"Legacy state did not retain enabled MIDI velocity by default");
+        CueProcessor drums;drums.prepareToPlay(48000,512);drums.importPadSample(0,0,juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));
+        const auto drumHit=[&](bool enabled){midi.addEvent(juce::MidiMessage::allSoundOff(1),0);renderChecked(drums,audio,midi);drums.midiVelocityEnabled.store(enabled);
+            midi.addEvent(juce::MidiMessage::noteOn(1,48,(juce::uint8)32),37);renderChecked(drums,audio,midi);check(audio.getMagnitude(0,0,37)==0,"Sample velocity option lost its MIDI offset");return audio.getMagnitude(0,512);};
+        const float quiet=drumHit(true),full=drumHit(false);
+        check(full>.001f&&std::abs(quiet/full-32.0f/127)<1e-5f,"Velocity option did not scale imported one-shot samples consistently");
+    }
+    {
+        LibraryStore store;const auto previous=store.readPreferences("standalone");
+        struct Restore{LibraryStore& store;juce::String saved;~Restore(){store.writePreferences(saved,"standalone");}}restore{store,previous};
+        store.writePreferences("{\"musike:midi:velocity\":\"off\"}","standalone");
+        juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_Standalone);
+        CueProcessor cold;juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_Undefined);
+        check(!cold.midiVelocityEnabled.load(),"Standalone restart required a WebView to restore velocity preference");
+    }
+    std::cout<<"PASS: MIDI velocity on/off for cue/sample audio, retained sample offsets and zero-velocity release, compatible state/UI recall and native cold preference restore; no callback allocation\n";
+}
+
+static void trackPlaybackTests(){
+    CueProcessor processor;processor.prepareToPlay(48000,128);processor.songPlaybackEnabled.store(true);
+    const auto fixture=juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a");juce::Array<juce::var> tracks;
+    for(int i=0;i<3;++i)tracks.add(processor.importLocalFile(fixture));
+    auto* settings=new juce::DynamicObject;settings->setProperty(juce::Identifier(tracks[0]["id"].toString()),juce::JSON::parse("{\"speed\":30,\"speedMode\":\"pitch\",\"tuning\":5}"));
+    settings->setProperty(juce::Identifier(tracks[2]["id"].toString()),juce::JSON::parse("{\"speed\":-50,\"speedMode\":\"speed\",\"tuning\":-7}"));
+    auto* ui=new juce::DynamicObject;ui->setProperty("musike:track-playback",juce::JSON::toString(juce::var(settings)));processor.setWebState(juce::JSON::toString(juce::var(ui)));
+    const auto queue=[&](int index){auto* value=new juce::DynamicObject;value->setProperty("tracks",tracks);value->setProperty("index",index);value->setProperty("repeat","one");processor.setNativeQueue(juce::var(value));};
+    const auto wait=[&](int index){for(int i=0;i<1500;++i){block(processor,128);if(processor.ready.load()&&!processor.nativeAdvancing.load()&&processor.nativeSnapshot()["trackId"].toString()==tracks[index]["id"].toString())return true;juce::Thread::sleep(2);}return false;};
+    const auto verify=[&](double speed,const juce::String& mode,double tuning){const auto snapshot=processor.nativeSnapshot();const auto value=snapshot["playback"];
+        if(!(std::abs((double)value["speed"]-speed)<.01&&value["speedMode"].toString()==mode&&std::abs((double)value["tuning"]-tuning)<.01))throw std::runtime_error("Per-song native controls expected "+juce::String(speed).toStdString()+"/"+mode.toStdString()+"/"+juce::String(tuning).toStdString()+" got "+juce::JSON::toString(snapshot,true).toStdString());};
+    queue(0);processor.loadRemote("beatmaker-local://"+tracks[0]["id"].toString(),0,tracks[0]["id"].toString());check(wait(0),"Per-song audio fixture did not load");verify(30,"pitch",5);
+    check(processor.setTrackPlayback(tracks[0]["id"].toString(),juce::JSON::parse("{\"speed\":25,\"speedMode\":\"pitch\",\"tuning\":3}")),"Current song playback setting was rejected");verify(25,"pitch",3);
+    processor.backgroundPlayback.store(true);
+    check(processor.performRemoteAction(CueProcessor::RemoteAction::next)&&wait(1),"Background next did not select the second song");verify(0,"speed",0);
+    check(!processor.setTrackPlayback(tracks[0]["id"].toString(),juce::JSON::parse("{\"speed\":99}")),"A delayed old-song rate command changed the new song");verify(0,"speed",0);
+    check(processor.performRemoteAction(CueProcessor::RemoteAction::next)&&wait(2),"Background next did not select the third song");verify(-50,"speed",-7);
+    check(processor.performRemoteAction(CueProcessor::RemoteAction::previous)&&wait(1),"Background previous did not return to the second song");verify(0,"speed",0);
+    check(processor.performRemoteAction(CueProcessor::RemoteAction::previous)&&wait(0),"Background previous did not return to the first song");verify(25,"pitch",3);
+    processor.backgroundPlayback.store(false);
+    processor.loadRemote("beatmaker-local://"+tracks[2]["id"].toString(),0,tracks[2]["id"].toString(),true);verify(25,"pitch",3);
+    const auto saved=processor.sessionUiState();const auto map=juce::JSON::parse(juce::JSON::parse(saved)["musike:track-playback"].toString());
+    check((double)map[juce::Identifier(tracks[0]["id"].toString())]["speed"]==25&&(double)map[juce::Identifier(tracks[2]["id"].toString())]["tuning"]==-7,"Per-song playback settings were not retained in native session state");
+    CueProcessor cold;cold.prepareToPlay(48000,128);cold.songPlaybackEnabled.store(true);cold.setWebState(saved);
+    auto* coldQueue=new juce::DynamicObject;coldQueue->setProperty("tracks",tracks);coldQueue->setProperty("index",2);cold.setNativeQueue(juce::var(coldQueue));cold.loadRemote("beatmaker-local://"+tracks[2]["id"].toString(),0,tracks[2]["id"].toString());
+    for(int i=0;i<1000&&!cold.ready.load();++i){block(cold,128);juce::Thread::sleep(2);}
+    check(cold.ready.load()&&(double)cold.nativeSnapshot()["playback"]["speed"]==-50&&cold.semitones.load()==-7,"Cold native restore lost a song's playback controls");
+    std::cout<<"PASS: per-song native playback settings, neutral unseen songs, screen-off next/previous, stale-rate rejection, no prefetch side effects and cold session restore; no callback allocation\n";
+}
+
 static void nativePadInputTests(){
     CueProcessor processor;processor.prepareToPlay(48000,128);processor.installSampleForTest(sample());block(processor,128);
     processor.submit({CueProcessor::Action::seek,0,0,2.25});block(processor,128);
@@ -118,6 +448,10 @@ static void nativePadInputTests(){
     check(router.pointerDown(150,250,400,800,false,epoch+200,1),"Native changed-cue fixture did not queue");
     request.getDynamicObject()->setProperty("eventEpochMs",epoch+200);request.getDynamicObject()->setProperty("to",.25);
     const auto changed=router.claim(request);check((bool)changed["accepted"]&&(bool)changed["stale"],"Changed cue target would replay an already accepted physical event");request.getDynamicObject()->setProperty("to",.125);
+    check(router.pointerDown(150,250,400,800,false,epoch+500,1)&&router.pointerDown(150,250,400,800,false,epoch+550,1),"Rapid touch receipt fixture did not queue both genuine taps");
+    request.getDynamicObject()->setProperty("orderedTouch",true);request.getDynamicObject()->setProperty("eventEpochMs",epoch-8000);
+    check((bool)router.claim(request)["accepted"]&&(bool)router.claim(request)["accepted"]&&!(bool)router.claim(request)["accepted"],"Secondary-finger clock mismatch duplicated/dropped an ordered touch or merged genuine rapid taps");
+    request.getDynamicObject()->setProperty("orderedTouch",false);
     block(processor,128);router.invalidateLayout();router.configure(map);
     check(!router.pointerDown(150,250,400,800,false,epoch,1),"Native input accepted a pre-resize layout revision");
     configure();processor.backgroundPlayback.store(true);
@@ -186,6 +520,27 @@ static void fxGraphRoutingTests(){
     processor.setFxGraph(juce::JSON::parse("{\"enabled\":true,\"multi\":true,\"effects\":[\"flanger\",\"filterDrive\",\"equalizer\",\"duckComp\"]}"));
     for(int i=0;i<80;++i){processor.setFxGraph(juce::JSON::parse("{\"x\":"+juce::String(i%11/10.0)+",\"y\":"+juce::String(i%7/6.0)+"}"));renderChecked(processor,audio,midi);}
     std::cout<<"PASS: native four-corner host-bus graph, latency/tails, paused transport, state/legacy recall, parameter validation and bypass; no callback allocation\n";
+}
+
+static void songTransitionTests(){
+    const auto folder=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("SongFadeFixture",{});folder.createDirectory();struct Cleanup{juce::File folder;~Cleanup(){folder.deleteRecursively();}}cleanup{folder};
+    for(int track=0;track<2;++track){const auto file=folder.getChildFile(juce::String(track)+".wav");juce::WavAudioFormat wav;std::unique_ptr<juce::AudioFormatWriter> writer(wav.createWriterFor(file.createOutputStream().release(),48000,2,24,{},0));juce::AudioBuffer<float> pcm(2,48000*3);for(int c=0;c<2;++c)for(int i=0;i<pcm.getNumSamples();++i)pcm.setSample(c,i,track?.5f:.25f);check(writer&&writer->writeFromAudioSampleBuffer(pcm,0,pcm.getNumSamples()),"Cannot write song fade fixture");}
+    for(const int rate:{44100,48000,96000}){
+        CueProcessor processor;processor.openEditors.store(1);processor.prepareToPlay(rate,256);check((bool)processor.transitions()["enabled"]&&std::abs((double)processor.transitions()["seconds"]-.35)<1e-9,"Song fades must default On at 350 ms");processor.setTransitions(juce::JSON::parse(R"({"enabled":true,"seconds":0.12})"));
+        juce::Array<juce::var> tracks;for(int i=0;i<2;++i)tracks.add(processor.importLocalFile(folder.getChildFile(juce::String(i)+".wav")));
+        auto* queue=new juce::DynamicObject;queue->setProperty("tracks",tracks);queue->setProperty("index",0);queue->setProperty("repeat","off");processor.setNativeQueue(juce::var(queue));processor.loadRemote("beatmaker-local://"+tracks[0]["id"].toString(),0,tracks[0]["id"].toString());juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;
+        const auto waitReady=[&](int index){for(int i=0;i<2000;++i){renderChecked(processor,audio,midi);if(processor.ready.load()&&!processor.nativeAdvancing.load()&&(int)processor.nativeSnapshot()["queueIndex"]==index)return true;juce::Thread::sleep(1);}return false;};
+        check(waitReady(0),"Fade fixture failed to load");processor.submit({CueProcessor::Action::play});for(int i=0;i<10;++i)renderChecked(processor,audio,midi);check(std::abs(audio.getSample(0,255)-.2f)<.0001f,"Fade fixture did not reach dry unity");
+        check(processor.navigateTo(1),"Foreground native navigation was rejected");bool faded=false,quiet=false;
+        for(int i=0;i<2000&&(int)processor.nativeSnapshot()["queueIndex"]==0;++i){renderChecked(processor,audio,midi);const float last=audio.getSample(0,255);if(last>.005f&&last<.18f)faded=true;if(faded&&last<.001f)quiet=true;juce::Thread::sleep(1);}
+        check(faded&&quiet,"Next cut the outgoing song before its fade reached silence");check(waitReady(1),"Faded Next never loaded its destination");check(audio.getMagnitude(0,256)<.05f,"Incoming song skipped fade-in");
+        for(int i=0;i<(int)std::ceil(rate*.15/256);++i)renderChecked(processor,audio,midi);check(std::abs(audio.getSample(0,255)-.4f)<.0001f,"Fade-in did not reach full song gain");
+        processor.setTransitions(juce::JSON::parse(R"({"enabled":false,"seconds":0.12})"));check(processor.navigateTo(0)&&waitReady(0),"Instant navigation failed with fades Off");for(int i=0;i<2;++i)renderChecked(processor,audio,midi);if(std::abs(audio.getSample(0,255)-.2f)>=.0001f)std::cerr<<"Instant fade rate "<<rate<<" sample "<<audio.getSample(0,255)<<" settings "<<juce::JSON::toString(processor.transitions(),true)<<" snapshot "<<juce::JSON::toString(processor.nativeSnapshot(),true)<<"\n";check(std::abs(audio.getSample(0,255)-.2f)<.0001f,"Turning fades Off left a reduced song level");
+        processor.setTransitions(juce::JSON::parse(R"({"enabled":true,"seconds":0.12})"));check(processor.navigateTo(1),"Cue-cancellation fade did not start");bool duringFade=false;for(int i=0;i<500;++i){renderChecked(processor,audio,midi);if(audio.getSample(0,255)<.17f){duringFade=true;break;}juce::Thread::sleep(1);}check(duringFade,"No outgoing fade was available for cue interruption");
+        processor.submit({CueProcessor::Action::cue,0,0,.2});renderChecked(processor,audio,midi);check(std::abs(audio.getSample(0,255)-.2f)<.0001f,"A cue inherited the slow song fade");for(int i=0;i<100;++i){renderChecked(processor,audio,midi);juce::Thread::sleep(1);}check((int)processor.nativeSnapshot()["queueIndex"]==0,"A cancelled song transition later overrode the cue");
+        processor.setTransitions(juce::JSON::parse(R"({"enabled":false,"seconds":0.2})"));juce::MemoryBlock state;processor.getStateInformation(state);CueProcessor restored;restored.prepareToPlay(rate,256);restored.setStateInformation(state.getData(),(int)state.getSize());check(!(bool)restored.transitions()["enabled"]&&std::abs((double)restored.transitions()["seconds"]-.2)<1e-9,"Song fade choice/duration did not survive host state");
+    }
+    std::cout<<"PASS: native Next fade-out reaches silence then fade-in, 44.1/48/96 kHz, default On, Instant Off, saved host settings and immediate cue cancellation; no callback allocation\n";
 }
 
 static void remoteTransportTests(){
@@ -597,10 +952,24 @@ int main() {
         }
         effectRoutingTests();
         padSampleTests();
+        sampleStartEditingTests();
+        mediaEditingTests();
+        recordingTests();
+       #if BEATMAKER_PERFORMANCE_FEATURES && !BEATMAKER_DESKTOP_BETA
+        hostedInputTests();
+       #endif
+        emptyTrackTests();
+        recordingMidiGuardTests();
+        mixerTests();
+        padLooperTests();
+        permanentLocalEraseTests();
+        midiVelocityTests();
+        trackPlaybackTests();
         nativePadInputTests();
         rateTransitionTests();
         fxGraphRoutingTests();
         remoteTransportTests();
+        songTransitionTests();
         selectedBankCacheTests();
         longTrackTests();
         return 0;

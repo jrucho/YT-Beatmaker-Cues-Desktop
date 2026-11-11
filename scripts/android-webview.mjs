@@ -29,7 +29,7 @@ export async function connectAndroidWebView(){
     const id=++counter,timer=setTimeout(()=>{pending.delete(id);reject(Error('Android CDP timeout'));},30000);
     pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));
   });
-  const evaluate=expression=>call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true}).then(result=>result.result.value);
+  const evaluate=expression=>call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true}).then(result=>result.result.value).catch(error=>{error.message+='\nAndroid expression: '+expression;throw error;});
   for(let i=0;i<100;i++){
     if(await evaluate('Boolean(window.__pluginStores&&!document.querySelector(".boot"))'))break;
     await delay(100);

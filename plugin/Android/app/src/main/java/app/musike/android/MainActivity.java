@@ -5,6 +5,7 @@ public final class MainActivity extends android.app.Activity {
     private final java.util.WeakHashMap<android.webkit.WebView, Boolean> configuredWebViews = new java.util.WeakHashMap<>();
     @Override protected void onCreate(android.os.Bundle state) {
         super.onCreate(state);
+        StandaloneBridge.setActivity(this);
         if (android.os.Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
         if (BuildConfig.DEBUG || BuildConfig.LATENCY_PROBE) android.webkit.WebView.setWebContentsDebuggingEnabled(true);
         android.view.View decor = getWindow().getDecorView();
@@ -68,5 +69,17 @@ public final class MainActivity extends android.app.Activity {
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
         super.onConfigurationChanged(configuration);
         getWindow().getDecorView().post(() -> publishInsets(getWindow().getDecorView().getRootWindowInsets()));
+    }
+    void pickGalleryVideo() {
+        try {
+            android.content.Intent intent=android.os.Build.VERSION.SDK_INT>=33 ? new android.content.Intent(android.provider.MediaStore.ACTION_PICK_IMAGES) : new android.content.Intent(android.content.Intent.ACTION_PICK,android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI);
+            intent.setType("video/*");intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivityForResult(intent,4047);
+        } catch(Exception error) { StandaloneBridge.galleryResult("",""); }
+    }
+    @Override protected void onActivityResult(int request,int result,android.content.Intent data) {
+        super.onActivityResult(request,result,data);if(request!=4047)return;
+        android.net.Uri uri=result==RESULT_OK&&data!=null?data.getData():null;String name="";
+        if(uri!=null)try(android.database.Cursor cursor=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){if(cursor!=null&&cursor.moveToFirst())name=cursor.getString(0);}catch(Exception ignored){}
+        StandaloneBridge.galleryResult(uri==null?"":uri.toString(),name==null?"":name);
     }
 }

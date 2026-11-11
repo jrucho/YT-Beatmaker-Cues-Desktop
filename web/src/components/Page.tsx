@@ -7,6 +7,7 @@ import { needsAttention, useSystem } from "../stores/system";
 import { useUi } from "../stores/ui";
 import { LogoMark } from "./Brand";
 import { IconButton } from "./IconButton";
+import { EditHistoryControls } from "./EditHistoryControls";
 
 /** Sticky page header. On phones it carries the brand mark and the settings entry, since there is no rail. */
 export function PageHeader({
@@ -40,6 +41,7 @@ export function PageHeader({
         {title && <h1 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight md:text-xl">{title}</h1>}
         {!title && <span className="flex-1" />}
         {actions}
+        <EditHistoryControls/>
         <IconButton
           label={attention ? t.nav.settingsUpdate : t.nav.settings}
           onClick={() => setSettingsOpen(true)}

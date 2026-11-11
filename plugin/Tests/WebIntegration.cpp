@@ -6,6 +6,8 @@
 #include <iostream>
 #if JUCE_MAC
 bool checkHostedKeyboardRouting();
+void showNativeWebIntegration(MobileWebEditor&);
+void pumpNativeWebIntegration();
 #endif
 #if JUCE_MAC || JUCE_WINDOWS
 bool checkNativePadInputRouting(CueProcessor&,MobileWebEditor&);
@@ -34,12 +36,16 @@ int main(int argc,char** argv) {
     juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_Undefined);
     auto editor=std::make_unique<MobileWebEditor>(processor,offline);
     editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);editor->setVisible(true);
+   #if JUCE_MAC
+    showNativeWebIntegration(*editor);
+   #endif
     juce::AudioBuffer<float> output(2,512);juce::MidiBuffer midi;
     bool renderedAudio=false;
     const auto pump=[&](int milliseconds){const auto end=juce::Time::getMillisecondCounter()+milliseconds;
         while(juce::Time::getMillisecondCounter()<end){
            #if JUCE_MAC
-            CFRunLoopRunInMode(kCFRunLoopDefaultMode,0.01,true);
+             CFRunLoopRunInMode(kCFRunLoopDefaultMode,0.01,true);
+             pumpNativeWebIntegration();
            #else
             juce::MessageManager::getInstance()->runDispatchLoopUntil(1);
            #endif
@@ -103,6 +109,15 @@ int main(int argc,char** argv) {
         if(!renderedAudio){std::cerr<<"Offline WebView produced no native host-bus audio: "<<processor.getStatus()<<"\n";return 1;}
         for(int i=0;i<100&&!(bool)evaluate("Boolean(window.__musikeAudioEl?.readyState>0&&window.__pluginStores.player.getState().status!=='loading')");++i)pump(50);
         if(!(bool)evaluate("Boolean(window.__musikeAudioEl?.readyState>0&&window.__pluginStores.player.getState().status!=='loading')")){std::cerr<<"Native audio rendered but the WebView did not reconcile ready state\n";return 1;}
+       #if BEATMAKER_PERFORMANCE_FEATURES && !BEATMAKER_DESKTOP_BETA
+        if(!(bool)processor.audioRoutes()["hostManaged"]){std::cerr<<"Hosted audio settings did not expose DAW ownership\n";return 1;}
+        evaluate("document.querySelector('a[href=\"/cues\"]').click();true");pump(150);evaluate("document.querySelector('button[aria-label=\"Settings\"]').click();true");pump(150);
+        evaluate("Array.from(document.querySelectorAll('[role=\"dialog\"] summary')).find(node=>node.textContent==='Audio input & output').click();true");pump(250);
+        if(!(bool)evaluate("(()=>{const panel=document.querySelector('[aria-label=\"Audio input and output settings\"]');return !!panel&&panel.textContent.includes('routed by your DAW')&&!panel.querySelector('[aria-label=\"Preferred audio input\"],[aria-label=\"Preferred audio output\"],[aria-label=\"Preferred audio output device\"]')&&panel.querySelector('[aria-label=\"Recording source\"] option[value=\"input\"]').textContent.includes('DAW');})()")){std::cerr<<"Hosted UI leaked standalone device selectors or did not offer DAW-input recording\n";return 1;}
+        evaluate("document.querySelector('[role=\"dialog\"] button[aria-label=\"Close\"]').click();true");for(int i=0;i<100&&(bool)evaluate("Boolean(document.querySelector('[role=\"dialog\"]'))");++i)pump(25);
+        if((bool)evaluate("Boolean(document.querySelector('[role=\"dialog\"]'))")){std::cerr<<"Hosted audio settings did not close: "<<evaluate("JSON.stringify({open:window.__pluginStores.ui.getState().settingsOpen,dialogs:[...document.querySelectorAll('[role=dialog]')].map(node=>({title:node.getAttribute('aria-label'),style:node.getAttribute('style')})),visibility:document.visibilityState})").toString()<<"\n";return 1;}
+        std::cout<<"PASS: real hosted WebView offers DAW-input recording/monitoring with host-owned device routing\n";
+       #endif
         evaluate("window.__pluginStores.cues.getState().setCue(1,0.125);window.__pluginStores.player.getState().cue(0.125,{bank:'A',pad:1});true");pump(200);
         if(processor.getCue(0,0)!=0.125||(processor.padStates[0].load()>>1)==0){std::cerr<<"Offline cue bridge did not reach native renderer\n";return 1;}
         auto second=processor.importLocalFile(juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));second.getDynamicObject()->setProperty("title","Background second track");
@@ -151,11 +166,12 @@ int main(int argc,char** argv) {
             if(!dynamic_cast<juce::ResizableCornerComponent*>(editor->getComponentAt(width-3,height-3))){std::cerr<<"Native resize grip is not reachable\n";return 1;}
         }
        #if !BEATMAKER_DESKTOP_BETA
-        evaluate("document.querySelector('a[href=\"/cues\"]')?.click();true");pump(200);
-        if(!(bool)evaluate("(()=>{if(window.__JUCE__.initialisationData.hostedPlugin?.[0]!==true||window.__pluginHosted!==true)return false;const p=window.__pluginStores.player,c=window.__pluginStores.cues;const snapshot=()=>{const s=p.getState();return JSON.stringify({shuffle:s.shuffle,repeat:s.repeat,volume:s.volume,muted:s.muted,loop:s.loop,cues:c.getState().cues});};const before=snapshot();for(const key of [...'awsedftgzhjikol',' ','ArrowLeft','ArrowUp','/','?']){if(!window.dispatchEvent(new KeyboardEvent('keydown',{key,code:key===' '?'Space':'Key'+key.toUpperCase(),bubbles:true,cancelable:true})))return false;}return snapshot()===before;})()")){std::cerr<<"Hosted WebView captured DAW/player keyboard shortcuts\n";return 1;}
+         evaluate("document.querySelector('a[href=\"/cues\"]')?.click();true");pump(200);
+         evaluate("window.__pluginStores.cues.getState().setBank('A');window.__pluginStores.cues.getState().setCue(1,.125);document.activeElement?.blur();true");pump(150);
+         if(!(bool)evaluate("(()=>{if(window.__JUCE__.initialisationData.hostedPlugin?.[0]!==true||window.__pluginHosted!==true)return false;const p=window.__pluginStores.player,c=window.__pluginStores.cues;const snapshot=()=>{const s=p.getState();return JSON.stringify({shuffle:s.shuffle,repeat:s.repeat,volume:s.volume,muted:s.muted,loop:s.loop,cues:c.getState().cues,dialogs:document.querySelectorAll('[role=dialog]').length});};const before=snapshot();for(const key of [...'awsedftgzhjikol',' ','ArrowLeft','ArrowUp','/','?']){if(!window.dispatchEvent(new KeyboardEvent('keydown',{key,code:key===' '?'Space':'Key'+key.toUpperCase(),bubbles:true,cancelable:true})))return false;}return snapshot()===before;})()")){std::cerr<<"Hosted WebView captured DAW/player keyboard shortcuts\n";return 1;}
         const auto keyboardPadBefore=processor.padStates[0].load()>>1;
-        evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'1',code:'Digit1',bubbles:true,cancelable:true}));true");pump(50);
-        if((processor.padStates[0].load()>>1)!=keyboardPadBefore+1){std::cerr<<"Hosted number-key cue shortcut did not reach native playback exactly once\n";return 1;}
+         evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'1',code:'Digit1',bubbles:true,cancelable:true}));true");for(int i=0;i<20&&(processor.padStates[0].load()>>1)==keyboardPadBefore;++i)pump(10);
+         if((processor.padStates[0].load()>>1)!=keyboardPadBefore+1){std::cerr<<"Hosted number-key cue shortcut did not reach native playback exactly once: before="<<keyboardPadBefore<<" after="<<(processor.padStates[0].load()>>1)<<" UI="<<evaluate("JSON.stringify({cues:window.__pluginStores.cues.getState().cues,status:window.__pluginStores.player.getState().status,dialogs:document.querySelectorAll('[role=dialog]').length})").toString()<<"\n";return 1;}
         std::cout<<"PASS: hosted letter/transport isolation with number-key pads restored\n";
        #if JUCE_MAC
          if(!checkHostedKeyboardRouting())return 1;

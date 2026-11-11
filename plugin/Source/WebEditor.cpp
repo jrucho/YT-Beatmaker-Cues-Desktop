@@ -20,6 +20,13 @@ juce::var object(std::initializer_list<std::pair<juce::Identifier,juce::var>> fi
     return juce::var(result.release());
 }
 juce::var failure(const juce::String& text) {return object({{"__error",text}});}
+ #if JUCE_ANDROID
+void registerMediaPickerTypes(){
+    static std::once_flag once;std::call_once(once,[]{
+        for(const auto& entry:std::initializer_list<std::pair<const char*,const char*>>{{"audio/mp4","m4a"},{"audio/x-m4a","m4a"},{"audio/aac","aac"},{"audio/flac","flac"},{"audio/x-flac","flac"},{"audio/ogg","ogg"},{"application/ogg","ogg"},{"video/mp4","mp4"},{"audio/mp4","mp4"},{"video/webm","webm"},{"video/x-matroska","mkv"}})juce::FileChooser::registerCustomMimeTypeForFileExtension(entry.first,entry.second);
+    });
+}
+ #endif
 juce::var bridgeResult(const juce::var& result){
     // JUCE 8.0.12 emits events through repeated String::replace calls. Large JSON
     // strings (catalog pages and library snapshots) contain many backslashes and
@@ -40,6 +47,9 @@ MobileWebEditor::MobileWebEditor(CueProcessor& processor, bool offline)
       webBytes(MobileWebAssets::mobileui_zip,MobileWebAssets::mobileui_zipSize,false), archive(webBytes), browser(options()) {
     const int defaultWidth=440,defaultHeight=800;
      #endif
+   #if JUCE_ANDROID
+    registerMediaPickerTypes();
+   #endif
     const bool standalone=engine.wrapperType==juce::AudioProcessor::wrapperType_Standalone;
     const int width=!standalone&&engine.editorWidth.load()>0?engine.editorWidth.load():defaultWidth,height=!standalone&&engine.editorHeight.load()>0?engine.editorHeight.load():defaultHeight;
     setResizable(true,resizeGripSize>0);
@@ -57,10 +67,13 @@ MobileWebEditor::MobileWebEditor(CueProcessor& processor, bool offline)
    #if (JUCE_MAC || JUCE_IOS || JUCE_WINDOWS) && !BEATMAKER_DESKTOP_BETA
     nativePadInput=std::make_unique<NativePadInput>(engine,browser);
    #endif
+   #if BEATMAKER_PERFORMANCE_FEATURES && !BEATMAKER_DESKTOP_BETA
+    engine.songPlaybackEnabled.store(true);
+   #endif
     browser.goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
     startTimerHz(60);
 }
-MobileWebEditor::~MobileWebEditor(){nativePadInput.reset();hostedKeyboard.reset();stopTimer();cancelled->store(true);requests.removeAllJobs(true,-1);storageWorker.removeAllJobs(false,-1);engine.openEditors.fetch_sub(1);}
+MobileWebEditor::~MobileWebEditor(){setRecordingMidiGuard(false);setFineMidiEditor(false);nativePadInput.reset();hostedKeyboard.reset();stopTimer();cancelled->store(true);requests.removeAllJobs(true,-1);mediaWorker.removeAllJobs(false,-1);engine.clearSamplerPreview();storageWorker.removeAllJobs(false,-1);engine.openEditors.fetch_sub(1);}
 void MobileWebEditor::parentHierarchyChanged(){
    #if JUCE_IOS || JUCE_ANDROID
     // Logical-to-physical rounding may leave the last device pixel to the JUCE
@@ -85,8 +98,21 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
        #if BEATMAKER_DESKTOP_BETA
         .withInitialisationData("desktopBeta",true)
        #endif
+        .withInitialisationData("appVersion",JucePlugin_VersionString)
+        .withInitialisationData("songTransitions",true)
+        .withInitialisationData("performanceFeatures",BEATMAKER_PERFORMANCE_FEATURES&&!BEATMAKER_DESKTOP_BETA)
+       #if JUCE_ANDROID
+        .withInitialisationData("nativePlatform","android")
+       #elif JUCE_IOS
+        .withInitialisationData("nativePlatform","ios")
+       #else
+        .withInitialisationData("nativePlatform","desktop")
+       #endif
         .withInitialisationData("pluginStorage",engine.sessionUiState())
         .withInitialisationData("hostedPlugin",engine.wrapperType!=juce::AudioProcessor::wrapperType_Standalone&&engine.wrapperType!=juce::AudioProcessor::wrapperType_Undefined)
+       #if JUCE_IOS && BEATMAKER_IOS_PREVIEW
+        .withInitialisationData("iosPreviewFeatures",engine.wrapperType==juce::AudioProcessor::wrapperType_Standalone||engine.wrapperType==juce::AudioProcessor::wrapperType_Undefined)
+       #endif
        #if (JUCE_MAC || JUCE_IOS || JUCE_WINDOWS) && !BEATMAKER_DESKTOP_BETA
         .withInitialisationData("nativePadInput",true)
        #endif
@@ -102,6 +128,7 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withNativeFunction("padTouchClaim",[this](const auto& args,auto complete){complete(nativePadInput?nativePadInput->claim(args[0]):object({{"accepted",false}}));})
         .withNativeFunction("padTouchState",[this](const auto&,auto complete){complete(nativePadInput?nativePadInput->state():object({{"supported",false}}));})
         .withNativeFunction("padTouchDiagnostics",[this](const auto&,auto complete){complete(nativePadInput?nativePadInput->diagnostics():object({{"supported",false}}));})
+        .withNativeFunction("cueWorkspace",[this](const auto& args,auto complete){if(nativePadInput)nativePadInput->setPageScrollLocked(!args.isEmpty()&&(bool)args[0]);complete(true);})
         .withNativeFunction("keyboardFocus",[this](const auto& args,auto complete){if(hostedKeyboard&&!args.isEmpty())hostedKeyboard->setUiState((bool)args[0]["editing"],(bool)args[0]["padsActive"]);complete(true);})
         .withNativeFunction("keyboardDiagnostics",[this](const auto&,auto complete){complete(hostedKeyboard?hostedKeyboard->diagnostics():juce::var{});})
         .withNativeFunction("store",[this](const auto& args,auto complete){
@@ -120,17 +147,38 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withNativeFunction("librarySnapshot",[this](const auto&,auto complete){storageTask([this]{return engine.libraryStore.readSnapshot();},std::move(complete));})
         .withNativeFunction("libraryCommit",[this](const auto& args,auto complete){const auto baseline=args[0]["base"].toString(), next=args[0]["next"].toString();storageTask([this,baseline,next]{return juce::var(engine.libraryStore.commitLibrary(baseline,next));},std::move(complete));})
         .withNativeFunction("cachedTrack",[this](const auto& args,auto complete){const auto id=args[0].toString();storageTask([this,id]{return engine.cachedTrack(id);},std::move(complete));})
+        .withNativeFunction("localMedia",[this](const auto&,auto complete){storageTask([this]{return engine.libraryStore.allMedia();},std::move(complete));})
+        .withNativeFunction("renameLocalAudio",[this](const auto& args,auto complete){const auto id=args[0]["id"].toString(),title=args[0]["title"].toString();storageTask([this,id,title]{return engine.libraryStore.renameLocalMedia(id,title);},std::move(complete),true);})
+        .withNativeFunction("mixer",[this](const auto& args,auto complete){try{if(!args.isEmpty())engine.setMixer(args[0]);complete(engine.mixerState());}catch(const std::exception& error){complete(failure(error.what()));}})
+        .withNativeFunction("transitions",[this](const auto& args,auto complete){try{if(!args.isEmpty())engine.setTransitions(args[0]);complete(engine.transitions());}catch(const std::exception& error){complete(failure(error.what()));}})
+        .withNativeFunction("looperState",[this](const auto& args,auto complete){try{complete(engine.looperState(!args.isEmpty()&&(bool)args[0]["events"]));}catch(const std::exception& error){complete(failure(error.what()));}})
+        .withNativeFunction("looperPad",[this](const auto& args,auto complete){try{complete(engine.looperAction(args[0]));}catch(const std::exception& error){complete(failure(error.what()));}})
+        .withNativeFunction("remapLoopers",[this](const auto& args,auto complete){try{engine.remapLoopers(args[0]["mappings"],args[0]["scope"].toString());complete(true);}catch(const std::exception& error){complete(failure(error.what()));}})
+        .withNativeFunction("shareAudio",[this](const auto& args,auto complete){shareAudio(args.isEmpty()?juce::String{}:args[0]["id"].toString(),std::move(complete));})
+        .withNativeFunction("eraseLocalAudio",[this](const auto& args,auto complete){const auto id=args[0]["id"].toString();if(engine.nativeSnapshot()["trackId"].toString()==id)engine.unloadSong();storageTask([this,id]{return engine.eraseLocalAudio(id);},std::move(complete),true);})
+        .withNativeFunction("audioRoutes",[this](const auto&,auto complete){complete(engine.audioRoutes());})
+        .withNativeFunction("configureAudio",[this](const auto& args,auto complete){engine.configureAudio(args.isEmpty()?juce::var{}:args[0],std::move(complete));})
+        .withNativeFunction("recordAudio",[this](const auto& args,auto complete){const auto request=args.isEmpty()?juce::var{}:args[0];if(request["cmd"].toString()=="state"){complete(engine.recording(request));return;}storageTask([this,request]{return engine.recording(request);},std::move(complete),true);})
+        .withNativeFunction("samplerSource",[this](const auto& args,auto complete){const auto track=args[0];const auto cancel=cancelled;storageTask([this,track,cancel]{return engine.samplerSource(track,[cancel]{return cancel->load();});},std::move(complete),true);})
+        .withNativeFunction("samplerPreview",[this](const auto& args,auto complete){auto request=args.isEmpty()?juce::var{}:args[0].clone();if(!request.isObject()){complete(failure("Invalid sampler preview"));return;}if(request["cmd"].toString()=="stop"){engine.clearSamplerPreview();complete(true);return;}request.getDynamicObject()->setProperty("ticket",engine.reserveSamplerPreview());storageTask([this,request]{return engine.previewSamplerSource(request);},std::move(complete),true);})
+        .withNativeFunction("chopAudio",[this](const auto& args,auto complete){const auto request=args[0];const auto cancel=cancelled;storageTask([this,request,cancel]{return engine.chopSamplerSource(request,[cancel]{return cancel->load();});},std::move(complete),true);})
+        .withNativeFunction("assignPadSamples",[this](const auto& args,auto complete){const auto assignments=args[0];storageTask([this,assignments]{return engine.assignPadSamples(assignments);},std::move(complete),true);})
         .withNativeFunction("loadDiagnostics",[this](const auto&,auto complete){complete(engine.loadDiagnostics());})
         .withNativeFunction("waveform",[this](const auto&,auto complete){complete(engine.waveformSnapshot());})
+        .withNativeFunction("waveformRegion",[this](const auto& args,auto complete){const auto request=args[0];storageTask([this,request]{return engine.waveformRegion(request);},std::move(complete));})
         .withNativeFunction("padSamples",[this](const auto&,auto complete){complete(engine.padSamples());})
+        .withNativeFunction("remapPadSamples",[this](const auto& args,auto complete){const auto mappings=args.isEmpty()?juce::var{}:args[0];storageTask([this,mappings]{return engine.remapPadSamples(mappings);},std::move(complete));})
         .withNativeFunction("padSample",[this](const auto& args,auto complete){
             const auto request=args.isEmpty()?juce::var{}:args[0];const auto bank=request["bank"].toString();const int pad=(int)request["pad"]-1;
             if(bank.length()!=1||bank[0]<'A'||bank[0]>'J'||pad<0||pad>=16){complete(failure("Invalid sample pad"));return;}
             const int bankIndex=(int)bank[0]-'A';const auto command=request["cmd"].toString();
             if(command=="trigger"){complete(engine.submit({CueProcessor::Action::pad,bankIndex,pad}));return;}
+            if(command=="preview"){const double start=(double)request["start"];if(!std::isfinite(start)||start<0){complete(failure("Invalid sample start"));return;}complete(engine.submit({CueProcessor::Action::auditionSample,bankIndex,pad,start}));return;}
             if(command=="remove"){storageTask([this,bankIndex,pad]{return engine.removePadSample(bankIndex,pad);},std::move(complete));return;}
+            if(command=="start"){const double start=(double)request["start"];storageTask([this,bankIndex,pad,start]{return engine.editPadSample(bankIndex,pad,start);},std::move(complete));return;}
+            if(command=="restore"){const auto descriptor=request["descriptor"];storageTask([this,bankIndex,pad,descriptor]{return engine.restorePadSample(bankIndex,pad,descriptor);},std::move(complete));return;}
             if(command!="load"){complete(failure("Unknown sample command"));return;}
-            exporter=std::make_unique<juce::FileChooser>("Load sample into "+bank+juce::String(pad+1),juce::File{},"*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.ogg");
+            exporter=std::make_unique<juce::FileChooser>("Load sample into "+bank+juce::String(pad+1),juce::File{},"*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.aac;*.ogg");
             juce::Component::SafePointer<MobileWebEditor> safe(this);
             exporter->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe,bankIndex,pad,complete=std::move(complete)](const auto& chooser){
                 if(!safe)return;const auto source=chooser.getURLResult();
@@ -152,17 +200,38 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
             try{if(!args.isEmpty())engine.setFxGraph(args[0]);complete(engine.fxGraphState());}
             catch(const std::exception& error){complete(failure(error.what()));}
         })
-        .withNativeFunction("importAudio",[this](const auto&,auto complete){
-            exporter=std::make_unique<juce::FileChooser>("Import audio",juce::File{},"*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a");
+        .withNativeFunction("importAudio",[this](const auto& args,auto complete){
+            const bool multiple=!args.isEmpty()&&(bool)args[0]["multiple"];
+            exporter=std::make_unique<juce::FileChooser>("Import audio",juce::File{},"*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.aac;*.ogg;*.mp4;*.mov");
             juce::Component::SafePointer<MobileWebEditor> safe(this);
-            exporter->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,
-                [safe,complete=std::move(complete)](const auto& chooser){
-                    if(!safe)return;const auto file=chooser.getResult();if(!file.existsAsFile()){complete(juce::var{});return;}
-                    safe->storageTask([safe,file]{return safe?safe->engine.importLocalFile(file):juce::var{};},std::move(complete));
+            exporter->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles|(multiple?juce::FileBrowserComponent::canSelectMultipleItems:0),
+                [safe,multiple,complete=std::move(complete)](const auto& chooser){
+                    if(!safe)return;const auto files=chooser.getURLResults();
+                    safe->storageTask([safe,files,multiple]{
+                        if(!safe)return juce::var{};if(files.size()>32)throw std::runtime_error("Import up to 32 files at a time");
+                        juce::Array<juce::var> tracks,errors;
+                        for(const auto& file:files){try{tracks.add(safe->engine.importLocalAudio(file));}catch(const std::exception& error){if(!multiple)throw;errors.add(object({{"file",file.getFileName()},{"message",juce::String(error.what())}}));}}
+                        return multiple?object({{"tracks",tracks},{"errors",errors}}):(tracks.size()?tracks[0]:juce::var{});
+                    },std::move(complete),true);
                 });
         })
+        .withNativeFunction("importGallery",[this](const auto&,auto complete){
+            if(galleryBusy){complete(failure("A gallery picker is already open"));return;}galleryBusy=true;juce::Component::SafePointer<MobileWebEditor> safe(this);
+            gallery=pickGalleryVideo(*this,[safe,complete=std::move(complete)](GallerySelection selection)mutable{
+                if(!safe){if(selection.temporaryDirectory!=juce::File{})selection.temporaryDirectory.deleteRecursively();return;}safe->galleryBusy=false;
+                auto cleanup=std::shared_ptr<juce::File>(new juce::File(selection.temporaryDirectory),[](juce::File* folder){if(*folder!=juce::File{})folder->deleteRecursively();delete folder;});
+                if(selection.error.isNotEmpty()){complete(failure(selection.error));return;}
+                if(selection.source.isEmpty()){complete(object({{"tracks",juce::Array<juce::var>{}},{"errors",juce::Array<juce::var>{}}}));return;}
+                safe->storageTask([safe,selection,cleanup]{
+                    auto track=safe->engine.importLocalAudio(selection.source);
+                    const auto name=selection.name.isEmpty()?juce::String{}:juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile(juce::File::createLegalFileName(selection.name)).getFileNameWithoutExtension();
+                    if(name.isNotEmpty())track=safe->engine.libraryStore.renameLocalMedia(track["id"].toString(),name)["track"];
+                    return object({{"tracks",juce::Array<juce::var>{track}},{"errors",juce::Array<juce::var>{}}});
+                },std::move(complete),true);
+            });
+        })
         .withNativeFunction("syncCues",[this](const auto& args,auto complete){if(!engine.backgroundPlayback.load()&&!uiStateIsStale())engine.syncWebCues(args[0]);complete(true);})
-        .withNativeFunction("midiOptions",[this](const auto& args,auto complete){engine.overwrite.store((bool)args[0]["overwrite"]);complete(true);})
+        .withNativeFunction("midiOptions",[this](const auto& args,auto complete){if(args[0].hasProperty("overwrite"))engine.overwrite.store((bool)args[0]["overwrite"]);if(args[0].hasProperty("velocityEnabled"))engine.midiVelocityEnabled.store((bool)args[0]["velocityEnabled"]);if(args[0].hasProperty("suspendPadActions"))setRecordingMidiGuard((bool)args[0]["suspendPadActions"]);if(args[0].hasProperty("fineEdit"))setFineMidiEditor((bool)args[0]["fineEdit"]);complete(true);})
         .withNativeFunction("http",[this](const auto& args,auto complete){if(offlineSmoke)complete(failure("Catalog disabled for offline smoke test"));else http(args[0],std::move(complete));})
         .withNativeFunction("diagnostic",[](const auto& args,auto complete){juce::Logger::outputDebugString("Plugin UI: "+args[0].toString());complete(true);})
         .withNativeFunction("exportText",[this](const auto& args,auto complete){
@@ -204,9 +273,36 @@ std::optional<juce::WebBrowserComponent::Resource> MobileWebEditor::resource(con
     return juce::WebBrowserComponent::Resource{std::move(data),mime};
 }
 
-void MobileWebEditor::storageTask(std::function<juce::var()> action,juce::WebBrowserComponent::NativeFunctionCompletion complete){
+void MobileWebEditor::shareAudio(const juce::String& id,juce::WebBrowserComponent::NativeFunctionCompletion complete){
+    if(audioExportBusy){complete(failure("An audio export is already open"));return;}
+    audioExportBusy=true;juce::Component::SafePointer<MobileWebEditor> safe(this);
+    storageTask([this,id]{return engine.prepareLocalAudioExport(id);},[safe,complete=std::move(complete)](juce::var prepared)mutable{
+        if(!safe)return;
+        if(prepared.hasProperty("__error")){safe->audioExportBusy=false;complete(prepared);return;}
+        const juce::File file(prepared["path"].toString()),folder(prepared["folder"].toString());
+        auto finish=[safe,folder,complete=std::move(complete)](bool success,const juce::String& error)mutable{
+            if(!safe)return;safe->audioExportBusy=false;
+            juce::MessageManager::callAsync([safe]{if(safe)safe->audioSharer={};});
+            safe->mediaWorker.addJob([folder]{folder.deleteRecursively();});
+            complete(error.isNotEmpty()?failure(error):object({{"shared",success},{"cancelled",!success}}));
+        };
+       #if JUCE_IOS || JUCE_ANDROID
+        safe->audioSharer=juce::ContentSharer::shareFilesScoped(juce::Array<juce::URL>{juce::URL(file)},std::move(finish),safe);
+       #else
+        safe->exporter=std::make_unique<juce::FileChooser>("Save audio",juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(file.getFileName()),"*"+file.getFileExtension());
+        safe->exporter->launchAsync(juce::FileBrowserComponent::saveMode|juce::FileBrowserComponent::canSelectFiles|juce::FileBrowserComponent::warnAboutOverwriting,[safe,file,finish](const auto& chooser)mutable{
+            if(!safe)return;const auto destination=chooser.getResult();if(destination==juce::File{}){finish(false,{});return;}
+            safe->mediaWorker.addJob([safe,file,destination,finish]()mutable{const bool copied=file.copyFileTo(destination)&&file.getSize()==destination.getSize();juce::MessageManager::callAsync([safe,copied,finish]()mutable{if(safe)finish(copied,copied?juce::String{}:juce::String("Cannot save the complete audio file"));});});
+        });
+       #endif
+    },true);
+}
+
+void MobileWebEditor::storageTask(std::function<juce::var()> action,juce::WebBrowserComponent::NativeFunctionCompletion complete,bool media){
     juce::Component::SafePointer<MobileWebEditor> safe(this);
-    storageWorker.addJob([safe,action=std::move(action),complete=std::move(complete)]{
+    const auto cancel=cancelled;
+    (media?mediaWorker:storageWorker).addJob([safe,cancel,media,action=std::move(action),complete=std::move(complete)]{
+        if(media&&cancel->load())return;
         juce::var result;
         try{result=bridgeResult(action());}catch(const std::exception& error){result=failure(error.what());}
         juce::MessageManager::callAsync([safe,result,complete=std::move(complete)]{if(safe)complete(result);});
@@ -274,11 +370,20 @@ juce::var MobileWebEditor::audio(const juce::var& message) {
         const auto queue=message["queue"];const auto tracks=queue["tracks"];const int index=(int)queue["index"];
         const auto id=tracks.isArray()&&index>=0&&index<tracks.size()?tracks[index]["id"].toString():juce::String{};
         if(sourceUrl.isNotEmpty())engine.loadRemote(sourceUrl,lastPosition,id);
-        else {engine.requestedPlay.store(false);engine.submit({CueProcessor::Action::pause});pendingLoad=false;}
+        else {
+            const auto previous=engine.unloadSong();pendingLoad=false;
+            if(nativePadInput)nativePadInput->setSource(sourceId,{});
+           #if JUCE_ANDROID
+            engine.androidBridgeSourceId.store(sourceId);
+           #endif
+            return object({{"previousCues",previous}});
+        }
         if(nativePadInput)nativePadInput->setSource(sourceId,id);
        #if JUCE_ANDROID
         engine.androidBridgeSourceId.store(sourceId);
        #endif
+    } else if(command=="navigate") {
+        const auto action=message["action"].toString();const bool accepted=action=="next"?engine.performRemoteAction(CueProcessor::RemoteAction::next):action=="previous"?engine.performRemoteAction(CueProcessor::RemoteAction::previous):engine.navigateTo((int)message["index"],message["autoplay"].isVoid()||bool(message["autoplay"]));return object({{"accepted",accepted}});
     } else if(command=="play") {engine.requestedPlay.store(true);engine.playIntentRevision.fetch_add(1);if(engine.ready.load())engine.submit({CueProcessor::Action::play});}
     else if(command=="pause") {engine.requestedPlay.store(false);engine.playIntentRevision.fetch_add(1);engine.submit({CueProcessor::Action::pause});}
     else if(command=="seek"||command=="cue") {
@@ -298,6 +403,11 @@ juce::var MobileWebEditor::audio(const juce::var& message) {
         auto* parameter=engine.parameters.getParameter("gain");const auto target=(float)message["value"];if(std::abs(parameter->getValue()-target)>0.00001f)parameter->setValueNotifyingHost(target);
     } else if(command=="muted")engine.muted.store((bool)message["value"]);
     else if(command=="rate") {
+        if(engine.songPlaybackEnabled.load()&&message["trackId"].isString()){
+            engine.setTrackPlayback(message["trackId"].toString(),object({{"speed",((double)message["value"]-1)*100},
+                {"speedMode",message["preservePitch"].isVoid()||(bool)message["preservePitch"]?"speed":"pitch"},{"tuning",message["semitones"]}}));
+            return object({});
+        }
         engine.preservePitch.store(message["preservePitch"].isVoid()?true:(bool)message["preservePitch"]);
         engine.semitones.store(juce::jlimit(-12.0f,12.0f,(float)message["semitones"]));
         auto* parameter=engine.parameters.getParameter("speed");
@@ -350,16 +460,18 @@ void MobileWebEditor::timerCallback() {
     juce::Array<juce::var> padEvents;
     for(int index=0;index<160;++index){
         const auto state=engine.padStates[(size_t)index].load(std::memory_order_relaxed), previous=previousPads[(size_t)index];
-        if(state==previous)continue;
+        const auto midi=engine.midiPadHits[(size_t)index].load(std::memory_order_relaxed);if(state==previous&&midi==previousMidiPads[(size_t)index])continue;
         padEvents.add(object({{"bank",juce::String::charToString((juce::juce_wchar)('A'+index/16))},{"pad",index%16+1},
             {"pressed",(state&1u)!=0},{"heldChanged",(state&1u)!=(previous&1u)},{"triggered",(state>>1)!=(previous>>1)},
-            {"velocity",engine.padVelocities[(size_t)index].load(std::memory_order_relaxed)}}));
+            {"velocity",engine.padVelocities[(size_t)index].load(std::memory_order_relaxed)},{"lastTriggered",engine.lastTriggeredPad.load()==index},{"midiTriggered",midi!=previousMidiPads[(size_t)index]},{"lastMidiTriggered",engine.lastMidiPad.load()==index}}));
         previousPads[(size_t)index]=state;
+        previousMidiPads[(size_t)index]=midi;
     }
     if(!padEvents.isEmpty())browser.emitEventIfBrowserIsVisible("pluginPads",juce::var(padEvents));
     if(++timerTicks%6!=0)return; // 60 Hz pad feedback, 10 Hz playhead/metadata.
     const auto parameters=object({{"speed",std::round((engine.parameters.getRawParameterValue("speed")->load()-1.0f)*100.0f)},{"volume",engine.parameters.getRawParameterValue("gain")->load()},
         {"speedMode",engine.preservePitch.load()?"speed":"pitch"},{"tuning",engine.semitones.load()}});
+    if(engine.songPlaybackEnabled.load()){parameters.getDynamicObject()->setProperty("trackId",engine.nativeSnapshot()["trackId"]);parameters.getDynamicObject()->setProperty("playbackReady",!engine.nativeAdvancing.load());}
     const auto encoded=juce::JSON::toString(parameters,true);
     if(encoded!=previousParameters){previousParameters=encoded;browser.emitEventIfBrowserIsVisible("pluginParameters",parameters);}
     if(previousErrorRevision!=engine.nativeErrorRevision.load()){
@@ -369,7 +481,7 @@ void MobileWebEditor::timerCallback() {
     if(pendingLoad&&isReady&&!announced) {announced=true;pendingLoad=false;emit("ready",object({{"duration",engine.getDuration()}}));}
     if(isPlaying!=previousPlaying){emit(isPlaying?"playing":"pause",object({}));previousPlaying=isPlaying;}
     const auto at=engine.playhead.load();
-    if(announced){emit("time",object({{"position",at},{"duration",engine.getDuration()},{"buffered",engine.getDuration()}}));
+    if(announced){const auto clock=engine.nativeSnapshot();emit("time",object({{"position",at},{"duration",engine.getDuration()},{"buffered",engine.getDuration()},{"rate",clock["rate"]},{"advancing",isPlaying&&!(bool)clock["buffering"]}}));
         if(engine.nativeEnded.exchange(false)){engine.requestedPlay.store(false);emit("ended",object({}));}}
     if(pendingLoad){const auto status=engine.getStatus();if(status.containsIgnoreCase("failed")||status.containsIgnoreCase("cannot")||status.containsIgnoreCase("cancelled")||status.containsIgnoreCase("missing")||status.containsIgnoreCase("unavailable")){pendingLoad=false;emit("error",object({{"message",status}}));}}
     lastPosition=at;

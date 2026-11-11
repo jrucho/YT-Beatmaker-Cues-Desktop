@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { getT, useT } from "../i18n";
 import { api, capabilities, explainStreamError, streamSource, systemMedia, type ApiError, type ErrorCode } from "../lib/api";
-import { createAudio, cueAudio, readAudioPosition, setAudioLoop, setAudioPlaylist, setAudioStart, setAudioTuning, supportsIndependentPitch } from "../lib/audio";
+import { createAudio, cueAudio, navigateAudio, readAudioPosition, readDisplayAudioPosition, setAudioLoop, setAudioPlaylist, setAudioStart, setAudioTuning, supportsIndependentPitch, unloadAudio } from "../lib/audio";
 import { shuffled } from "../lib/format";
 import type { Track } from "../lib/types";
 import { useLibrary } from "../stores/library";
@@ -54,6 +54,7 @@ interface PlayerState {
   tuning: number;
 
   playList: (tracks: Track[], start?: number) => void;
+  newEmptyTrack: () => Promise<void>;
   playTrack: (track: Track) => void;
   playNext: (track: Track) => void;
   addToQueue: (track: Track) => void;
@@ -101,6 +102,7 @@ export const independentTuningAvailable = supportsIndependentPitch(audio);
 
 /** Mark cues from the actual playhead, rather than the UI's throttled position. */
 export const cuePosition = () => loaded ? readAudioPosition(mediaFor(loaded.kind)) : Promise.resolve(usePlayer.getState().position);
+export const playbackDisplayPosition = () => loaded ? readDisplayAudioPosition(mediaFor(loaded.kind)) : usePlayer.getState().position;
 
 let loaded: { id: string; kind: Kind; quality: Quality } | null = null;
 let pendingSeek = 0;
@@ -308,6 +310,12 @@ export const usePlayer = create<PlayerState>((set, get) => {
       );
     }
     setMetadata(track);
+  }
+
+  function navigate(index:number,action?:'next'|'previous'){
+    const media=activeMedia(),pending=media&&loaded?.kind==='audio'?navigateAudio(media,{index,action,autoplay:true}):undefined;
+    if(!pending){load(index);return;}
+    const mine=++token;void pending.then(accepted=>{if(!accepted&&mine===token)load(index);}).catch(()=>{if(mine===token)load(index);});
   }
 
   async function continueWithRadio() {
@@ -520,6 +528,18 @@ export const usePlayer = create<PlayerState>((set, get) => {
     speedMode: saved.speedMode === "pitch" ? "pitch" : "speed",
     tuning: Number.isFinite(saved.tuning) ? Math.max(-12, Math.min(12, Math.round(saved.tuning!))) : 0,
 
+    newEmptyTrack: async () => {
+      const mine=++token;loaded=null;pendingSeek=0;recordedToken=-1;
+      videoEl.pause();videoEl.removeAttribute('src');videoEl.load();
+      await unloadAudio(audio);
+      if(mine!==token)return;
+      set({queue:[],original:null,index:0,status:'idle',statusText:null,mediaKind:'audio',videoNote:null,
+        position:0,duration:0,buffered:0,loop:{from:null,to:null,on:false},speed:0,speedMode:'speed',tuning:0});
+      applyPlaybackRate(audio);
+      if('mediaSession' in navigator){navigator.mediaSession.metadata=null;navigator.mediaSession.playbackState='none';}
+      syncSystemMedia();
+    },
+
     playList: (tracks, start = 0) => {
       if (!tracks.length) return;
       const first = tracks[start] ?? tracks[0];
@@ -582,7 +602,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       }
     },
 
-    jumpTo: (i) => load(i),
+    jumpTo: (i) => navigate(i),
 
     clearUpcoming: () => {
       const s = get();
@@ -619,15 +639,15 @@ export const usePlayer = create<PlayerState>((set, get) => {
 
     next: () => {
       const s = get();
-      if (s.index < s.queue.length - 1) return load(s.index + 1);
-      if (s.repeat === "all" && s.queue.length) return load(0);
+      if (s.index < s.queue.length - 1) return navigate(s.index + 1,'next');
+      if (s.repeat === "all" && s.queue.length) return navigate(0,'next');
       if (s.autoRadio) void continueWithRadio();
     },
 
     prev: () => {
       const s = get();
       if (s.position > 3 || s.index === 0) return get().seek(0);
-      load(s.index - 1);
+      navigate(s.index - 1,'previous');
     },
 
     seek: (seconds) => {

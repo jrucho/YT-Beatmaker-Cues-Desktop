@@ -16,6 +16,10 @@ import { toast, useUi } from "../stores/ui";
 import { BackupSection } from "./BackupSection";
 import { AccentPicker, LayoutSection } from "./CustomizeSection";
 import { Modal } from "./Modal";
+import { iosPadLayoutEnabled } from '../mobile/padLayout';
+import { saveAlwaysAudition, useAlwaysAudition } from '../mobile/waveformPreferences';
+import { AudioRoutingControls } from './AudioRecording';
+import { saveSongTransitions, useSongTransitions } from '../mobile/transitionPreferences';
 
 function Segmented<T extends string>({
   label,
@@ -95,13 +99,17 @@ export function SettingsDialog({ studio = false }: { studio?: boolean }) {
   const { info, status, load, update } = useSystem();
   const [channel, setChannel] = useState<Channel>("stable");
   const [ffmpegBusy, setFfmpegBusy] = useState(false);
+  const [audioRoutesOpen,setAudioRoutesOpen]=useState(false);
   const logBox = useRef<HTMLPreElement>(null);
   const t = useT();
   const lang = useI18n((s) => s.lang);
   const setLang = useI18n((s) => s.setLang);
+  const alwaysAudition=useAlwaysAudition();
+  const songTransitions=useSongTransitions();
 
   useEffect(() => {
     if (open) void load();
+    else setAudioRoutesOpen(false);
   }, [open, load]);
 
   useEffect(() => {
@@ -164,6 +172,7 @@ export function SettingsDialog({ studio = false }: { studio?: boolean }) {
             ]}
           />
           <AccentPicker />
+          {iosPadLayoutEnabled() && <AccentPicker looper />}
         </section>}
 
         <section className="flex flex-col gap-2">
@@ -179,6 +188,21 @@ export function SettingsDialog({ studio = false }: { studio?: boolean }) {
         </section>
 
         {!studio && <LayoutSection />}
+        {!studio&&iosPadLayoutEnabled()&&<section className="flex flex-col gap-2">
+          <h3 className="text-xs font-medium text-fg-3">Song transitions</h3>
+          <label className="flex items-center justify-between gap-3 rounded-xl bg-surface-1 p-3 text-sm"><span>Fade between songs</span><button type="button" role="switch" aria-label="Fade between songs" aria-checked={songTransitions.enabled} onClick={()=>saveSongTransitions({enabled:!songTransitions.enabled})} className={cn('shrink-0 rounded-full px-3 py-2 text-xs font-semibold',songTransitions.enabled?'bg-accent text-accent-ink':'bg-surface-3 text-fg-2')}>{songTransitions.enabled?'On':'Off · instant'}</button></label>
+          {songTransitions.enabled&&<label className="flex items-center gap-3 px-1 text-xs text-fg-2"><span className="shrink-0">Fade · {Math.round(songTransitions.seconds*1000)} ms</span><input type="range" aria-label="Song fade duration" min={50} max={2000} step={50} value={Math.round(songTransitions.seconds*1000)} onChange={event=>saveSongTransitions({seconds:Number(event.target.value)/1000})} className="min-w-0 flex-1 accent-[var(--accent)]"/></label>}
+        </section>}
+
+        {!studio&&iosPadLayoutEnabled()&&<section className="flex flex-col gap-2">
+          <h3 className="text-xs font-medium text-fg-3">Zoomed waveform</h3>
+          <label className="flex items-center justify-between gap-3 rounded-xl bg-surface-1 p-3 text-sm">
+            <span>Always audition while dragging</span>
+            <button type="button" role="switch" aria-label="Always audition while dragging" aria-checked={alwaysAudition} onClick={()=>saveAlwaysAudition(!alwaysAudition)} className={cn('shrink-0 rounded-full px-3 py-2 text-xs font-semibold',alwaysAudition?'bg-accent text-accent-ink':'bg-surface-3 text-fg-2')}>{alwaysAudition?'On':'Off'}</button>
+          </label>
+          <p className="px-1 text-[11px] text-fg-3">Off: hold the selected pad to hear marker changes.</p>
+        </section>}
+        {!studio&&iosPadLayoutEnabled()&&<details open={audioRoutesOpen} onToggle={event=>setAudioRoutesOpen(event.currentTarget.open)} className="rounded-xl bg-surface-1 p-3"><summary className="cursor-pointer text-sm">Audio input & output</summary><div className="pt-3"><AudioRoutingControls midiPanelActive={open&&audioRoutesOpen} showRecordingSource/></div></details>}
 
         <BackupSection />
 

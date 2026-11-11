@@ -45,7 +45,10 @@ export function readControllerPreset(): ControllerMapping {
   catch { return fallback; }
 }
 export function saveControllerPreset(id: string) {
-  try { localStorage.setItem(KEY, id); } catch { /* storage unavailable */ }
+  try {
+    localStorage.setItem(KEY, id);
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("plugin-preferences-changed"));
+  } catch { /* storage unavailable */ }
 }
 
 /** Native and Web MIDI decoders both supply zero-based channel numbers. */

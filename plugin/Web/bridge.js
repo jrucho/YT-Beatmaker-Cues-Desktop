@@ -2,6 +2,9 @@
   let counter = Math.floor(Date.now()*1024+Math.random()*1024);
   const pending = new Map();
   const backend = window.__JUCE__.backend;
+  const features=window.__JUCE__.initialisationData.performanceFeatures?.[0]===true||window.__JUCE__.initialisationData.iosPreviewFeatures?.[0]===true;
+  window.__pluginFeatures=features;
+  window.__pluginPlatform=window.__JUCE__.initialisationData.nativePlatform?.[0]||(window.__JUCE__.getAndroidUserScripts?'android':window.__JUCE__.initialisationData.desktopPlatform?.[0]?'desktop':'ios');
   // Some Android WebViews embedded by JUCE resolve vh/dvh to zero even while
   // innerHeight is correct. Use measured pixels for the app and dialog bounds.
   {
@@ -17,6 +20,8 @@
         root.dataset.pluginDense = height <= 360 ? 'true' : 'false';
         if (android) root.dataset.pluginAndroid = '';
         root.dataset.pluginDesktop = window.__JUCE__.initialisationData.desktopPlatform?.[0]===true ? 'true' : 'false';
+        root.dataset.pluginFeatures=String(features);
+        root.dataset.pluginIosPreview=String(features); // Legacy shared responsive-CSS attribute.
         root.dataset.pluginLowHeight = height < 540 ? 'true' : 'false';
         root.style.setProperty('--plugin-viewport-height', height + 'px');
         root.style.setProperty('--plugin-vh', (height / 100) + 'px');
@@ -31,6 +36,21 @@
   }
   window.__pluginHosted=window.__JUCE__.initialisationData.hostedPlugin?.[0]===true;
   window.__pluginDesktopBeta=window.__JUCE__.initialisationData.desktopBeta?.[0]===true;
+  window.__pluginIOSPreview=window.__JUCE__.initialisationData.iosPreviewFeatures?.[0]===true;
+  const songPlaybackKey='musike:track-playback';
+  let reconcilingPlayback=false;
+  const cleanSongPlayback=value=>({
+    speed:Math.max(-75,Math.min(100,Math.round(Number.isFinite(value?.speed)?value.speed:0))),
+    speedMode:value?.speedMode==='pitch'?'pitch':'speed',
+    tuning:Math.max(-12,Math.min(12,Math.round(Number.isFinite(value?.tuning)?value.tuning:0)))
+  });
+  const songPlaybackMap=()=>{try{const value=JSON.parse(localStorage.getItem(songPlaybackKey)||'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{};}catch{return {};}};
+  const rememberSongPlayback=(id,value)=>{
+    if(!id)return;const all=songPlaybackMap(),settings=cleanSongPlayback(value);
+    if(JSON.stringify(all[id])===JSON.stringify(settings))return;
+    all[id]=settings;localStorage.setItem(songPlaybackKey,JSON.stringify(all));
+    window.dispatchEvent(new Event('plugin-preferences-changed'));
+  };
   backend.addEventListener('__juce__complete', ({promiseId, result}) => {
     const job = pending.get(promiseId);
     if (!job) return;
@@ -58,7 +78,7 @@
       ...padMap,sourceId:performanceSourceId,generation:platform?.audioGeneration??-1,
       trackRevision:platform?.trackRevision??-1,layoutRevision:platform?.layoutRevision??-1,
       bank:padMap.bank.charCodeAt(0)-65,enabled:bridge?!window.__disableAndroidPerformance&&!window.__disableAndroidPadTouch:!!platform?.supported&&!window.__disableNativePadInput,
-      pads:padMap.pads.filter(pad=>pad.sample||matchingTrack)
+      pads:padMap.pads.filter(pad=>pad.sample||pad.looper||matchingTrack)
     }:{});
     if(encoded===lastPadMap)return;
     try{
@@ -82,20 +102,20 @@
   if(window.__JUCE__.getAndroidUserScripts||nativePadAvailable){
     window.__pluginPadTouch={
       configure:map=>{padMap=map;syncPadMap();},
-      take:(bank,pad,sample,to,eventTime)=>{
+      take:(bank,pad,sample,to,eventTime,pointerType,looper=false)=>{
         const sourceId=performanceSourceId,bankIndex=bank.charCodeAt(0)-65,padIndex=pad-1;
         if(nativePadAvailable){
           const platform=nativePadState;
           if(!platform?.supported||window.__disableNativePadInput)return;
           const eventEpochMs=eventTime>1e12?eventTime:performance.timeOrigin+eventTime;
-          return invoke('padTouchClaim',{sourceId,bank:bankIndex,pad:padIndex,sample,to:to??0,eventEpochMs,generation:platform.audioGeneration,trackRevision:platform.trackRevision}).then(result=>{
+          return invoke('padTouchClaim',{sourceId,bank:bankIndex,pad:padIndex,sample,looper,to:to??0,eventEpochMs,orderedTouch:features&&pointerType==='touch',generation:platform.audioGeneration,trackRevision:platform.trackRevision}).then(result=>{
             if(!result?.accepted&&!result?.stale)return;
             return touchReceipt(sourceId,bankIndex,padIndex,sample,result.position??NaN,!!result.stale);
           });
         }
         try{
-          const position=androidPerformance()?.consumeTouch(sourceId,bankIndex,padIndex,sample,to??0,eventTime);
-          if(!Number.isFinite(position))return;
+          const bridge=androidPerformance(),position=bridge?.consumeTouch(sourceId,bankIndex,padIndex,sample,to??0,eventTime,looper,features&&pointerType==='touch');
+          if(!Number.isFinite(position)){if(bridge?.consumedStale?.())return touchReceipt(sourceId,bankIndex,padIndex,sample,NaN,true);return;}
           return touchReceipt(sourceId,bankIndex,padIndex,sample,position);
         }catch{}
       }
@@ -103,6 +123,7 @@
     addEventListener('pagehide',()=>{try{if(nativePadAvailable)invoke('padTouchRegions',null).catch(()=>{});else window.__beatmakerPerformance?.regions('{}');lastPadMap='';}catch{}});
   }
   const invoke = (name, ...params) => {
+    if(name==='looperPad'&&params[0]?.cmd==='press'){const request=params[0];if(consumeClaimedTouch(performanceSourceId,request.bank?.charCodeAt(0)-65,request.pad-1,false))return Promise.resolve(true);}
     if(name==='padSample'&&params[0]?.cmd==='trigger'){
       const request=params[0],bank=request.bank?.charCodeAt(0)-65,pad=request.pad-1;
       if(consumeClaimedTouch(performanceSourceId,bank,pad,true))return Promise.resolve(true);
@@ -115,6 +136,18 @@
     });
   };
   window.__pluginInvoke = invoke;
+  if(features){
+    let queued=false,previous=null;
+    const syncCuePage=()=>{queued=false;const active=!!document.querySelector('.cue-workspace');if(active===previous)return;previous=active;
+      document.documentElement.dataset.pluginCuePage=String(active);invoke('cueWorkspace',active).catch(console.error);};
+    const schedule=()=>{if(!queued){queued=true;queueMicrotask(syncCuePage);}};
+    new MutationObserver(schedule).observe(document,{subtree:true,childList:true});document.addEventListener('DOMContentLoaded',schedule);schedule();
+    document.addEventListener('touchmove',event=>{
+      if(!previous)return;const target=event.target;
+      if(target instanceof Element&&target.closest('.cue-song-list,[role="dialog"],input,select,textarea'))return;
+      if(event.cancelable)event.preventDefault();
+    },{passive:false});
+  }
   if(nativePadAvailable){
     const update=state=>{nativePadState=state;syncPadMap();};
     backend.addEventListener('pluginPadInputState',update);invoke('padTouchState').then(update).catch(console.error);
@@ -156,7 +189,7 @@
   }
   addEventListener('error',event=>{invoke('diagnostic','error: '+event.message).catch(()=>{});});
   addEventListener('unhandledrejection',event=>{invoke('diagnostic','promise: '+String(event.reason?.message||event.reason)).catch(()=>{});});
-  invoke('diagnostic','Beatmaker Cues 1.0.6 plug-in bridge started').catch(()=>{});
+  invoke('diagnostic','Beatmaker Cues '+(window.__JUCE__.initialisationData.appVersion?.[0]||'development')+' plug-in bridge started').catch(()=>{});
   window.__musikeTransport = async request => {
     const response=await invoke('http',{url:request.url,method:request.method,headers:request.headers,data:request.body});
     return {status:response.status,headers:response.headers||{},body:typeof response.data==='string'?response.data:JSON.stringify(response.data)};
@@ -231,7 +264,21 @@
           const from='plugin-file:'+args.from;const data=localStorage.getItem(from);if(data===null)throw Error('File not found');
           if(args.to==='library.json'){
             const base=libraryBase;
-            const work=libraryWrite.catch(()=>{}).then(async()=>{libraryBase=await invoke('libraryCommit',{base,next:data});libraryVersion=null;localStorage.removeItem(from);});
+            const work=libraryWrite.catch(()=>{}).then(async()=>{
+              libraryBase=await invoke('libraryCommit',{base,next:data});libraryVersion=null;localStorage.removeItem(from);
+              if(features&&base){
+                const before=JSON.parse(base),after=JSON.parse(libraryBase),select=value=>JSON.stringify({favorites:value.favorites,playlists:value.playlists});
+                if(select(before)!==select(after)){
+                  const committed=libraryBase;
+                  const apply=async(base,next)=>{
+                    const current=JSON.parse((await invoke('librarySnapshot')).json),old=JSON.parse(base),desired=JSON.parse(next);
+                    libraryBase=await invoke('libraryCommit',{base:JSON.stringify({...current,favorites:old.favorites,playlists:old.playlists}),next:JSON.stringify({...current,favorites:desired.favorites,playlists:desired.playlists})});
+                    libraryVersion=null;await window.__pluginStores?.library.getState().load();
+                  };
+                  window.dispatchEvent(new CustomEvent('plugin-record-edit',{detail:{label:'library edit',key:'library',undo:()=>apply(committed,base),redo:()=>apply(base,committed)}}));
+                }
+              }
+            });
             libraryWrite=work;await work;return {};
           }
           localStorage.setItem('plugin-file:'+args.to,data);localStorage.removeItem(from);return {};
@@ -247,7 +294,12 @@
   };
   window.fetch=window.fetch.bind(window);
   window.__pluginAudioBridge={
+    ...(window.__JUCE__.initialisationData.songTransitions?.[0]===true?{navigate:request=>invoke('audio',{cmd:'navigate',...request}).then(result=>result?.accepted===true)}:{}),
     postMessage:message=>{
+      if(features&&message.cmd==='rate'){
+        const state=window.__pluginStores?.player.getState(),id=state?.queue[state.index]?.id;
+        if(id)message={...message,trackId:id};
+      }
       if(message.cmd==='load'){
         performanceSourceId=message.sourceId;
         performanceTrackId=message.queue?.tracks?.[message.queue.index]?.id||'';
@@ -263,7 +315,10 @@
           return Promise.resolve({});
         }}catch{}
       }
-      return invoke('audio',message);
+      return invoke('audio',message).then(result=>{
+        if(message.cmd==='load'&&!message.url&&message.sourceId===performanceSourceId&&result?.previousCues)applyNativeCues(result.previousCues);
+        return result;
+      });
     },
     position:sourceId=>{
       try{const position=androidPerformance()?.position(sourceId);if(Number.isFinite(position))return Promise.resolve(position);}catch{}
@@ -317,36 +372,70 @@
     const stores=window.__pluginStores;
     if(!stores)return;
     if(window.__pluginStorageError)stores.ui.getState().toast(window.__pluginStorageError,'error');
+    if(features){
+      const current=stores.player.getState(),id=current.queue[current.index]?.id;
+      if(id){const saved=songPlaybackMap()[id];if(saved){reconcilingPlayback=true;try{stores.player.setState(cleanSongPlayback(saved));}finally{reconcilingPlayback=false;}}else rememberSongPlayback(id,current);}
+      stores.player.subscribe((current,previous)=>{
+        const id=current.queue[current.index]?.id,oldId=previous.queue[previous.index]?.id;
+        if(id!==oldId){if(id){reconcilingPlayback=true;try{stores.player.setState(cleanSongPlayback(songPlaybackMap()[id]));}finally{reconcilingPlayback=false;}}return;}
+        if(id&&(current.speed!==previous.speed||current.speedMode!==previous.speedMode||current.tuning!==previous.tuning)){
+          rememberSongPlayback(id,current);
+          if(!reconcilingPlayback){
+            const before=cleanSongPlayback(previous),after=cleanSongPlayback(current);
+            const apply=value=>{rememberSongPlayback(id,value);const player=stores.player.getState();if(player.queue[player.index]?.id===id){player.setSpeedMode(value.speedMode);player.setSpeed(value.speed);player.setTuning(value.tuning);}};
+            window.dispatchEvent(new CustomEvent('plugin-record-edit',{detail:{label:'song playback',key:`playback:${id}`,undo:()=>apply(before),redo:()=>apply(after)}}));
+          }
+        }
+      });
+    }
     stores.cues.subscribe(()=>{if(!reconciling)queueMicrotask(persist);});
     stores.player.subscribe((current,previous)=>{if(current.queue!==previous.queue||current.index!==previous.index||current.status!==previous.status)queueMicrotask(persist);});
   });
   addEventListener('pagehide',persist);
+  addEventListener('plugin-preferences-changed',persist);
   backend.addEventListener('pluginAudio',({event,payload})=>{
+    if(features&&(event==='track'||event==='snapshot')&&payload.trackId&&payload.playback&&(payload.sourceId==null||payload.sourceId===performanceSourceId)){
+      rememberSongPlayback(payload.trackId,payload.playback);
+      const state=window.__pluginStores?.player.getState();
+      if(state?.queue[state.index]?.id===payload.trackId){reconcilingPlayback=true;try{window.__pluginStores.player.setState(cleanSongPlayback(payload.playback));}finally{reconcilingPlayback=false;}}
+    }
     if((event==='track'||event==='snapshot')&&payload.trackId!=null){performanceTrackId=payload.trackId;syncPadMap();}
     window.__musikeAudioEvent?.(event,payload);
     if(event==='ready'||event==='track'||event==='snapshot')syncPadMap();
   });
-  backend.addEventListener('pluginParameters',state=>window.__pluginStores?.player.setState(state));
+  backend.addEventListener('pluginParameters',state=>{
+    const current=window.__pluginStores?.player.getState();
+    if(features&&(state.playbackReady===false||state.trackId&&state.trackId!==current?.queue[current.index]?.id))return;
+    reconcilingPlayback=true;try{window.__pluginStores?.player.setState(state);}finally{reconcilingPlayback=false;}
+  });
   backend.addEventListener('pluginPadSamples',pads=>window.dispatchEvent(new CustomEvent('plugin-pad-samples',{detail:pads})));
   backend.addEventListener('pluginPads',events=>{
     for(const event of events){
-      if(event.triggered){
+      if(event.midiTriggered===undefined?event.triggered&&event.lastTriggered!==false:event.midiTriggered&&event.lastMidiTriggered){
         const stores=window.__pluginStores;
         if(stores&&stores.cues.getState().bank!==event.bank){reconciling=true;try{stores.cues.getState().setBank(event.bank);}finally{reconciling=false;}}
       }
-      if(event.heldChanged)window.dispatchEvent(new CustomEvent('beatmaker-pad',{detail:{...event,phase:event.pressed?'pressed':'released'}}));
-      if(event.triggered)window.dispatchEvent(new CustomEvent('beatmaker-pad',{detail:{...event,phase:'triggered'}}));
+      if(event.heldChanged)window.dispatchEvent(new CustomEvent('beatmaker-pad',{detail:{...event,phase:event.pressed?'pressed':'released',source:'native'}}));
+      if(event.triggered||event.midiTriggered)window.dispatchEvent(new CustomEvent('beatmaker-pad',{detail:{...event,phase:'triggered',source:'native'}}));
     }
   });
-  backend.addEventListener('pluginCues',data=>{
+  function applyNativeCues(data){
     const stores=window.__pluginStores;
     if(!stores||stores.cues.getState().trackId!==data.trackId)return;
     reconciling=true;
     try{
       const all=JSON.parse(localStorage.getItem('musike:cues:v1')||'{}');
+      const previous=all[data.trackId]||{};
       all[data.trackId]=data.cues;localStorage.setItem('musike:cues:v1',JSON.stringify(all));
       stores.cues.getState().setBank(data.bank);
+      const activeBanks=value=>JSON.stringify(Object.fromEntries(Object.entries(value).filter(([,pads])=>Object.keys(pads||{}).length).sort(([a],[b])=>a.localeCompare(b))));
+      if(features&&activeBanks(previous)!==activeBanks(data.cues)){
+        const apply=value=>{const all=JSON.parse(localStorage.getItem('musike:cues:v1')||'{}');all[data.trackId]=value;localStorage.setItem('musike:cues:v1',JSON.stringify(all));
+          if(stores.cues.getState().trackId===data.trackId)stores.cues.getState().setBank(stores.cues.getState().bank);window.dispatchEvent(new Event('plugin-preferences-changed'));};
+        window.dispatchEvent(new CustomEvent('plugin-record-edit',{detail:{label:'MIDI cue edit',undo:()=>apply(previous),redo:()=>apply(data.cues)}}));
+      }
     } finally{reconciling=false;}
-  });
+  }
+  backend.addEventListener('pluginCues',applyNativeCues);
   window.__pluginReady=true;
 })();

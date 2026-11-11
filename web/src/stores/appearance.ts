@@ -4,6 +4,7 @@ import { accentCss, DEFAULT_ACCENT, isHex } from "../lib/accent";
 /** How the app looks and what it shows, per device. The Now Playing panel lives in the UI store (it has a button too). */
 export interface Appearance {
   accent: string;
+  looperColor: string;
   sidebarPlaylists: boolean;
   compactSidebar: boolean;
   albumColumn: boolean;
@@ -16,6 +17,7 @@ export interface Appearance {
 
 export const DEFAULT_APPEARANCE: Appearance = {
   accent: DEFAULT_ACCENT,
+  looperColor: "complementary",
   sidebarPlaylists: true,
   compactSidebar: false,
   albumColumn: true,
@@ -47,6 +49,7 @@ export function cleanAppearance(input: unknown): Appearance {
   const v = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   const out: Appearance = { ...DEFAULT_APPEARANCE };
   if (isHex(v.accent)) out.accent = v.accent.toLowerCase();
+  if (isHex(v.looperColor)) out.looperColor = v.looperColor.toLowerCase();
   if (v.recentView === "grid" || v.recentView === "list") out.recentView = v.recentView;
   for (const k of Object.keys(DEFAULT_APPEARANCE) as (keyof Appearance)[]) {
     if (k !== "accent" && k !== "recentView" && typeof v[k] === "boolean") (out[k] as boolean) = v[k];

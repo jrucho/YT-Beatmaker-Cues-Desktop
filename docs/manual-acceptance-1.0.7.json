@@ -1,0 +1,13 @@
+{
+  "version": "1.0.7",
+  "referenceCandidate": "v1.0.7-candidate.716",
+  "source": "User report in the release conversation",
+  "statement": "the app work greate in android and vst after my manual testing",
+  "results": {
+    "Android": "User accepted after manual testing",
+    "VST": "User accepted after manual testing"
+  },
+  "deviceAndHostDetails": "Not specified in the report; no additional device, AU/AUv3, route or measured-latency result is inferred.",
+  "desktopRequest": "Keep the full desktop studio functionality unchanged; rebuild and align its version to 1.0.7.",
+  "releaseAuthorization": "User selected Build and publish: commit and push a dedicated release branch, run CI, and publish verified stable 1.0.7 packages."
+}

@@ -1,0 +1,7 @@
+{
+  "version": "1.0.7",
+  "baselineVersion": "1.0.6",
+  "baselineCommit": "a7e5a2034cbf3a36a9c01e67b389b41e4d54537d",
+  "versionedFiles": ["package.json", "desktop/package.json", "web/package.json"],
+  "description": "Full Electron studio maintenance release: preserve every 1.0.6 source file except product-version fields for packaging and the displayed app version. Native Android and plug-ins use the current release source."
+}

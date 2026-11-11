@@ -84,6 +84,8 @@ target=output/(name+'.zip')
 with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as archive:
     for kind in formats:add_native(archive,kind,name+'/'+kind)
     archive.write(root/'README.md',name+'/README.md')
+    parity=root.parent/'docs/native-feature-parity-1.0.7.md'
+    if parity.is_file():archive.write(parity,name+'/Feature-Parity.md')
     archive.write(root/'AGPL-3.0.txt',name+'/Licenses/AGPL-3.0.txt')
     archive.write(root.parent/'LICENSE',name+'/Licenses/MIT-Application.txt')
     archive.write(root.parent/'THIRD_PARTY_NOTICES.md',name+'/Licenses/THIRD_PARTY_NOTICES.md')
@@ -96,6 +98,7 @@ standalone=output/f'{standalone_prefix}-{version}-{args.platform}-{args.arch}.zi
 with zipfile.ZipFile(standalone,'w',zipfile.ZIP_DEFLATED) as archive:
     add_native(archive,'Standalone','Beatmaker-Cues-Standalone')
     archive.write(root/'README.md','Beatmaker-Cues-Standalone/README.md')
+    if parity.is_file():archive.write(parity,'Beatmaker-Cues-Standalone/Feature-Parity.md')
     archive.write(root/'AGPL-3.0.txt','Beatmaker-Cues-Standalone/Licenses/AGPL-3.0.txt')
     archive.write(root.parent/'LICENSE','Beatmaker-Cues-Standalone/Licenses/MIT-Application.txt')
     archive.write(root.parent/'THIRD_PARTY_NOTICES.md','Beatmaker-Cues-Standalone/Licenses/THIRD_PARTY_NOTICES.md')

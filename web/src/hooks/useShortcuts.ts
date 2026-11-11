@@ -17,7 +17,7 @@ export function useShortcuts() {
   useEffect(() => {
     if (!playerShortcutsEnabled()) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
+      if (!playerShortcutsEnabled() || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
       if (useUi.getState().menu || useUi.getState().addToPlaylist) return;
       // On Android TV the arrow keys belong to focus navigation, not to volume/seek.
       if (isTvMode() && /^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight| )$/.test(e.key)) return;

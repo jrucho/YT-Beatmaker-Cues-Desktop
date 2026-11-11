@@ -197,7 +197,14 @@ juce::String LibraryStore::commitLibrary(const juce::String& baseline,const juce
     if(!validLibrary(edited))throw std::runtime_error("Invalid library edit");
     if(!validLibrary(base))base=emptyLibrary();
     auto document=readDocument(true);auto merged=merge(base,edited,document["library"]);
+    if(const auto* deleted=document["deletedMedia"].getDynamicObject())for(const auto& entry:deleted->getProperties()){
+        const auto remove=[&](juce::var list){if(auto* items=list.getArray())for(int i=items->size();--i>=0;)if((*items)[i]["id"].toString()==entry.name.toString())items->remove(i);};
+        remove(merged["favorites"]);remove(merged["history"]);for(const auto& playlist:*merged["playlists"].getArray())remove(playlist["tracks"]);
+    }
     if(auto* history=merged["history"].getArray())if(history->size()>60)history->removeRange(60,history->size()-60);
+    // Older queues/hosts may still submit the original file title after a rename.
+    const auto retitle=[&](juce::var list){if(auto* items=list.getArray())for(auto& track:*items){const auto id=track["id"].toString(),title=document["media"][juce::Identifier(id)]["title"].toString();if(id.startsWith("loc")&&title.isNotEmpty()&&track.isObject())track.getDynamicObject()->setProperty("title",title);}};
+    retitle(merged["favorites"]);retitle(merged["history"]);for(const auto& playlist:*merged["playlists"].getArray())retitle(playlist["tracks"]);
     document.getDynamicObject()->setProperty("library",merged);
     document.getDynamicObject()->setProperty("revision",(juce::int64)document["revision"]+1);
     writeDocument(document);cachedLibrary=juce::JSON::toString(merged);return cachedLibrary;
@@ -270,6 +277,43 @@ void LibraryStore::registerMedia(const juce::String& id,const juce::var& metadat
     document.getDynamicObject()->setProperty("media",entries);writeDocument(document);
 }
 juce::var LibraryStore::media(const juce::String& id){if(sharedStore){ensureSharedMigration();return sharedStore->media(id);}const juce::ScopedLock local(localLock);Lock lock(processLock);return readDocument()["media"][juce::Identifier(id)].clone();}
+juce::var LibraryStore::allMedia(){if(sharedStore){ensureSharedMigration();return sharedStore->allMedia();}const juce::ScopedLock local(localLock);Lock lock(processLock);juce::Array<juce::var> result;const auto media=readDocument()["media"];if(const auto* fields=media.getDynamicObject())for(const auto& entry:fields->getProperties())result.add(entry.value.clone());return juce::var(result);}
+juce::var LibraryStore::renameLocalMedia(const juce::String& id,const juce::String& title){
+    if(sharedStore){ensureSharedMigration();return sharedStore->renameLocalMedia(id,title);}
+    const auto clean=title.trim();
+    if(!id.startsWith("loc")||id.length()!=11||!id.containsOnly("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"))throw std::runtime_error("Select an imported file or recording to rename");
+    if(clean.isEmpty()||clean.length()>200)throw std::runtime_error("Enter a song name of 1 to 200 characters");
+    const juce::ScopedLock local(localLock);Lock lock(processLock);auto document=readDocument(true).clone();
+    auto track=document["media"][juce::Identifier(id)];if(!track.isObject())throw std::runtime_error("Imported audio is no longer in the library");
+    const auto previous=track["title"].toString();track.getDynamicObject()->setProperty("title",clean);
+    auto library=document["library"];const auto update=[&](juce::var list){if(auto* items=list.getArray())for(auto& item:*items)if(item["id"].toString()==id)item.getDynamicObject()->setProperty("title",clean);};
+    update(library["favorites"]);update(library["history"]);for(const auto& playlist:*library["playlists"].getArray())update(playlist["tracks"]);
+    document.getDynamicObject()->setProperty("revision",(juce::int64)document["revision"]+1);writeDocument(document);cachedLibrary=juce::JSON::toString(library);
+    auto* result=new juce::DynamicObject;result->setProperty("track",track.clone());result->setProperty("previousTitle",previous);result->setProperty("library",cachedLibrary);return juce::var(result);
+}
+juce::var LibraryStore::eraseLocalMedia(const juce::String& id,const juce::StringArray& protectedPaths){
+    if(sharedStore){ensureSharedMigration();return sharedStore->eraseLocalMedia(id,protectedPaths);}
+    if(!id.startsWith("loc")||id.length()!=11||!id.containsOnly("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"))throw std::runtime_error("Only managed local audio can be erased");
+    const juce::ScopedLock local(localLock);Lock lock(processLock);auto document=readDocument(true),entries=document["media"].clone();const auto metadata=entries[juce::Identifier(id)];
+    const auto path=metadata["path"].toString();const juce::File original(path.isEmpty()?mediaDirectory().getFullPathName():path);
+    bool shared=protectedPaths.contains(path);if(const auto* fields=entries.getDynamicObject())for(const auto& entry:fields->getProperties())if(entry.name.toString()!=id&&entry.value["path"].toString()==path)shared=true;
+    if(path.isNotEmpty()&&!original.isAChildOf(mediaDirectory()))throw std::runtime_error("Audio is outside managed app storage");
+    const auto waveKey=juce::String::toHexString((original.getFullPathName()+juce::String(original.getSize())+juce::String(original.getLastModificationTime().toMilliseconds())).hashCode64());
+    juce::File tomb;
+    if(!shared&&original.existsAsFile()){
+        const auto deleted=mediaDirectory().getChildFile("Deleted");if(!deleted.createDirectory())throw std::runtime_error("Cannot prepare audio removal");
+        tomb=deleted.getChildFile(juce::Uuid().toString()+original.getFileExtension());if(!original.moveFileTo(tomb))throw std::runtime_error("Cannot remove the retained audio file");
+    }
+    try{
+        auto library=document["library"].clone();const auto remove=[&](juce::var list){if(auto* items=list.getArray())for(int i=items->size();--i>=0;)if((*items)[i]["id"].toString()==id)items->remove(i);};
+        remove(library["favorites"]);remove(library["history"]);for(const auto& playlist:*library["playlists"].getArray())remove(playlist["tracks"]);
+        if(auto* fields=entries.getDynamicObject())fields->removeProperty(juce::Identifier(id));auto deleted=document["deletedMedia"].isObject()?document["deletedMedia"].clone():juce::var(new juce::DynamicObject);deleted.getDynamicObject()->setProperty(juce::Identifier(id),true);
+        document.getDynamicObject()->setProperty("media",entries);document.getDynamicObject()->setProperty("deletedMedia",deleted);document.getDynamicObject()->setProperty("library",library);document.getDynamicObject()->setProperty("revision",(juce::int64)document["revision"]+1);writeDocument(document);cachedLibrary=juce::JSON::toString(library);
+    }catch(...){if(tomb.existsAsFile())tomb.moveFileTo(original);throw;}
+    if(tomb.existsAsFile()&&!tomb.deleteFile())throw std::runtime_error("Library entry removed but the retained file could not be erased");
+    mediaDirectory().getChildFile("Waveforms/sampler-"+id+".json").deleteFile();mediaDirectory().getChildFile("Waveforms/"+waveKey+".json").deleteFile();
+    auto* result=new juce::DynamicObject;result->setProperty("erased",!shared);result->setProperty("retainedForAnotherUse",shared);result->setProperty("library",cachedLibrary);return juce::var(result);
+}
 void LibraryStore::importLegacy(const juce::String& source,const juce::var& library,const juce::var& media){
     const juce::ScopedLock local(localLock);Lock lock(processLock);auto document=readDocument(true);
     auto imports=document["imports"].isObject()?document["imports"].clone():juce::var(new juce::DynamicObject);

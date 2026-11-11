@@ -1,0 +1,119 @@
+name: Stable apps and plug-ins
+
+on:
+  push:
+    branches: ['release/1.0.7']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stable-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    uses: ./.github/workflows/plugins.yml
+    with:
+      source_sha: ${{ github.sha }}
+      main_only: true
+    secrets: inherit
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: macOS
+          - os: windows-latest
+            platform: Windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: release/desktop-studio-source
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Prepare exact 1.0.6 studio source with only the version changed
+        working-directory: .
+        run: python3 scripts/prepare-desktop-maintenance.py
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: release/desktop-studio-source/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: node scripts/check-library-persistence.mjs
+      - run: node scripts/check-backup-state.mjs
+      - run: node scripts/check-tool-discovery.mjs
+      - run: node scripts/check-controller-mapping.mjs
+      - run: node scripts/check-audio-ranges.mjs
+      - if: runner.os == 'macOS'
+        run: pnpm installer:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - if: runner.os == 'Windows'
+        run: pnpm installer:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - run: pnpm exec playwright install chromium
+      - run: pnpm test:app --shared-library
+      - name: Verify both Mac signatures and disk images
+        if: runner.os == 'macOS'
+        run: |
+          codesign --verify --deep --strict "desktop/out/mac-arm64/YT Beatmaker Cues Desktop.app"
+          codesign --verify --deep --strict "desktop/out/mac/YT Beatmaker Cues Desktop.app"
+          hdiutil verify release/*-macOS-arm64.dmg
+          hdiutil verify release/*-macOS-x64.dmg
+      - name: Verify unchanged desktop source and record installers
+        working-directory: .
+        run: python3 scripts/prepare-desktop-maintenance.py --record ${{ matrix.platform }} --checks typecheck,persistence,backups,tool-discovery,midi-mappings,audio-ranges,desktop-regression,native-packaging
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-maintenance-${{ matrix.platform }}
+          path: |
+            release/desktop-studio-source/release/YT-Beatmaker-Cues-Desktop-*
+            release/desktop-studio-source/release/Main-Build-*.json
+            release/Beatmaker-Cues-Desktop-Source-*.zip
+          if-no-files-found: error
+
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: python3 scripts/export-release-sources.py
+      - name: Verify the published source can install, typecheck and regenerate the native UI
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          unzip -q "release/Beatmaker-Cues-Source-$VERSION.zip" -d "$RUNNER_TEMP/stable-source"
+          SOURCE="$RUNNER_TEMP/stable-source/Beatmaker-Cues-Source-$VERSION"
+          pnpm --dir "$SOURCE" install --frozen-lockfile
+          pnpm --dir "$SOURCE" typecheck
+          python3 "$SOURCE/plugin/Scripts/build_mobile_ui.py" "$SOURCE"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: stable-source
+          path: |
+            release/Beatmaker-Cues-Source-*
+            release/Beatmaker-Cues-Plugin-Source-*
+            release/Source-Build-*.json
+            release/SHA256SUMS-Source-*.txt
+          if-no-files-found: error

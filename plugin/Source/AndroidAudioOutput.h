@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 
 // Small app-owned hook into the pinned JUCE/Oboe backend. No decoder or DSP
 // changes: inspect the stream that actually opened, including fallback routes.
@@ -10,6 +11,11 @@ struct AndroidAudioOutputInfo {
 
 extern "C" void beatmakerAndroidOutputStarted(void*,const AndroidAudioOutputInfo&);
 extern "C" void beatmakerAndroidOutputStopped(void*);
+extern "C" void beatmakerAndroidInputStarted(void*,const AndroidAudioOutputInfo&);
+extern "C" void beatmakerAndroidInputStopped(void*);
 extern "C" int beatmakerAndroidOutputProfile();
 AndroidAudioOutputInfo androidAudioOutputInfo();
+AndroidAudioOutputInfo androidAudioInputInfo();
+void androidAudioDevicesChanged();
+uint64_t androidAudioRouteRevision();
 bool androidSetOutputProfile(int);

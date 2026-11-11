@@ -3,9 +3,9 @@ import { cn } from "../lib/format";
 /** The Musike mark: four cue pads, the first holding a play glyph. */
 export function LogoMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 48 48" className={className} aria-hidden="true">
+    <svg viewBox="0 0 48 48" className={cn("brand-logo-mark", className)} aria-hidden="true">
       <rect x="7" y="7" width="15" height="15" rx="4.5" fill="currentColor" />
-      <path d="M12.6 10.9 L19.4 14.5 L12.6 18.1 Z" fill="var(--accent-ink, #0b0b0b)" />
+      <path className="brand-logo-play" d="M12.6 10.9 L19.4 14.5 L12.6 18.1 Z" fill="var(--accent-ink, #0b0b0b)" />
       <g fill="none" stroke="currentColor" strokeWidth="3.2">
         <rect x="26" y="7" width="15" height="15" rx="4.5" />
         <rect x="7" y="26" width="15" height="15" rx="4.5" />

@@ -32,3 +32,6 @@ desktop/native-bin/
 plugin/.android-deps/
 plugin/Android/app/.cxx/
 plugin/Android/app/build/
+
+# Private local device-installation and saved-data history
+docs/ios-feature-development.md
