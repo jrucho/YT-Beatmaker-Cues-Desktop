@@ -2,6 +2,13 @@
 
 ## Stable release acceptance
 
+The user explicitly chose the existing **Mac/Windows/Android/unsigned-iOS** release
+lineup after all seven required platform/source jobs passed in CI run
+`43015935148` (clean build commit `90d200cdbf70d9908863872f64ebb3d7b54bebfc`). Linux
+native engine/FX checks pass, but its WebView startup still times out; no Linux
+binaries are included in the stable inventory. Publication-only source/docs
+updates preserve that exact application/build-input tree and record both commits.
+
 The user reports successful manual **Android and VST** testing of the published
 candidate and has requested stable 1.0.7 builds. No additional functionality is
 required for this release. The original production Android signing credentials

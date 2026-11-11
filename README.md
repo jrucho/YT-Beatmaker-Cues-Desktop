@@ -84,7 +84,7 @@ Download the [full desktop studio Windows x64 installer](https://github.com/jruc
 
 ## Install on Linux
 
-The latest full desktop Linux installers remain v1.0.3. Native Linux VST3/standalone packages are included in [1.0.7](docs/downloads-1.0.7.md).
+The latest full desktop Linux installers remain v1.0.3. The 1.0.7 published lineup covers Mac, Windows, Android and unsigned iOS; native Linux binaries are deferred while their WebView startup verification remains unresolved.
 
 | Processor | Portable AppImage | Debian / Ubuntu |
 | --- | --- | --- |

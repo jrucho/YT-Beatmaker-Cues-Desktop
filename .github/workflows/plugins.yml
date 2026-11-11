@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      published_platforms_only:
+        description: Limit native desktop packages to the published Mac and Windows lineup
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -21,23 +26,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, windows-latest, ubuntu-24.04]
+        os: ${{ fromJSON(inputs.published_platforms_only && '["macos-15", "windows-latest"]' || '["macos-15", "windows-latest", "ubuntu-24.04"]') }}
         edition: ${{ fromJSON(inputs.main_only && '["main"]' || '["main", "desktop-beta"]') }}
-        include:
-          - os: macos-15
-            platform: macOS
-            arch: universal
-          - os: windows-latest
-            platform: Windows
-            arch: x64
-          - os: ubuntu-24.04
-            platform: Linux
-            arch: x64
     runs-on: ${{ matrix.os }}
     env:
       PLUGIN_PRODUCT: ${{ matrix.edition == 'desktop-beta' && 'Beatmaker Cues Desktop Beta' || 'Beatmaker Cues' }}
       PLUGIN_CODE: ${{ matrix.edition == 'desktop-beta' && 'BmDB' || 'BmCP' }}
       PLUGIN_BUILD_DIR: ${{ matrix.os == 'windows-latest' && 'plugin/build-windows' || 'plugin/build-release' }}
+      PLUGIN_PLATFORM: ${{ matrix.os == 'macos-15' && 'macOS' || matrix.os == 'windows-latest' && 'Windows' || 'Linux' }}
+      PLUGIN_ARCH: ${{ matrix.os == 'macos-15' && 'universal' || 'x64' }}
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v5
@@ -155,10 +152,10 @@ jobs:
           WEBKIT_DISABLE_COMPOSITING_MODE: '1'
         run: xvfb-run -a sh -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$@"' sh plugin/build-release/PluginProbe_artefacts/Release/PluginProbe "plugin/build-release/BeatmakerCues_artefacts/Release/VST3/$PLUGIN_PRODUCT.vst3"
       - name: Package verified native targets
-        run: python3 plugin/Scripts/package_release.py --build-dir ${{ env.PLUGIN_BUILD_DIR }} --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --checks engine,persistence,concurrency,vst3-host,webview-offline${{ runner.os == 'macOS' && ',auval' || '' }}
+        run: python3 plugin/Scripts/package_release.py --build-dir ${{ env.PLUGIN_BUILD_DIR }} --platform ${{ env.PLUGIN_PLATFORM }} --arch ${{ env.PLUGIN_ARCH }} --checks engine,persistence,concurrency,vst3-host,webview-offline${{ runner.os == 'macOS' && ',auval' || '' }}
       - uses: actions/upload-artifact@v7
         with:
-          name: native-plugins-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.edition }}
+          name: native-plugins-${{ env.PLUGIN_PLATFORM }}-${{ env.PLUGIN_ARCH }}-${{ matrix.edition }}
           path: |
             release/Beatmaker-Cues-Plug-ins-*
             release/Beatmaker-Cues-Plugin-Standalone-*

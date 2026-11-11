@@ -18,6 +18,7 @@ jobs:
     with:
       source_sha: ${{ github.sha }}
       main_only: true
+      published_platforms_only: true
     secrets: inherit
 
   desktop:

@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import subprocess
 import tarfile
@@ -30,14 +31,47 @@ def main():
     parser.add_argument('--artifacts', required=True)
     parser.add_argument('--output', required=True)
     parser.add_argument('--run-id', required=True)
+    parser.add_argument('--sources', help='Clean corresponding-source export refreshed for publication metadata')
     args = parser.parse_args()
     version = json.loads((ROOT / 'package.json').read_text())['version']
-    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    release_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     if subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip():
         raise RuntimeError('Stable staging requires clean committed source')
-    run = json.loads(subprocess.check_output(['gh', 'run', 'view', args.run_id, '--repo', 'jrucho/YT-Beatmaker-Cues-Desktop', '--json', 'headSha,conclusion,url'], text=True))
-    if run['headSha'] != commit or run['conclusion'] != 'success':
-        raise RuntimeError('The complete stable build must pass for this exact release commit')
+    run = json.loads(subprocess.check_output(['gh', 'run', 'view', args.run_id, '--repo', 'jrucho/YT-Beatmaker-Cues-Desktop', '--json', 'headSha,status,conclusion,url,jobs'], text=True))
+    commit = run['headSha']
+    if run['status'] != 'completed':
+        raise RuntimeError('The release build must be complete before staging')
+    required_jobs = {'source', 'desktop (macos-15, macOS)', 'desktop (windows-latest, Windows)',
+                     'native / android-standalone', 'native / ios-auv3',
+                     'native / desktop-plugins (macos-15, main)', 'native / desktop-plugins (windows-latest, main)'}
+    jobs = {job['name']: job for job in run['jobs']}
+    if len(jobs) != len(run['jobs']) or set(jobs) - required_jobs - {'native / desktop-plugins (ubuntu-24.04, main)'}:
+        raise RuntimeError('Unexpected or duplicate release jobs')
+    if any(name not in jobs or jobs[name]['status'] != 'completed' or jobs[name]['conclusion'] != 'success' for name in required_jobs):
+        raise RuntimeError('Every source, desktop, Android, iOS and published native-host job must pass')
+    # Publication-only follow-ups must never silently change already-built code.
+    # Binaries keep their actual clean build SHA; refreshed source/notes also name
+    # the publication commit. No app, version, dependency or compiler change fits
+    # this explicit metadata allowlist.
+    metadata_changes = []
+    if commit != release_commit:
+        subprocess.run(['git', 'merge-base', '--is-ancestor', commit, release_commit], cwd=ROOT, check=True)
+        changes = subprocess.check_output(['git', 'diff', '--name-only', '-z', commit, release_commit], cwd=ROOT).decode().split('\0')
+        allowed = {'README.md', 'CHANGELOG.md', '.github/workflows/plugins.yml', '.github/workflows/stable.yml',
+                   'scripts/prepare-stable-release.py', f'docs/downloads-{version}.md',
+                   f'docs/release-{version}-notes.md', f'docs/native-feature-parity-{version}.md',
+                   f'docs/manual-acceptance-{version}.json'}
+        if set(filter(None, changes)) - allowed:
+            raise RuntimeError('Application/build inputs changed after the verified build; rebuild before publication')
+        metadata_changes = sorted(filter(None, changes))
+        for workflow in ['.github/workflows/plugins.yml', '.github/workflows/stable.yml']:
+            previous = subprocess.check_output(['git', 'show', f'{commit}:{workflow}'], cwd=ROOT, text=True)
+            current = (ROOT / workflow).read_text()
+            def build_commands(text):
+                return [line.strip() for line in text.splitlines()
+                        if re.search(r'cmake|xcodebuild|gradlew|build_mobile_ui|installer:|prepare-desktop-maintenance\.py|PLUGIN_PRODUCT:|PLUGIN_CODE:', line)]
+            if build_commands(previous) != build_commands(current):
+                raise RuntimeError('Product identity or build commands changed after the verified build: ' + workflow)
     folder, output = Path(args.artifacts).resolve(), Path(args.output).resolve()
     if output.exists():
         raise RuntimeError('Use a new empty output directory')
@@ -51,20 +85,23 @@ def main():
         f'YT-Beatmaker-Cues-Desktop-{version}-macOS-arm64.dmg', f'YT-Beatmaker-Cues-Desktop-{version}-macOS-x64.dmg',
         f'Main-Build-macOS-{version}.json', f'Main-Build-Windows-{version}.json',
     ]
-    for platform, arch in [('macOS', 'universal'), ('Windows', 'x64'), ('Linux', 'x64')]:
+    for platform, arch in [('macOS', 'universal'), ('Windows', 'x64')]:
         inventory += [f'Beatmaker-Cues-Plug-ins-{version}-{platform}-{arch}.zip',
                       f'Beatmaker-Cues-Plugin-Standalone-{version}-{platform}-{arch}.zip',
                       f'Plugin-Build-{version}-{platform}-{arch}.json']
-    inventory += [f'Beatmaker-Cues-Plug-ins-{version}-Linux-x64.deb']
+    source_names = {f'Beatmaker-Cues-Source-{version}.zip', f'Beatmaker-Cues-Source-{version}.tar.gz',
+                    f'Beatmaker-Cues-Plugin-Source-{version}.zip', f'Source-Build-{version}.json'}
     inputs = {}
     for name in inventory:
-        matches = [file for file in folder.rglob(name) if file.is_file() and file.name == name]
+        source_folder = Path(args.sources).resolve() if args.sources and name in source_names else folder
+        matches = [file for file in source_folder.rglob(name) if file.is_file() and file.name == name]
         if not matches or len({digest(file) for file in matches}) != 1:
             raise RuntimeError(f'Missing or conflicting build artifact: {name}')
         inputs[name] = matches[0]
     builds = {name: json.loads(file.read_text()) for name, file in inputs.items() if name.endswith('.json')}
     for name, info in builds.items():
-        if info.get('sourceCommit') != commit or info.get('workingTreeDirty') is not False or info.get('version') != version:
+        expected_commit = release_commit if args.sources and name == f'Source-Build-{version}.json' else commit
+        if info.get('sourceCommit') != expected_commit or info.get('workingTreeDirty') is not False or info.get('version') != version:
             raise RuntimeError(f'Build identity mismatch: {name}')
         for filename, value in info.get('files', {}).items():
             if filename not in inputs or digest(inputs[filename]) != value['sha256']:
@@ -94,7 +131,8 @@ def main():
                 if '-Source-' in name:
                     identities = [entry for entry in archive.namelist() if entry.count('/') == 1 and entry.endswith('/SOURCE-INFO.json')]
                     info = json.loads(archive.read(identities[0])) if len(identities) == 1 else {}
-                    if info.get('version') != version or info.get('sourceCommit') != commit:
+                    expected_commit = commit if '-Desktop-Source-' in name or not args.sources else release_commit
+                    if info.get('version') != version or info.get('sourceCommit') != expected_commit:
                         raise RuntimeError(f'Corresponding source identity mismatch: {name}')
                     if '-Desktop-Source-' in name:
                         if info.get('desktopBaselineCommit') != baseline['baselineCommit'] or not info.get('unchangedDesktopFunctionality'):
@@ -122,8 +160,14 @@ def main():
         shutil.copy2(file, output / name)
     shutil.copy2(ROOT / f'docs/release-{version}-notes.md', output / f'Release-Notes-{version}.md')
     shutil.copy2(ROOT / f'docs/manual-acceptance-{version}.json', output / f'Manual-Acceptance-{version}.json')
-    manifest = dict(version=version, sourceCommit=commit, workingTreeDirty=False, status='stable',
-                    runURL=run['url'], scope=['macOS', 'Windows', 'Linux-native', 'Android', 'iOS-unsigned'],
+    manifest = dict(version=version, sourceCommit=commit, releaseCommit=release_commit,
+                    correspondingSourceCommit=release_commit if args.sources else commit,
+                    workingTreeDirty=False, status='stable', requiredCIConclusion='success',
+                    applicationBuildInputsUnchanged=True, publicationMetadataFiles=metadata_changes,
+                    runURL=run['url'], scope=['macOS', 'Windows', 'Android', 'iOS-unsigned'],
+                    ciJobs=[dict(name=name, conclusion=jobs[name]['conclusion']) for name in sorted(required_jobs)],
+                    excludedPlatforms=[dict(platform='Linux-native', reason='User-approved deferral: native UI startup verification pending; no Linux binaries published',
+                                            ciConclusion=jobs.get('native / desktop-plugins (ubuntu-24.04, main)', {}).get('conclusion', 'not requested'))],
                     desktopBaseline=baseline, buildRecords=builds,
                     files=[dict(name=file.name, bytes=file.stat().st_size, sha256=digest(file)) for file in sorted(output.iterdir())])
     (output / f'Release-Build-{version}.json').write_text(json.dumps(manifest, indent=2) + '\n')

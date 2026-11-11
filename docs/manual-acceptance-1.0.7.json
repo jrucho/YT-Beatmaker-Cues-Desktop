@@ -9,5 +9,7 @@
   },
   "deviceAndHostDetails": "Not specified in the report; no additional device, AU/AUv3, route or measured-latency result is inferred.",
   "desktopRequest": "Keep the full desktop studio functionality unchanged; rebuild and align its version to 1.0.7.",
-  "releaseAuthorization": "User selected Build and publish: commit and push a dedicated release branch, run CI, and publish verified stable 1.0.7 packages."
+  "releaseAuthorization": "User selected Build and publish: commit and push a dedicated release branch, run CI, and publish verified stable 1.0.7 packages.",
+  "approvedPublishedPlatforms": ["macOS", "Windows", "Android", "iOS-unsigned"],
+  "linuxDecision": "After all existing-lineup jobs passed, the user selected Publish existing lineup. Linux native binaries are excluded while their WebView startup check remains unresolved."
 }

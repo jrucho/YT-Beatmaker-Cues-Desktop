@@ -74,9 +74,22 @@ hardware-route or acoustic-latency measurement.
 
 Stable packages are rebuilt from the committed release branch, with native engine,
 library, UI, VST3 host, platform packaging and desktop regression checks. The build
-records identify the exact source and completed checks for each asset. Windows and
-Linux native runtime verification is performed by their corresponding CI runners;
-Linux full desktop installers retain their earlier release version.
+records identify the exact source and completed checks for each asset. All seven
+required jobs for **Mac, Windows, Android, iOS and source** passed in
+[the verified build](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/actions/runs/43015935148).
+Mac AU validation and actual Mac/Windows VST3/WebView host checks passed.
+
+At the user's explicit choice this release retains the existing published platform
+lineup. **Linux native binaries are not included:** its engine/FX checks pass, but
+the Linux WebView startup check still times out. Linux full desktop installers
+retain their earlier release version. This does not block the verified published
+targets.
+
+Binaries retain their actual clean build commit
+`90d200cdbf70d9908863872f64ebb3d7b54bebfc`. The release tag/corresponding-source
+refresh adds publication notes, inventory and platform-scope metadata only; the
+staging script verifies that application code, versions, dependencies and compiler
+inputs did not change after that build. The release manifest records both commits.
 
 Use **Beatmaker-Cues-Source-1.0.7.zip** or the plug-in corresponding-source archive
 for the current native application source. Use the separate **Desktop-Source** ZIP
