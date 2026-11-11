@@ -118,8 +118,9 @@ int main(int argc,char** argv) {
         if((bool)evaluate("Boolean(document.querySelector('[role=\"dialog\"]'))")){std::cerr<<"Hosted audio settings did not close: "<<evaluate("JSON.stringify({open:window.__pluginStores.ui.getState().settingsOpen,dialogs:[...document.querySelectorAll('[role=dialog]')].map(node=>({title:node.getAttribute('aria-label'),style:node.getAttribute('style')})),visibility:document.visibilityState})").toString()<<"\n";return 1;}
         std::cout<<"PASS: real hosted WebView offers DAW-input recording/monitoring with host-owned device routing\n";
        #endif
-        evaluate("window.__pluginStores.cues.getState().setCue(1,0.125);window.__pluginStores.player.getState().cue(0.125,{bank:'A',pad:1});true");pump(200);
-        if(processor.getCue(0,0)!=0.125||(processor.padStates[0].load()>>1)==0){std::cerr<<"Offline cue bridge did not reach native renderer\n";return 1;}
+        evaluate("window.__pluginStores.cues.getState().setBank('A');window.__pluginStores.cues.getState().setCue(1,0.125);window.__pluginStores.player.getState().cue(0.125,{bank:'A',pad:1});true");
+        for(int i=0;i<100&&(processor.getCue(0,0)!=0.125||(processor.padStates[0].load()>>1)==0);++i)pump(25);
+        if(processor.getCue(0,0)!=0.125||(processor.padStates[0].load()>>1)==0){std::cerr<<"Offline cue bridge did not reach native renderer: cue="<<processor.getCue(0,0)<<" hits="<<(processor.padStates[0].load()>>1)<<" UI="<<evaluate("JSON.stringify({cues:window.__pluginStores.cues.getState(),player:window.__pluginStores.player.getState().status,position:window.__pluginStores.player.getState().position,ready:window.__musikeAudioEl?.readyState})").toString()<<"\n";return 1;}
         auto second=processor.importLocalFile(juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));second.getDynamicObject()->setProperty("title","Background second track");
         evaluate("window.__pluginStores.player.setState({repeat:'one',autoRadio:false});window.__pluginStores.player.getState().playList(["+juce::JSON::toString(track)+","+juce::JSON::toString(second)+"]);true");
         for(int i=0;i<100&&!processor.ready.load();++i)pump(25);pump(200);
@@ -192,11 +193,15 @@ int main(int argc,char** argv) {
         if(!(bool)evaluate("(()=>{const marker=document.querySelector('.cue-wave-marker'),wave=document.querySelector('.cue-waveform');if(!marker||!wave)return false;const x=marker.getBoundingClientRect().left+parseFloat(getComputedStyle(marker,'::before').left);const expected=wave.getBoundingClientRect().left+Number(marker.getAttribute('aria-valuenow'))/Number(marker.getAttribute('aria-valuemax'))*wave.clientWidth;return Math.abs(x-expected)<1;})()")){std::cerr<<"Cue marker line is offset from its actual timestamp\n";return 1;}
         for(const auto [width,height]:shapes){
             editor->setSize(width,height);pump(250);
-            const auto report=evaluate("JSON.stringify((()=>{const main=document.querySelector('main'),nav=document.querySelector('.cue-workspace-active>nav');const limit=nav?nav.getBoundingClientRect().top:innerHeight;const nodes=[...document.querySelectorAll('.cue-pad-grid>div>button:first-child,.cue-speed input,.cue-speed-modes button,.cue-tuning button,.cue-loop button,.cue-library-back')];return {scroll:main.scrollHeight-main.clientHeight,pads:document.querySelectorAll('.cue-pad-grid>div>button:first-child').length,controls:nodes.map(e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,width:r.width,height:r.height};}),limit};})())").toString();
-            const auto data=juce::JSON::parse(report);bool visible=(int)data["scroll"]<=2&&(int)data["pads"]==16;
-            if(const auto* controls=data["controls"].getArray())for(const auto& control:*controls)visible=visible&&(double)control["top"]>=0&&(double)control["bottom"]<=(double)data["limit"]+2&&(double)control["width"]>=20&&(double)control["height"]>=20;
-            else visible=false;
-            if(!visible){std::cerr<<"Cue performance controls require scrolling or are clipped: "<<report<<"\n";return 1;}
+            juce::String report;bool visible=false;
+            for(int attempt=0;attempt<40;++attempt){
+                report=evaluate("JSON.stringify((()=>{const main=document.querySelector('main'),nav=document.querySelector('.cue-workspace-active>nav');const limit=nav?nav.getBoundingClientRect().top:innerHeight;const nodes=[...document.querySelectorAll('.cue-pad-grid>div>button:first-child,.cue-speed input,.cue-speed-modes button,.cue-tuning button,.cue-loop button,.cue-library-back')];return {width:innerWidth,height:innerHeight,layout:{...document.documentElement.dataset},scroll:main.scrollHeight-main.clientHeight,pads:document.querySelectorAll('.cue-pad-grid>div>button:first-child').length,controls:nodes.map(e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,width:r.width,height:r.height};}),limit};})())").toString();
+                const auto data=juce::JSON::parse(report);visible=(int)data["scroll"]<=2&&(int)data["pads"]==16;
+                if(const auto* controls=data["controls"].getArray())for(const auto& control:*controls)visible=visible&&(double)control["top"]>=0&&(double)control["bottom"]<=(double)data["limit"]+2&&(double)control["width"]>=20&&(double)control["height"]>=20;
+                else visible=false;
+                if(visible)break;pump(50);
+            }
+            if(!visible){std::cerr<<"Cue performance controls require scrolling or are clipped at "<<width<<"x"<<height<<": "<<report<<"\n";return 1;}
         }
         std::cout<<"PASS: native portrait/landscape cue workspace keeps pads, speed, tuning and loop controls visible without scrolling\n";
        #endif

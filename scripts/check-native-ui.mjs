@@ -560,7 +560,20 @@ try{
     await page.evaluate(()=>window.__pluginStores.player.getState().playList([window.__uiFixture.tracks[0]]));await page.waitForFunction(()=>window.__pluginStores.cues.getState().trackId==='ui000000000');
     console.log('PASS: recorded-song waveform/scrubber animate between 10 Hz native snapshots without waveform redraws, plus pause/seek/rate/loop/buffering/stale-source and bounded-clock checks: '+JSON.stringify(animation));
     await page.evaluate(()=>{window.__uiFixture.routes.inputs=[{id:'mic-raw',name:'iPhone microphone',type:'MicrophoneBuiltIn',kind:'microphone'},{id:'mic-raw-again',name:'iPhone microphone',type:'MicrophoneBuiltIn',kind:'microphone'},{id:'sp-raw',name:'SP-404MKII',type:'USBAudio',kind:'usb'},{id:'sp-raw-again',name:'SP-404MKII',type:'USBAudio',kind:'usb'}];window.__uiFixture.routes.input='mic-raw';});
+    if(fixturePlatform==='desktop')await page.evaluate(()=>{window.__uiFixture.routes.outputs=[{id:'desktop-speakers',name:'Desktop speakers',type:'CoreAudio'},{id:'desktop-interface',name:'SP-404 output',type:'CoreAudio'}];});
     await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByText('Audio input & output',{exact:true}).click();
+    if(fixturePlatform==='desktop'){
+      const input=page.getByLabel('Preferred audio input',{exact:true}),output=page.getByLabel('Preferred audio output device',{exact:true});
+      assert.deepEqual(await input.locator('option').evaluateAll(nodes=>nodes.map(node=>node.value)),['automatic','mic-raw','mic-raw-again','sp-raw','sp-raw-again'],'Desktop device IDs must stay individually selectable');
+      assert.equal(await input.inputValue(),'mic-raw');
+      assert.deepEqual(await output.locator('option').evaluateAll(nodes=>nodes.map(node=>node.value)),['automatic','desktop-speakers','desktop-interface']);
+      await input.selectOption('sp-raw');await output.selectOption('desktop-interface');
+      await page.getByRole('switch',{name:'Enable audio input',exact:true}).click();await page.getByRole('switch',{name:'Input monitoring',exact:true}).click();
+      await page.waitForFunction(()=>{const prefs=JSON.parse(localStorage.getItem('musike:audio:routes')||'{}');return prefs.input==='sp-raw'&&prefs.output==='desktop-interface'&&prefs.monitor===true;});
+      await page.getByRole('switch',{name:'Input monitoring',exact:true}).click();await page.getByRole('switch',{name:'Enable audio input',exact:true}).click();
+      await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
+      console.log('PASS: desktop standalone keeps concrete input/output device IDs selectable and persists device/monitor preferences.');
+    }else{
     assert.deepEqual(await page.getByLabel('Preferred audio input',{exact:true}).locator('option').allTextContents(),['Automatic',microphoneName,'SP-404'],'Raw microphone/SP-404 entries duplicated the logical device choices');
     assert.equal(await page.getByLabel('Preferred audio input',{exact:true}).inputValue(),'microphone','Legacy raw microphone UID did not map to the simplified microphone choice');
     const outputGroup=page.getByRole('radiogroup',{name:'Preferred audio output',exact:true});
@@ -586,6 +599,7 @@ try{
     await page.getByRole('switch',{name:'Enable audio input',exact:true}).click();
     await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
     console.log('PASS: automatic recording Imports/Cues and local-only menus; single mic/SP-404 choices, speaker/card switching, failed-card rollback and actual-output selection, plus saved route/monitor preferences.');
+    }
     await page.getByRole('button',{name:'Settings',exact:true}).click();
     const always=page.getByRole('switch',{name:'Always audition while dragging',exact:true});
     assert.equal(await always.getAttribute('aria-checked'),'false','Always-audition must be opt-in');await always.click();
