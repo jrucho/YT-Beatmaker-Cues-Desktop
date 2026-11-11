@@ -201,6 +201,11 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT ANDROID)
     target_sources(CueTests PRIVATE Tests/EngineTests.cpp)
     target_compile_definitions(CueTests PRIVATE BEATMAKER_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/Tests/fixtures")
     target_link_libraries(CueTests PRIVATE BeatmakerCues)
+    if(MSVC)
+        # The stress fixture keeps several processors on its stack. Match the
+        # normal 8 MiB Unix test stack instead of Windows' 1 MiB EXE default.
+        target_link_options(CueTests PRIVATE /STACK:8388608)
+    endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         juce_link_with_embedded_linux_subprocess(CueTests)
     endif()

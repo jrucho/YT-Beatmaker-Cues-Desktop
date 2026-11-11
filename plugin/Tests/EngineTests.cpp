@@ -742,6 +742,8 @@ static void selectedBankCacheTests(){
 }
 
 int main() {
+    std::cout<<std::unitbuf;
+    std::cout<<"Engine fixture processor size: "<<sizeof(CueProcessor)<<" bytes\n";
     juce::ScopedJuceInitialiser_GUI initialise;
     try {
         constexpr int notes[] = {48,49,50,51,44,45,46,47,40,41,42,43,36,37,38,39};
