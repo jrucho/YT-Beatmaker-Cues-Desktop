@@ -393,13 +393,13 @@ void CueProcessor::saveLoopers(){
     std::lock_guard<std::mutex> writer(looperFileMutex);const int revision=padLooper.revision();const auto data=looperData();const auto file=looperManifest();if(!file.getParentDirectory().createDirectory())throw std::runtime_error("Cannot create looper storage");
     juce::TemporaryFile temporary(file);if(!temporary.getFile().replaceWithText(juce::JSON::toString(data))||!temporary.overwriteTargetFileWithTemporary())throw std::runtime_error("Cannot save MIDI pad loopers");lastLooperSaved.store(revision);looperDirty.store(false);
 }
-juce::var CueProcessor::looperAction(const juce::var& request){
+juce::var CueProcessor::looperAction(const juce::var& request,int sourceGeneration){
     const auto command=request["cmd"].toString();if(command=="restore"){
         const auto data=request["data"];std::lock_guard<std::mutex> lock(looperMutex);const auto song=data["song"].toString().isNotEmpty()?data["song"].toString():looperSong;auto restore=PadLooper::restore(data,looperGeneration+1);looperSongs.getDynamicObject()->setProperty(juce::Identifier(song),data.clone());if(song==looperSong){++looperGeneration;padLooper.publish(std::move(restore));}looperDirty.store(true);return true;
     }
     const auto bank=request["bank"].toString();const int pad=(int)request["pad"]-1;const juce::StringArray names{"assign","remove","press","release","stop","clear","undo"};const int action=names.indexOf(command);
     if(action<0||bank.length()!=1||bank[0]<'A'||bank[0]>'J'||pad<0||pad>=16)throw std::runtime_error("Invalid looper action");
-    Command queued{Action::looperControl,(int)bank[0]-'A',pad,(double)action};queued.sourceGeneration=audioGeneration();if(!submit(queued))throw std::runtime_error("Looper command queue is full");return true;
+    Command queued{Action::looperControl,(int)bank[0]-'A',pad,(double)action};queued.sourceGeneration=sourceGeneration>=0?sourceGeneration:audioGeneration();if(!submit(queued))throw std::runtime_error("Looper command queue is full");return true;
 }
 void CueProcessor::remapLoopers(const juce::var& mappings,const juce::String& scope){
     if(!mappings.isArray())throw std::runtime_error("Invalid looper pad mapping");

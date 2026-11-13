@@ -2,6 +2,28 @@
 
 [Download the 1.0.7 apps, plug-ins and corresponding source](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.7).
 
+## Corrected 1.0.7 keyboard-looper build
+
+The 1.0.7 downloads have been refreshed to fix a computer-keyboard looper bug in
+the responsive native VST3/standalone interface. The old number-key path sent a
+press without a release, so a normal tap became a **1.2-second hold-to-clear**.
+This was an input-release bug, not a one-second recording limit.
+
+Number keys now keep their original pad/bank ownership through key-up, even when
+Shift changes. Losing focus, entering a dialog, changing bank/track or leaving
+Cues releases the transient hold. Native editor teardown also releases its owned
+keyboard gestures while the looper continues recording/playing. Intentional long
+holds still clear; keyboard loopers also work without a loaded song.
+
+Verified regressions include more-than-three-second actual native VST3 and
+standalone recordings, sample-only recording after closing the editor, and shared
+desktop/Android browser tests for modifiers, repeat, hold-clear and focus/route
+cleanup. The fix is shared by the native mobile and plug-in editions.
+
+**Re-download the matching package**, quit the app/DAW, replace the old native
+app/plug-in and rescan/reopen. The product version remains **1.0.7**. The full
+desktop studio retains its version-only maintenance behavior below.
+
 ## Native Android and plug-in edition
 
 - **Recording and imports:** Files, phone-gallery video audio, microphone/USB input
@@ -74,10 +96,11 @@ hardware-route or acoustic-latency measurement.
 
 Stable packages are rebuilt from the committed release branch, with native engine,
 library, UI, VST3 host, platform packaging and desktop regression checks. The build
-records identify the exact source and completed checks for each asset. All seven
-required jobs for **Mac, Windows, Android, iOS and source** passed in
-[the verified build](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/actions/runs/43015935148).
-Mac AU validation and actual Mac/Windows VST3/WebView host checks passed.
+records identify the exact corrected source commit, CI run and completed checks
+for each asset. Publication requires all seven jobs for **Mac, Windows, Android,
+iOS and source**, including actual native keyboard-looper recordings in both VST3
+and standalone contexts. Mac AU validation and actual Mac/Windows VST3/WebView
+host checks accompany the platform builds.
 
 At the user's explicit choice this release retains the existing published platform
 lineup. **Linux native binaries are not included:** its engine/FX checks pass, but
@@ -85,11 +108,12 @@ the Linux WebView startup check still times out. Linux full desktop installers
 retain their earlier release version. This does not block the verified published
 targets.
 
-Binaries retain their actual clean build commit
-`90d200cdbf70d9908863872f64ebb3d7b54bebfc`. The release tag/corresponding-source
-refresh adds publication notes, inventory and platform-scope metadata only; the
-staging script verifies that application code, versions, dependencies and compiler
-inputs did not change after that build. The release manifest records both commits.
+The original v1.0.7 tag is retained at
+`13bfdcd20ce28effd03a1b300666db98d9527627`; the refreshed assets/build records identify
+their newer corrected source independently. **Use the attached source archives**
+for the corrected native build. GitHub's automatic source archives for the original
+tag preserve the initial baseline and do not contain this keyboard-looper fix.
+`Release-Build-1.0.7.json` records both the original tag and corrected build commits.
 
 Use **Beatmaker-Cues-Source-1.0.7.zip** or the plug-in corresponding-source archive
 for the current native application source. Use the separate **Desktop-Source** ZIP

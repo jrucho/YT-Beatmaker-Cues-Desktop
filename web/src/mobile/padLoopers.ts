@@ -25,7 +25,7 @@ export async function refreshLoopers(){
   }else if(before?.song!==next.song)baselines.clear();
   previous=next;usePadLoopers.setState({song:next.song,revision:next.revision,pads:Object.fromEntries(next.pads.map(pad=>[`${pad.bank}:${pad.pad}`,pad]))});return next;
 }
-export function pressLooper(bank:string,pad:number){return mediaInvoke('looperPad',{cmd:'press',bank,pad});}
-export function releaseLooper(bank:string,pad:number){return mediaInvoke('looperPad',{cmd:'release',bank,pad});}
+export function pressLooper(bank:string,pad:number,gestureId?:string){return mediaInvoke('looperPad',{cmd:'press',bank,pad,...(gestureId?{gestureId}:{})});}
+export function releaseLooper(bank:string,pad:number,gestureId?:string){return mediaInvoke('looperPad',{cmd:'release',bank,pad,...(gestureId?{gestureId}:{})});}
 export async function changeLooper(bank:string,pad:number,enabled:boolean){await mediaInvoke('looperPad',{cmd:enabled?'assign':'remove',bank,pad});for(let i=0;i<100;i++){await refreshLoopers();if(!!usePadLoopers.getState().pads[`${bank}:${pad}`]===enabled)return;await new Promise(resolve=>setTimeout(resolve,20));}throw new Error('Looper edit did not complete');}
 export function useLooperStatus(enabled:boolean){useEffect(()=>{if(!enabled)return;let busy=false,closed=false;const poll=async()=>{if(busy||closed)return;busy=true;try{await refreshLoopers();}catch{}finally{busy=false;}};void poll();const timer=setInterval(poll,120);return()=>{closed=true;clearInterval(timer);};},[enabled]);}

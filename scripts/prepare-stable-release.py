@@ -32,8 +32,22 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--run-id', required=True)
     parser.add_argument('--sources', help='Clean corresponding-source export refreshed for publication metadata')
+    parser.add_argument('--refresh-tag', help='Refresh this existing version, preserving its original tag and recording asset-source provenance')
     args = parser.parse_args()
     version = json.loads((ROOT / 'package.json').read_text())['version']
+    original_tag_commit = None
+    if args.refresh_tag:
+        if args.refresh_tag != f'v{version}':
+            raise RuntimeError('Only refresh the exact current product version')
+        published = json.loads(subprocess.check_output(['gh', 'release', 'view', args.refresh_tag, '--repo', 'jrucho/YT-Beatmaker-Cues-Desktop', '--json', 'isDraft,isPrerelease,tagName'], text=True))
+        if published['isDraft'] or published['isPrerelease'] or published['tagName'] != args.refresh_tag:
+            raise RuntimeError('The existing release must be a published stable release')
+        reference = json.loads(subprocess.check_output(['gh', 'api', f'repos/jrucho/YT-Beatmaker-Cues-Desktop/git/ref/tags/{args.refresh_tag}'], text=True))['object']
+        while reference['type'] == 'tag':
+            reference = json.loads(subprocess.check_output(['gh', 'api', f'repos/jrucho/YT-Beatmaker-Cues-Desktop/git/tags/{reference["sha"]}'], text=True))['object']
+        if reference['type'] != 'commit':
+            raise RuntimeError('The original release tag must resolve to a commit')
+        original_tag_commit = reference['sha']
     release_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     if subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip():
         raise RuntimeError('Stable staging requires clean committed source')
@@ -115,6 +129,8 @@ def main():
         raise RuntimeError('Only the unsigned iOS build is public')
     baseline = json.loads((ROOT / 'desktop/release-baseline.json').read_text())
     for platform in ['macOS', 'Windows']:
+        if args.refresh_tag and 'keyboard-looper-release' not in builds[f'Plugin-Build-{version}-{platform}-{"universal" if platform == "macOS" else "x64"}.json'].get('checks', []):
+            raise RuntimeError(f'Corrected native keyboard looper checks are missing: {platform}')
         desktop = builds[f'Main-Build-{platform}-{version}.json']
         if (desktop.get('desktopBaselineCommit') != baseline['baselineCommit']
                 or desktop.get('unchangedDesktopFunctionality') is not True
@@ -161,6 +177,9 @@ def main():
     shutil.copy2(ROOT / f'docs/release-{version}-notes.md', output / f'Release-Notes-{version}.md')
     shutil.copy2(ROOT / f'docs/manual-acceptance-{version}.json', output / f'Manual-Acceptance-{version}.json')
     manifest = dict(version=version, sourceCommit=commit, releaseCommit=release_commit,
+                    initialSourceCommit=original_tag_commit or release_commit,
+                    releaseTag=args.refresh_tag or f'v{version}',
+                    refresh='keyboard looper press/release correction; product version retained' if args.refresh_tag else None,
                     correspondingSourceCommit=release_commit if args.sources else commit,
                     workingTreeDirty=False, status='stable', requiredCIConclusion='success',
                     applicationBuildInputsUnchanged=True, publicationMetadataFiles=metadata_changes,

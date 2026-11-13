@@ -15,8 +15,9 @@ bool checkNativePadInputRouting(CueProcessor&,MobileWebEditor&);
 
 int main(int argc,char** argv) {
     std::cout<<std::unitbuf;
+    const bool keyboardStandalone=argc>1&&juce::String(argv[1])=="--looper-keyboard-standalone";
     const bool sharedOffline=argc>1&&juce::String(argv[1])=="--shared-offline";
-    const bool offline=sharedOffline||(argc>1&&juce::String(argv[1])=="--offline");
+    const bool offline=keyboardStandalone||sharedOffline||(argc>1&&juce::String(argv[1])=="--offline");
     const bool profilePlaylist=argc>2&&juce::String(argv[1])=="--profile-playlist";
     juce::ScopedJuceInitialiser_GUI initialise;
     const auto testData=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("beatmaker-web-test",{});
@@ -31,7 +32,7 @@ int main(int argc,char** argv) {
      setenv("BEATMAKER_AUDIO_CACHE_DIR",testData.getChildFile("AudioCache").getFullPathName().toRawUTF8(),1);
    #endif
     struct Cleanup{juce::File file;~Cleanup(){file.deleteRecursively();}}cleanup{testData};
-    juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_VST3);
+    juce::AudioProcessor::setTypeOfNextNewPlugin(keyboardStandalone?juce::AudioProcessor::wrapperType_Standalone:juce::AudioProcessor::wrapperType_VST3);
     CueProcessor processor;processor.prepareToPlay(48000,512);
     juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_Undefined);
     auto editor=std::make_unique<MobileWebEditor>(processor,offline);
@@ -110,6 +111,41 @@ int main(int argc,char** argv) {
         for(int i=0;i<100&&!(bool)evaluate("Boolean(window.__musikeAudioEl?.readyState>0&&window.__pluginStores.player.getState().status!=='loading')");++i)pump(50);
         if(!(bool)evaluate("Boolean(window.__musikeAudioEl?.readyState>0&&window.__pluginStores.player.getState().status!=='loading')")){std::cerr<<"Native audio rendered but the WebView did not reconcile ready state\n";return 1;}
        #if BEATMAKER_PERFORMANCE_FEATURES && !BEATMAKER_DESKTOP_BETA
+        evaluate("document.querySelector('a[href=\"/cues\"]').click();document.activeElement?.blur();true");pump(150);
+        processor.looperAction(juce::JSON::parse(R"({"cmd":"assign","bank":"A","pad":14})"));
+        for(int i=0;i<100&&!(bool)evaluate("document.querySelector('.cue-pad[data-pad-number=\"14\"]')?.dataset.padKind==='looper'");++i)pump(25);
+        if(!(bool)evaluate("document.querySelector('.cue-pad[data-pad-number=\"14\"]')?.dataset.padKind==='looper'")){std::cerr<<"Keyboard looper fixture did not reach the WebView\n";return 1;}
+        const auto loopPad=[&]{const auto state=processor.looperState(true);if(const auto* pads=state["pads"].getArray())for(const auto& pad:*pads)if(pad["bank"].toString()=="A"&&(int)pad["pad"]==14)return pad;return juce::var{};};
+        const auto keyboardTap=[&]{evaluate("window.dispatchEvent(new KeyboardEvent('keydown',{key:'4',code:'Digit4',shiftKey:true,bubbles:true,cancelable:true}));window.dispatchEvent(new KeyboardEvent('keyup',{key:'4',code:'Digit4',shiftKey:false,bubbles:true,cancelable:true}));true");pump(75);};
+        keyboardTap();
+        processor.submit({CueProcessor::Action::cue,0,0,.125});
+        // Offline audio time deliberately exceeds the 1.2-second clear gesture.
+        // A released key must keep recording throughout these real render blocks.
+        for(int frame=0;frame<48000*3;frame+=512)processor.processBlock(output,midi);
+        if((int)loopPad()["mode"]!=PadLooper::recording){std::cerr<<"A released keyboard looper was mistaken for hold-to-clear: "<<juce::JSON::toString(loopPad(),true)<<"\n";return 1;}
+        keyboardTap();
+        const auto recordedLoop=loopPad();
+        if((int)recordedLoop["mode"]!=PadLooper::playing||(double)recordedLoop["duration"]<3||(int)recordedLoop["count"]<1){std::cerr<<"Keyboard looper failed to retain/play a recording longer than one second: "<<juce::JSON::toString(recordedLoop,true)<<"\n";return 1;}
+        processor.looperAction(juce::JSON::parse(R"({"cmd":"remove","bank":"A","pad":14})"));pump(150);
+        std::cout<<"PASS: "<<(keyboardStandalone?"standalone":"VST3")<<" real WebView keyboard down/up, changed Shift state and more-than-three-second native looper recording/playback\n";
+        if(keyboardStandalone){
+            evaluate("window.__keyboardEmptyReady=false;window.__pluginStores.player.getState().newEmptyTrack().then(()=>window.__keyboardEmptyReady=true);true");
+            for(int i=0;i<100&&!(bool)evaluate("window.__keyboardEmptyReady===true");++i)pump(25);
+            if(!(bool)evaluate("window.__keyboardEmptyReady===true&&!window.__pluginStores.player.getState().queue.length")){std::cerr<<"Empty keyboard recording workspace did not initialise\n";return 1;}
+            processor.importPadSample(0,0,juce::File(BEATMAKER_TEST_FIXTURES).getChildFile("tone.m4a"));
+            processor.looperAction(juce::JSON::parse(R"({"cmd":"assign","bank":"A","pad":14})"));
+            for(int i=0;i<100&&!(bool)evaluate("document.querySelector('.cue-pad[data-pad-number=\"14\"]')?.dataset.padKind==='looper'&&document.querySelector('.cue-pad[data-pad-number=\"1\"]')?.dataset.padKind==='sample'");++i)pump(25);
+            evaluate("document.activeElement?.blur();window.dispatchEvent(new KeyboardEvent('keydown',{key:'4',code:'Digit4',shiftKey:true,bubbles:true,cancelable:true}));true");
+            for(int i=0;i<100&&(int)loopPad()["mode"]!=PadLooper::recording;++i)pump(5);
+            if((int)loopPad()["mode"]!=PadLooper::recording){std::cerr<<"Keyboard looper required a loaded song\n";return 1;}
+            editor.reset(); // No JavaScript key-up/pagehide callback is required.
+            processor.submit({CueProcessor::Action::pad,0,0});
+            for(int frame=0;frame<48000*3;frame+=512)processor.processBlock(output,midi);
+            const auto closedLoop=loopPad();
+            if((int)closedLoop["mode"]!=PadLooper::recording||(double)closedLoop["duration"]<3||(int)closedLoop["count"]<1){std::cerr<<"Closing the editor left a stuck keyboard hold or stopped sample-only recording: "<<juce::JSON::toString(closedLoop,true)<<"\n";return 1;}
+            std::cout<<"PASS: standalone empty-track keyboard looper and native editor-close release keep a more-than-three-second sample performance recording\n";
+            return 0;
+        }
         if(!(bool)processor.audioRoutes()["hostManaged"]){std::cerr<<"Hosted audio settings did not expose DAW ownership\n";return 1;}
         evaluate("document.querySelector('a[href=\"/cues\"]').click();true");pump(150);evaluate("document.querySelector('button[aria-label=\"Settings\"]').click();true");pump(150);
         evaluate("Array.from(document.querySelectorAll('[role=\"dialog\"] summary')).find(node=>node.textContent==='Audio input & output').click();true");pump(250);

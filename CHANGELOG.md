@@ -2,6 +2,14 @@
 
 ## 1.0.7
 
+### Keyboard-looper correction (same-version asset refresh)
+
+- Pair computer number-key looper presses with their original key-up/pad/bank, including changed Shift state, repeat suppression and empty-track recording. A normal tap no longer becomes the 1.2-second hold-to-clear gesture.
+- Release transient keyboard gestures on focus/dialog/route/bank/track changes and native editor teardown without stopping recording/playback. Keep gesture IDs instance-local and source-generation guarded; retain genuine long-hold clearing and pointer receipt ownership.
+- Verify more-than-three-second actual native VST3/standalone recordings, editor-close sample-only recording and shared desktop/Android browser regressions. Refresh the existing v1.0.7 assets/source/checksums at the user's request, preserving the original tag with explicit corrected-source provenance.
+
+### Initial stable release
+
 - Release the iPhone-first recording, import/gallery, editing, numbering/velocity/bank, per-song playback, event-looper, compressor/mixer, monitoring and song-transition feature set across the native Android and responsive plug-in/standalone edition.
 - Correct the Android import menu's zero-height panel and supported audio/video file MIME types. Preserve real native touch/hold/release ownership and smooth visual playback updates.
 - Add an optional disabled-by-default DAW Recorder-input bus, keeping hardware routing host-owned and monitoring Off by default. Capture input before output rendering and monitor after playback recording.

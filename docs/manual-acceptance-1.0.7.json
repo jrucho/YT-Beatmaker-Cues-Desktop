@@ -11,5 +11,8 @@
   "desktopRequest": "Keep the full desktop studio functionality unchanged; rebuild and align its version to 1.0.7.",
   "releaseAuthorization": "User selected Build and publish: commit and push a dedicated release branch, run CI, and publish verified stable 1.0.7 packages.",
   "approvedPublishedPlatforms": ["macOS", "Windows", "Android", "iOS-unsigned"],
-  "linuxDecision": "After all existing-lineup jobs passed, the user selected Publish existing lineup. Linux native binaries are excluded while their WebView startup check remains unresolved."
+  "linuxDecision": "After all existing-lineup jobs passed, the user selected Publish existing lineup. Linux native binaries are excluded while their WebView startup check remains unresolved.",
+  "followupBugReport": "User reports that a keyboard-triggered looper stops near one second in VST and confirms reproduction in the native standalone app.",
+  "sameVersionCorrectionAuthorization": "User explicitly requested fixing the error and replacing the existing GitHub 1.0.7 downloads with corrected 1.0.7 packages.",
+  "correctedBuildVerification": "Automated long-recording, key-release, focus and native editor-close regressions; a fresh user manual acceptance of the correction is not inferred."
 }

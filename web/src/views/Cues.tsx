@@ -32,6 +32,7 @@ import { recordingMidiSuspended } from '../mobile/recordingMidiGuard';
 import { CompressorControls } from '../components/CompressorControls';
 import { changeLooper, hasPadLooper, pressLooper, releaseLooper, useLooperStatus, usePadLoopers, type PadLoop } from '../mobile/padLoopers';
 const EMPTY_LOOPERS:Record<string,PadLoop>={};
+let keyboardLooperSequence=0;
 
 const formatSemitones = (st: number) => `${st > 0 ? "+" : ""}${st} st`;
 
@@ -154,9 +155,9 @@ export default function Cues() {
     return () => {window.removeEventListener('plugin-pad-samples',update);window.removeEventListener('pageshow',refresh);document.removeEventListener('visibilitychange',refresh);};
   }, []);
 
-  const trigger = useCallback((pad: number) => {
+  const trigger = useCallback((pad: number,gestureId?:string) => {
     const bank=useCueStore.getState().bank;
-    if(hasPadLooper(bank,pad,useCueStore.getState().trackId)){void pressLooper(bank,pad).catch(error=>toast(error.message,'error'));return;}
+    if(hasPadLooper(bank,pad,useCueStore.getState().trackId)){void pressLooper(bank,pad,gestureId).catch(error=>toast(error.message,'error'));return;}
     if(hasPadSample(bank,pad)){void playPadSample(bank,pad).catch(error=>toast(error.message,'error'));return;}
     const time = useCueStore.getState().cues[pad];
     if (time == null) return;
@@ -177,24 +178,51 @@ export default function Cues() {
   }, []);
 
   useEffect(()=>{
+    const heldLoopers=new Map<string,{bank:string;pad:number;gestureId:string}>();
+    const keyId=(event:KeyboardEvent)=>{
+      if(event.code)return event.code;
+      const digit=/^[0-9]$/.test(event.key)?event.key:')!@#$%^&*('.indexOf(event.key);
+      return digit!==-1&&event.key.length===1?`Digit${digit}`:null;
+    };
+    const releaseKey=(key:string)=>{
+      const held=heldLoopers.get(key);if(!held)return;
+      heldLoopers.delete(key);void releaseLooper(held.bank,held.pad,held.gestureId).catch(()=>{});
+    };
+    const releaseKeys=()=>{for(const key of heldLoopers.keys())releaseKey(key);};
+    const visibility=()=>{if(document.hidden)releaseKeys();};
+    const focus=(event:FocusEvent)=>{const target=event.target;if(target instanceof HTMLElement&&(target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)||!!target.closest('[role="dialog"]')))releaseKeys();};
+    const onKeyUp=(event:KeyboardEvent)=>{
+      const key=keyId(event);if(key===null||!heldLoopers.has(key))return;
+      // Release belongs to the original physical key/pad, even after Shift,
+      // focus or a dialog has changed. It must not toggle recording/playback.
+      event.preventDefault();event.stopImmediatePropagation();releaseKey(key);
+    };
     const onKey=(event:KeyboardEvent)=>{
       const target=event.target;
       if(event.repeat||event.altKey||target instanceof HTMLElement&&(target.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)||!!target.closest('[role="dialog"]'))||document.querySelector('[role="dialog"]'))return;
       const digit=/^(?:Digit|Numpad)([0-9])$/.exec(event.code)?.[1]??(/^[0-9]$/.test(event.key)?event.key:null);
       if(digit===null)return;
       const number=Number(digit),pad=event.shiftKey&&number>=1&&number<=6?number+10:number===0?10:number;
-      if(pad>mapping.padToNote.length||(!usePlayer.getState().queue.length&&!hasPadSample(useCueStore.getState().bank,pad)))return;
+      const store=useCueStore.getState(),looper=hasPadLooper(store.bank,pad,store.trackId);
+      if(pad>mapping.padToNote.length||(!looperEdit&&!usePlayer.getState().queue.length&&!hasPadSample(store.bank,pad)&&!looper))return;
       event.preventDefault();event.stopImmediatePropagation();
       if(looperEdit){void editContents(()=>changeLooper(useCueStore.getState().bank,pad,!hasPadLooper(useCueStore.getState().bank,pad,useCueStore.getState().trackId)));return;}
-      if(fineEdit){setFinePad(pad);trigger(pad);return;}
-      if(hasPadLooper(useCueStore.getState().bank,pad,useCueStore.getState().trackId)){trigger(pad);return;}
+      if(fineEdit)setFinePad(pad);
+      if(looper){
+        const key=keyId(event);if(key===null||heldLoopers.has(key))return;
+        const gestureId=`keyboard:${performance.timeOrigin}:${++keyboardLooperSequence}`;
+        heldLoopers.set(key,{bank:store.bank,pad,gestureId});trigger(pad,gestureId);return;
+      }
+      if(fineEdit){trigger(pad);return;}
       if(hasPadSample(useCueStore.getState().bank,pad))trigger(pad);
       else if(event.metaKey||event.ctrlKey||overwrite||useCueStore.getState().cues[pad]==null)mark(pad);
       else{padFeedback({bank:useCueStore.getState().bank,pad,phase:'triggered'});trigger(pad);}
     };
     window.addEventListener('keydown',onKey,true);
-    return()=>window.removeEventListener('keydown',onKey,true);
-  },[mark,trigger,mapping.padToNote.length,overwrite,fineEdit,looperEdit]);
+    window.addEventListener('keyup',onKeyUp,true);window.addEventListener('blur',releaseKeys);window.addEventListener('pagehide',releaseKeys);
+    document.addEventListener('visibilitychange',visibility);document.addEventListener('focusin',focus,true);
+    return()=>{releaseKeys();window.removeEventListener('keydown',onKey,true);window.removeEventListener('keyup',onKeyUp,true);window.removeEventListener('blur',releaseKeys);window.removeEventListener('pagehide',releaseKeys);document.removeEventListener('visibilitychange',visibility);document.removeEventListener('focusin',focus,true);};
+  },[mark,trigger,mapping.id,mapping.padToNote.length,overwrite,fineEdit,looperEdit,bank,track?.id]);
 
   useEffect(() => {
     if (!midiAvailable) return;

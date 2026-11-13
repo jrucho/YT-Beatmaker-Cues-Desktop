@@ -73,7 +73,7 @@ MobileWebEditor::MobileWebEditor(CueProcessor& processor, bool offline)
     browser.goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
     startTimerHz(60);
 }
-MobileWebEditor::~MobileWebEditor(){setRecordingMidiGuard(false);setFineMidiEditor(false);nativePadInput.reset();hostedKeyboard.reset();stopTimer();cancelled->store(true);requests.removeAllJobs(true,-1);mediaWorker.removeAllJobs(false,-1);engine.clearSamplerPreview();storageWorker.removeAllJobs(false,-1);engine.openEditors.fetch_sub(1);}
+MobileWebEditor::~MobileWebEditor(){releaseLooperGestures();setRecordingMidiGuard(false);setFineMidiEditor(false);nativePadInput.reset();hostedKeyboard.reset();stopTimer();cancelled->store(true);requests.removeAllJobs(true,-1);mediaWorker.removeAllJobs(false,-1);engine.clearSamplerPreview();storageWorker.removeAllJobs(false,-1);engine.openEditors.fetch_sub(1);}
 void MobileWebEditor::parentHierarchyChanged(){
    #if JUCE_IOS || JUCE_ANDROID
     // Logical-to-physical rounding may leave the last device pixel to the JUCE
@@ -152,7 +152,7 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withNativeFunction("mixer",[this](const auto& args,auto complete){try{if(!args.isEmpty())engine.setMixer(args[0]);complete(engine.mixerState());}catch(const std::exception& error){complete(failure(error.what()));}})
         .withNativeFunction("transitions",[this](const auto& args,auto complete){try{if(!args.isEmpty())engine.setTransitions(args[0]);complete(engine.transitions());}catch(const std::exception& error){complete(failure(error.what()));}})
         .withNativeFunction("looperState",[this](const auto& args,auto complete){try{complete(engine.looperState(!args.isEmpty()&&(bool)args[0]["events"]));}catch(const std::exception& error){complete(failure(error.what()));}})
-        .withNativeFunction("looperPad",[this](const auto& args,auto complete){try{complete(engine.looperAction(args[0]));}catch(const std::exception& error){complete(failure(error.what()));}})
+        .withNativeFunction("looperPad",[this](const auto& args,auto complete){try{complete(looperControl(args[0]));}catch(const std::exception& error){complete(failure(error.what()));}})
         .withNativeFunction("remapLoopers",[this](const auto& args,auto complete){try{engine.remapLoopers(args[0]["mappings"],args[0]["scope"].toString());complete(true);}catch(const std::exception& error){complete(failure(error.what()));}})
         .withNativeFunction("shareAudio",[this](const auto& args,auto complete){shareAudio(args.isEmpty()?juce::String{}:args[0]["id"].toString(),std::move(complete));})
         .withNativeFunction("eraseLocalAudio",[this](const auto& args,auto complete){const auto id=args[0]["id"].toString();if(engine.nativeSnapshot()["trackId"].toString()==id)engine.unloadSong();storageTask([this,id]{return engine.eraseLocalAudio(id);},std::move(complete),true);})
@@ -271,6 +271,30 @@ std::optional<juce::WebBrowserComponent::Resource> MobileWebEditor::resource(con
     if(path.endsWith(".woff2"))mime="font/woff2";
     std::vector<std::byte> data(bytes.getSize());std::memcpy(data.data(),bytes.getData(),bytes.getSize());
     return juce::WebBrowserComponent::Resource{std::move(data),mime};
+}
+
+juce::var MobileWebEditor::looperControl(const juce::var& request){
+    const auto id=request["gestureId"].toString(),command=request["cmd"].toString();
+    if(id.isEmpty()||(command!="press"&&command!="release"))return engine.looperAction(request);
+    if(id.length()>96)throw std::runtime_error("Invalid looper gesture");
+    const auto found=looperGestures.find(id);
+    if(command=="release"){
+        if(found==looperGestures.end())return true;
+        const auto held=found->second;
+        CueProcessor::Command release{CueProcessor::Action::looperControl,held.bank,held.pad,(double)PadLooper::release};release.sourceGeneration=held.generation;
+        if(!engine.submit(release))throw std::runtime_error("Looper command queue is full");
+        looperGestures.erase(found);return true;
+    }
+    if(found!=looperGestures.end())return true;
+    if(looperGestures.size()>=64)throw std::runtime_error("Too many held looper gestures");
+    const int generation=engine.audioGeneration();const auto result=engine.looperAction(request,generation);
+    looperGestures.emplace(id,LooperGesture{(int)request["bank"].toString()[0]-'A',(int)request["pad"]-1,generation});return result;
+}
+void MobileWebEditor::releaseLooperGestures(){
+    // Editor teardown may bypass JavaScript key-up/pagehide. Cancel only these
+    // transient holds; the performance keeps recording/playing with the UI closed.
+    for(const auto& entry:looperGestures){const auto held=entry.second;CueProcessor::Command release{CueProcessor::Action::looperControl,held.bank,held.pad,(double)PadLooper::release};release.sourceGeneration=held.generation;engine.submit(release);}
+    looperGestures.clear();
 }
 
 void MobileWebEditor::shareAudio(const juce::String& id,juce::WebBrowserComponent::NativeFunctionCompletion complete){

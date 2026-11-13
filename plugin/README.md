@@ -10,6 +10,11 @@ the unchanged full desktop studio rebuilt as 1.0.7.
 
 ### New performance and recording controls
 
+- **Corrected 1.0.7 keyboard loopers:** number-key presses now receive the matching
+  release, including changed Shift state and focus/editor changes. Tap/release to
+  start recording, then tap again to play the loop. Releasing the key only ends
+  the hold gesture; recording continues beyond one second. A genuine 1.2-second
+  hold still clears. Re-download the corrected same-version native package.
 - MIDI offers saved 16/12-pad numbering, velocity On/Off and A/F–E/J bank pairs.
 - Hold a cue/sample pad alone for over three seconds to move/swap its contents
   between fixed numbered pads; edit undo/redo preserves cues, samples and loopers.

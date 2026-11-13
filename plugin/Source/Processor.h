@@ -138,7 +138,7 @@ public:
     void setMixer(const juce::var&);
     bool hasPadLooper(int bank,int pad) const{return padLooper.assigned(bank,pad);}
     juce::var looperState(bool events=false) const;
-    juce::var looperAction(const juce::var&);
+    juce::var looperAction(const juce::var&,int sourceGeneration=-1);
     juce::var looperData();
     void remapLoopers(const juce::var&,const juce::String& scope);
     double getCue(int bank, int pad) const { return cues[(size_t) bank][(size_t) pad].load(); }

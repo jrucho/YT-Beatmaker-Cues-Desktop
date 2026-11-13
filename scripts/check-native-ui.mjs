@@ -15,6 +15,47 @@ function pngPixels(data){
   return {width,height,pixel:(x,y)=>[...pixels.subarray((y*width+x)*channels,(y*width+x)*channels+3)]};
 }
 
+async function checkKeyboardLoopers(page,edition){
+  const original=await page.evaluate(()=>{const p=window.__pluginStores.player.getState();return {queue:p.queue,index:p.index};});
+  const pad=page.locator('.cue-pad[data-pad-number="14"]');
+  const reset=async()=>{
+    await page.evaluate(async()=>{const c=window.__pluginStores.cues.getState();c.setBank('A');await window.__pluginInvoke('looperPad',{cmd:'remove',bank:'A',pad:14});await window.__pluginInvoke('looperPad',{cmd:'assign',bank:'A',pad:14});});
+    await page.waitForFunction(()=>document.querySelector('.cue-pad[data-pad-number="14"]')?.dataset.padKind==='looper');await pad.focus();
+  };
+  const state=()=>page.evaluate(()=>window.__uiFixture.loopSongs[window.__pluginStores.cues.getState().trackId??'@empty']?.find(pad=>pad.bank==='A'&&pad.pad===14));
+  const mode=value=>page.waitForFunction(value=>window.__uiFixture.loopSongs[window.__pluginStores.cues.getState().trackId??'@empty']?.find(pad=>pad.bank==='A'&&pad.pad===14)?.mode===value,value);
+  const down=async()=>{await page.keyboard.down('Shift');await page.keyboard.down('Digit4');};
+  const up=async()=>{await page.keyboard.up('Shift');await page.keyboard.up('Digit4');};
+  await reset();await down();await up();
+  await page.keyboard.press('Digit5');await page.waitForTimeout(1600);
+  assert.equal((await state()).mode,1,edition+': a released number key cleared the take at the 1.2-second hold threshold');
+  await page.keyboard.press('Shift+Digit4');await mode(2);const recorded=await state();
+  assert.equal(recorded.mode,2);assert(recorded.length>=72000,edition+': recording was capped near one second');
+
+  await reset();await down();await page.keyboard.down('Digit4');await page.waitForTimeout(1300);await up();
+  assert.equal((await state()).mode,0);assert.equal((await state()).length,0,edition+': an intentional keyboard hold must still clear');
+
+  await reset();await down();await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await up();await page.waitForTimeout(1400);
+  assert.equal((await state()).mode,1,edition+': losing keyboard focus left a stuck looper hold');
+
+  await reset();await down();await page.keyboard.up('Shift');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.keyboard.up('Digit4');
+  await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();await page.getByRole('dialog').waitFor({state:'detached'});await page.waitForTimeout(1400);
+  assert.equal((await state()).mode,1,edition+': a dialog/focus change discarded the original key release');
+
+  const route=path=>page.evaluate(path=>{history.pushState(null,'',path);window.dispatchEvent(new PopStateEvent('popstate'));},path);
+  await reset();await down();await route('/');await page.locator('.cue-pad-grid').waitFor({state:'detached'});await up();await page.waitForTimeout(1400);
+  assert.equal((await state()).mode,1,edition+': leaving Cues must cancel the hold without stopping recording');
+  await route('/cues');await pad.waitFor();
+
+  await page.evaluate(()=>window.__pluginStores.player.getState().newEmptyTrack());await page.waitForFunction(()=>!window.__pluginStores.player.getState().queue.length);
+  await reset();await page.keyboard.press('Shift+Digit4');await page.waitForTimeout(1400);
+  assert.equal((await state()).mode,1,edition+': keyboard loopers must work in an empty recording workspace');
+  await page.evaluate(async()=>{await window.__pluginInvoke('looperPad',{cmd:'remove',bank:'A',pad:14});});
+  await page.evaluate(({queue,index})=>window.__pluginStores.player.getState().playList(queue,index),original);
+  await page.waitForFunction(()=>window.__pluginStores.player.getState().status==='playing');
+  console.log('PASS: '+edition+' keyboard looper recordings exceed one second; changed modifiers, repeat, real hold-clear, blur/dialog/route cleanup and empty-track use.');
+}
+
 const root=process.cwd(),web=path.join(root,'plugin/build-web');
 const legacyIosPreview=process.argv.includes('--ios-preview');
 const iosPreview=legacyIosPreview||process.argv.includes('--features');
@@ -661,6 +702,7 @@ try{
     await page.reload();await page.locator('.cue-pad-grid').waitFor();await page.waitForFunction(()=>document.querySelector('.cue-pad[data-pad-number="16"]').dataset.padKind==='looper');
     assert.equal(await page.evaluate(()=>window.__uiFixture.loopSongs.ui000000000.find(pad=>pad.pad===16).count),3,'Looper events/overdub layer were lost on reload');
     console.log('PASS: permanent local-track removal, compressor tap/hold mixer and independent levels/reset, internal loop assignment/record/play/overdub/stop/layer undo-redo/hold-clear and restart.');
+    await checkKeyboardLoopers(page,'Hosted');
   }else{
     await page.getByRole('button',{name:'MIDI settings',exact:true}).click();
     assert.equal(await page.getByLabel('Pad numbering',{exact:true}).count(),0,'Preview controls leaked into a normal build');
@@ -741,6 +783,7 @@ try{
   await page.evaluate(()=>window.__pluginStores.player.getState().playList(window.__uiFixture.tracks));
   await page.waitForFunction(()=>window.__pluginStores.player.getState().status==='playing');
   await navigate('/cues');await page.locator('.cue-pad').first().focus();
+  if(iosPreview)await checkKeyboardLoopers(page,'Standalone');
   await page.keyboard.press('Space');await page.waitForFunction(()=>window.__pluginStores.player.getState().status==='paused');
   await page.keyboard.press('Space');await page.waitForFunction(()=>window.__pluginStores.player.getState().status==='playing');
   await page.locator('.cue-speed input').focus();await page.keyboard.press('Space');

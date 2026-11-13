@@ -123,7 +123,7 @@
     addEventListener('pagehide',()=>{try{if(nativePadAvailable)invoke('padTouchRegions',null).catch(()=>{});else window.__beatmakerPerformance?.regions('{}');lastPadMap='';}catch{}});
   }
   const invoke = (name, ...params) => {
-    if(name==='looperPad'&&params[0]?.cmd==='press'){const request=params[0];if(consumeClaimedTouch(performanceSourceId,request.bank?.charCodeAt(0)-65,request.pad-1,false))return Promise.resolve(true);}
+    if(name==='looperPad'&&params[0]?.cmd==='press'&&!params[0]?.gestureId){const request=params[0];if(consumeClaimedTouch(performanceSourceId,request.bank?.charCodeAt(0)-65,request.pad-1,false))return Promise.resolve(true);}
     if(name==='padSample'&&params[0]?.cmd==='trigger'){
       const request=params[0],bank=request.bank?.charCodeAt(0)-65,pad=request.pad-1;
       if(consumeClaimedTouch(performanceSourceId,bank,pad,true))return Promise.resolve(true);

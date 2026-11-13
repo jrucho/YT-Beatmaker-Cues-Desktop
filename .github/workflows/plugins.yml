@@ -121,6 +121,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: '& ${{ env.PLUGIN_BUILD_DIR }}/WebIntegration_artefacts/Release/WebIntegration.exe --shared-offline'
+      - name: Native standalone keyboard looper regression
+        if: runner.os != 'Linux' && matrix.edition == 'main'
+        shell: bash
+        run: ${{ env.PLUGIN_BUILD_DIR }}/WebIntegration_artefacts/Release/WebIntegration${{ runner.os == 'Windows' && '.exe' || '' }} --looper-keyboard-standalone
       - name: Real offline Linux WebView and native audio smoke test
         if: runner.os == 'Linux'
         timeout-minutes: 5
@@ -152,7 +156,7 @@ jobs:
           WEBKIT_DISABLE_COMPOSITING_MODE: '1'
         run: xvfb-run -a sh -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$@"' sh plugin/build-release/PluginProbe_artefacts/Release/PluginProbe "plugin/build-release/BeatmakerCues_artefacts/Release/VST3/$PLUGIN_PRODUCT.vst3"
       - name: Package verified native targets
-        run: python3 plugin/Scripts/package_release.py --build-dir ${{ env.PLUGIN_BUILD_DIR }} --platform ${{ env.PLUGIN_PLATFORM }} --arch ${{ env.PLUGIN_ARCH }} --checks engine,persistence,concurrency,vst3-host,webview-offline${{ runner.os == 'macOS' && ',auval' || '' }}
+        run: python3 plugin/Scripts/package_release.py --build-dir ${{ env.PLUGIN_BUILD_DIR }} --platform ${{ env.PLUGIN_PLATFORM }} --arch ${{ env.PLUGIN_ARCH }} --checks engine,persistence,concurrency,vst3-host,webview-offline${{ runner.os == 'macOS' && ',auval' || '' }}${{ runner.os != 'Linux' && matrix.edition == 'main' && ',keyboard-looper-release' || '' }}
       - uses: actions/upload-artifact@v7
         with:
           name: native-plugins-${{ env.PLUGIN_PLATFORM }}-${{ env.PLUGIN_ARCH }}-${{ matrix.edition }}

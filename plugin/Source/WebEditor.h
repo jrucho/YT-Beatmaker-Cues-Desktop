@@ -4,6 +4,7 @@
 #include "HostedKeyboard.h"
 #include "NativePadInput.h"
 #include "MediaGallery.h"
+#include <map>
 
 class MobileWebEditor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
@@ -17,6 +18,10 @@ private:
     juce::WebBrowserComponent::Options options();
     std::optional<juce::WebBrowserComponent::Resource> resource(const juce::String&);
     juce::var audio(const juce::var&);
+    juce::var looperControl(const juce::var&);
+    void releaseLooperGestures();
+    struct LooperGesture {int bank,pad,generation;};
+    std::map<juce::String,LooperGesture> looperGestures;
     void http(const juce::var&, juce::WebBrowserComponent::NativeFunctionCompletion);
     void timerCallback() override;
     void emit(const juce::String&, juce::var);

@@ -1,6 +1,26 @@
 # Native feature port — 1.0.7
 
-## Stable release acceptance
+## Same-version keyboard-looper correction
+
+The user reproduced the computer-keyboard looper cutoff in the native standalone
+and explicitly requested replacing the existing GitHub 1.0.7 packages with fixed
+1.0.7 builds. A real standalone WebView/native-render regression reproduced the
+old take being cleared by the 1.2-second hold threshold after an ordinary key tap.
+
+Shared Cues keyboard handling now pairs each press with its original key/pad/bank
+and an opaque editor-owned gesture ID. Key-up ignores changed modifiers/dialog
+state; blur, focus, visibility, bank/track, route and component cleanup release
+owned holds. Native editor teardown queues source-generation-guarded releases so
+recording/playing survives closing its window. Keyboard gestures cannot spend
+native pointer receipts. Empty-track looper shortcuts and intentional hold-clear
+are retained.
+
+Local verification passes actual VST3/standalone WebViews with more-than-three-second
+native looper recordings, sample-only recording after editor close, shared desktop
+and Android keyboard/focus/hold/empty-workspace checks, TypeScript and all six native
+suites. Fresh published-platform CI is required before replacing GitHub assets.
+
+## Initial stable release acceptance
 
 The user explicitly chose the existing **Mac/Windows/Android/unsigned-iOS** release
 lineup after all seven required platform/source jobs passed in CI run
