@@ -13,6 +13,9 @@ void pumpNativeWebIntegration();
 #if JUCE_MAC || JUCE_WINDOWS
 bool checkNativePadInputRouting(CueProcessor&,MobileWebEditor&);
 #endif
+#if JUCE_LINUX
+extern "C" int juce_gtkWebkitMain(int,const char* const*);
+#endif
 
 namespace {
 const auto processStart=std::chrono::steady_clock::now();
@@ -27,7 +30,6 @@ int main(int argc,char** argv) {
     // child entry point lives in the executable rather than a shared object.
     // Handle that before any JUCE or test state is created.
     if(argc>=3&&juce::String(argv[1])=="--juce-gtkwebkitfork-child"){
-        extern "C" int juce_gtkWebkitMain(int,const char* const*);
         return juce_gtkWebkitMain(argc,reinterpret_cast<const char* const*>(argv));
     }
    #endif
