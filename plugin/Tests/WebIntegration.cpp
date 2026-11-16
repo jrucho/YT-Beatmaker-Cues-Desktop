@@ -70,6 +70,17 @@ int main(int argc,char** argv) {
         for(int i=0;i<100&&!completed;++i)pump(50);
         if(!completed)traceStage("JavaScript evaluation timed out");
         return result;};
+    {   // A browser that failed to initialise silently (for example, a missing
+        // run-time library) never calls back from JavaScript. Detect that here
+        // instead of spinning through the UI readback loops for minutes.
+        bool executed=false;
+        editor->evaluate("1+1",[&](auto value){
+            if(value.getError())std::cerr<<"JavaScript probe error: "<<value.getError()->message<<"\n";
+            else if(value.getResult())std::cout<<"JavaScript probe returned "<<juce::JSON::toString(*value.getResult())<<"\n";
+            executed=true;});
+        for(int i=0;i<100&&!executed;++i)pump(50);
+        if(!executed){std::cerr<<"WebView JavaScript round-trip did not complete in 5 seconds\n";return 2;}
+        traceStage("JavaScript round-trip");}
     for(int i=0;i<100;++i){pump(100);if((bool)evaluate("Boolean(window.__pluginStores)"))break;}
     traceStage("plugin stores evaluated");
     // Exported stores become available before React's first commit and before
