@@ -9,6 +9,7 @@
  */
 #include <dlfcn.h>
 #include <gtk/gtk.h>
+#include <gtk/gtkx.h>
 #include <stdio.h>
 #include <string.h>
 #include <webkit2/webkit2.h>
@@ -107,7 +108,7 @@ int main(int argc, char** argv) {
 
     Probe* probe = g_new0(Probe, 1);
     g_signal_connect(view, "load-changed", G_CALLBACK(on_load_changed), probe);
-    webkit_web_view_load_html(view, "<html><body><p id=\"probe\">ready</p></body></html>", NULL);
+    webkit_web_view_load_html(WEBKIT_WEB_VIEW(view), "<html><body><p id=\"probe\">ready</p></body></html>", NULL);
 
     pump(probe, &probe->loaded);
     if (!probe->loaded) {
@@ -118,7 +119,7 @@ int main(int argc, char** argv) {
 
     webkit_web_view_evaluate_javascript(
         WEBKIT_WEB_VIEW(view), "document.getElementById('probe').textContent + ':' + (1 + 1)",
-        -1, NULL, NULL, NULL, on_javascript, probe);
+        -1, NULL, NULL, NULL, (GAsyncReadyCallback)on_javascript, probe);
 
     pump(probe, &probe->evaluated);
     if (!probe->evaluated) {
