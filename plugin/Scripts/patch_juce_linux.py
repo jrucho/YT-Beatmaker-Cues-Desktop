@@ -2,16 +2,16 @@
 
 JUCE extracts a helper binary that dlopen()s File::currentExecutableFile and
 looks up juce_gtkWebkitMain in it. glibc refuses to dlopen executables
-("cannot dynamically load executable"), and inside a plug-in the "current
-executable" is the host application, which never defines that symbol. The
-failure is silent: the browser is disabled and every JavaScript callback is
-dropped.
+("cannot dynamically load executable"). The failure is silent: the browser
+is disabled and every JavaScript callback is dropped.
 
 Use dladdr() to find the module that really defines the entry point. A shared
 object (the plug-in module) is passed to the helper as before. When the symbol
 lives in the executable, the executable is re-executed directly with
 --juce-gtkwebkitfork-child, which is the same mechanism JUCE already uses for
 standalone applications.
+On Linux, currentExecutableFile may mean the plug-in module itself; only
+hostApplicationPath identifies the actual /proc/self/exe process executable.
 
 The pipe transport also needs byte lengths (not Unicode character counts)
 and must finish short writes. Otherwise non-ASCII library data is truncated
@@ -42,7 +42,7 @@ new_arguments = """            // dladdr reports the module that actually define
                 return file.getFullPathName();
             };
 
-            const auto executable = canonicalPath (File::getSpecialLocation (File::currentExecutableFile));
+            const auto executable = canonicalPath (File::getSpecialLocation (File::hostApplicationPath));
             auto childModule = executable;
 
             if (Dl_info moduleInfo {}; dladdr (reinterpret_cast<void*> (&juce_gtkWebkitMain), &moduleInfo) != 0
@@ -129,6 +129,12 @@ for library, soname in [
 
 for name, old, new in patches:
     if source.count(new) == 1:
+        continue
+    # Upgrade the first launcher patch when reconfiguring an existing build.
+    previous_arguments = new_arguments.replace("File::hostApplicationPath", "File::currentExecutableFile")
+    if name == "child module resolution" and source.count(previous_arguments) == 1:
+        source = source.replace(previous_arguments, new, 1)
+        changes.append(name)
         continue
     if source.count(old) != 1:
         raise SystemExit(f"Unexpected JUCE source for {name}: expected exactly one match for:\n{old}")
