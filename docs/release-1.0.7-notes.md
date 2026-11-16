@@ -2,27 +2,32 @@
 
 [Download the 1.0.7 apps, plug-ins and corresponding source](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.7).
 
-## Corrected 1.0.7 keyboard-looper build
+## Refreshed 1.0.7 crossfade build
 
-The 1.0.7 downloads have been refreshed to fix a computer-keyboard looper bug in
-the responsive native VST3/standalone interface. The old number-key path sent a
-press without a release, so a normal tap became a **1.2-second hold-to-clear**.
-This was an input-release bug, not a one-second recording limit.
+The 1.0.7 downloads have been refreshed in place; the product version remains
+**1.0.7**. This refresh adds overlapping song transitions, binds waveforms to the
+song they belong to, and removes settings-fader jitter.
 
-Number keys now keep their original pad/bank ownership through key-up, even when
-Shift changes. Losing focus, entering a dialog, changing bank/track or leaving
-Cues releases the transient hold. Native editor teardown also releases its owned
-keyboard gestures while the looper continues recording/playing. Intentional long
-holds still clear; keyboard loopers also work without a loaded song.
+Songs now overlap during a transition instead of fading to silence and back in.
+The outgoing and incoming songs keep independent speed/pitch/tuning and decoder
+state, use equal-power mixing, and preload the next song. The crossfade defaults
+to **3 seconds** and is adjustable from **0.05 to 10 seconds** in Settings; the
+legacy 350 ms preference migrates to the new default. Manual and natural
+transitions both overlap, while cue jumps remain immediate. The waveform view is
+bound to its track, so a stale outgoing waveform cannot replace the incoming
+song's display.
 
-Verified regressions include more-than-three-second actual native VST3 and
-standalone recordings, sample-only recording after closing the editor, and shared
-desktop/Android browser tests for modifiers, repeat, hold-clear and focus/route
-cleanup. The fix is shared by the native mobile and plug-in editions.
+The Speed and crossfade-duration faders now reset on double-touch or
+double-click (0% and 3 seconds), and the settings readout reserves a fixed-width
+column so the fader does not move while its numbers change.
+
+The earlier keyboard-looper press/release correction remains included in these
+same packages. Number keys keep their pad/bank ownership through key-up, losing
+focus releases transient holds, and intentional long holds still clear.
 
 **Re-download the matching package**, quit the app/DAW, replace the old native
-app/plug-in and rescan/reopen. The product version remains **1.0.7**. The full
-desktop studio retains its version-only maintenance behavior below.
+app/plug-in and rescan/reopen. The full desktop studio retains its version-only
+maintenance behavior below.
 
 ## Native Android and plug-in edition
 
@@ -35,8 +40,9 @@ desktop studio retains its version-only maintenance behavior below.
   disabled (VST3 sidechain). The DAW owns hardware routing. Input monitoring starts
   Off; lost routes mute it, and the requested state returns with the same accepted
   route. Manual Off cancels restoration.
-- **Song transitions:** sequential 350 ms fade-out/fade-in, On by default, with
-  saved Off/Instant and duration settings. Cue jumps remain immediate.
+- **Song transitions:** overlapping equal-power crossfade with independent
+  outgoing/incoming voices, On by default, with saved Off/Instant and a
+  0.05–10 second duration setting. Cue jumps remain immediate.
 - **Editing and workflow:** fixed-position cue/sample swaps, shared undo/redo,
   precise retained-source waveform/start editing, held-pad audition, durable song
   renaming, original-audio export/share and managed-audio deletion.
@@ -98,9 +104,15 @@ Stable packages are rebuilt from the committed release branch, with native engin
 library, UI, VST3 host, platform packaging and desktop regression checks. The build
 records identify the exact corrected source commit, CI run and completed checks
 for each asset. Publication requires all seven jobs for **Mac, Windows, Android,
-iOS and source**, including actual native keyboard-looper recordings in both VST3
-and standalone contexts. Mac AU validation and actual Mac/Windows VST3/WebView
-host checks accompany the platform builds.
+iOS and source**. Native regressions cover manual, natural, paged and cancelled
+crossfades at 44.1/48/96 kHz, independent stretched/varispeed voices, failed
+destination preservation, track-bound waveform polling and stale-response
+rejection. Browser suites cover desktop and Android, including real double-touch
+fader reset and unchanged slider bounds across 0.05–10 seconds. The real API-35
+Android device suite covers imports, gallery cancellation, recording and
+sample-only performance. Mac AU validation, actual native keyboard-looper
+recordings, and Mac/Windows VST3/WebView host checks accompany the platform
+builds.
 
 At the user's explicit choice this release retains the existing published platform
 lineup. **Linux native binaries are not included:** its engine/FX checks pass, but
@@ -111,9 +123,10 @@ targets.
 The original v1.0.7 tag is retained at
 `13bfdcd20ce28effd03a1b300666db98d9527627`; the refreshed assets/build records identify
 their newer corrected source independently. **Use the attached source archives**
-for the corrected native build. GitHub's automatic source archives for the original
-tag preserve the initial baseline and do not contain this keyboard-looper fix.
-`Release-Build-1.0.7.json` records both the original tag and corrected build commits.
+for the current native build. GitHub's automatic source archives for the original
+tag preserve the initial baseline and do not contain these crossfade, waveform and
+fader fixes. `Release-Build-1.0.7.json` records the original tag, the refreshed
+build commit and the publication commit.
 
 Use **Beatmaker-Cues-Source-1.0.7.zip** or the plug-in corresponding-source archive
 for the current native application source. Use the separate **Desktop-Source** ZIP

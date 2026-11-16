@@ -179,7 +179,7 @@ def main():
     manifest = dict(version=version, sourceCommit=commit, releaseCommit=release_commit,
                     initialSourceCommit=original_tag_commit or release_commit,
                     releaseTag=args.refresh_tag or f'v{version}',
-                    refresh='keyboard looper press/release correction; product version retained' if args.refresh_tag else None,
+                    refresh='overlapping crossfade, track-bound waveform and fader-reset refresh; product version retained' if args.refresh_tag else None,
                     correspondingSourceCommit=release_commit if args.sources else commit,
                     workingTreeDirty=False, status='stable', requiredCIConclusion='success',
                     applicationBuildInputsUnchanged=True, publicationMetadataFiles=metadata_changes,
