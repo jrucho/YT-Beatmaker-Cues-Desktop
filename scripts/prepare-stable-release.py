@@ -57,9 +57,10 @@ def main():
         raise RuntimeError('The release build must be complete before staging')
     required_jobs = {'source', 'desktop (macos-15, macOS)', 'desktop (windows-latest, Windows)',
                      'native / android-standalone', 'native / ios-auv3',
-                     'native / desktop-plugins (macos-15, main)', 'native / desktop-plugins (windows-latest, main)'}
+                     'native / desktop-plugins (macos-15, main)', 'native / desktop-plugins (windows-latest, main)',
+                     'native / desktop-plugins (ubuntu-24.04, main)'}
     jobs = {job['name']: job for job in run['jobs']}
-    if len(jobs) != len(run['jobs']) or set(jobs) - required_jobs - {'native / desktop-plugins (ubuntu-24.04, main)'}:
+    if len(jobs) != len(run['jobs']) or set(jobs) - required_jobs:
         raise RuntimeError('Unexpected or duplicate release jobs')
     if any(name not in jobs or jobs[name]['status'] != 'completed' or jobs[name]['conclusion'] != 'success' for name in required_jobs):
         raise RuntimeError('Every source, desktop, Android, iOS and published native-host job must pass')
@@ -74,7 +75,8 @@ def main():
         allowed = {'README.md', 'CHANGELOG.md', '.github/workflows/plugins.yml', '.github/workflows/stable.yml',
                    'scripts/prepare-stable-release.py', f'docs/downloads-{version}.md',
                    f'docs/release-{version}-notes.md', f'docs/native-feature-parity-{version}.md',
-                   f'docs/manual-acceptance-{version}.json'}
+                    f'docs/manual-acceptance-{version}.json', f'docs/linux-native-validation-{version}.md',
+                    'plugin/README.md', 'scripts/append-linux-release.py'}
         if set(filter(None, changes)) - allowed:
             raise RuntimeError('Application/build inputs changed after the verified build; rebuild before publication')
         metadata_changes = sorted(filter(None, changes))
@@ -99,10 +101,12 @@ def main():
         f'YT-Beatmaker-Cues-Desktop-{version}-macOS-arm64.dmg', f'YT-Beatmaker-Cues-Desktop-{version}-macOS-x64.dmg',
         f'Main-Build-macOS-{version}.json', f'Main-Build-Windows-{version}.json',
     ]
-    for platform, arch in [('macOS', 'universal'), ('Windows', 'x64')]:
+    for platform, arch in [('macOS', 'universal'), ('Windows', 'x64'), ('Linux', 'x64')]:
         inventory += [f'Beatmaker-Cues-Plug-ins-{version}-{platform}-{arch}.zip',
                       f'Beatmaker-Cues-Plugin-Standalone-{version}-{platform}-{arch}.zip',
-                      f'Plugin-Build-{version}-{platform}-{arch}.json']
+                       f'Plugin-Build-{version}-{platform}-{arch}.json']
+    inventory += [f'Beatmaker-Cues-Plug-ins-{version}-Linux-x64.deb',
+                  f'SHA256SUMS-Plugins-{version}-Linux-x64.txt']
     source_names = {f'Beatmaker-Cues-Source-{version}.zip', f'Beatmaker-Cues-Source-{version}.tar.gz',
                     f'Beatmaker-Cues-Plugin-Source-{version}.zip', f'Source-Build-{version}.json'}
     inputs = {}
@@ -183,10 +187,9 @@ def main():
                     correspondingSourceCommit=release_commit if args.sources else commit,
                     workingTreeDirty=False, status='stable', requiredCIConclusion='success',
                     applicationBuildInputsUnchanged=True, publicationMetadataFiles=metadata_changes,
-                    runURL=run['url'], scope=['macOS', 'Windows', 'Android', 'iOS-unsigned'],
+                    runURL=run['url'], scope=['macOS', 'Windows', 'Linux-native', 'Android', 'iOS-unsigned'],
                     ciJobs=[dict(name=name, conclusion=jobs[name]['conclusion']) for name in sorted(required_jobs)],
-                    excludedPlatforms=[dict(platform='Linux-native', reason='User-approved deferral: native UI startup verification pending; no Linux binaries published',
-                                            ciConclusion=jobs.get('native / desktop-plugins (ubuntu-24.04, main)', {}).get('conclusion', 'not requested'))],
+                    excludedPlatforms=[],
                     desktopBaseline=baseline, buildRecords=builds,
                     files=[dict(name=file.name, bytes=file.stat().st_size, sha256=digest(file)) for file in sorted(output.iterdir())])
     (output / f'Release-Build-{version}.json').write_text(json.dumps(manifest, indent=2) + '\n')

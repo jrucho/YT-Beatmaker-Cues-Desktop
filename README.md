@@ -23,6 +23,8 @@ The **full desktop studio** retains the original stems, VJ, FX, sequencer and si
 | --- | --- |
 | Mac cue standalone — Apple Silicon + Intel | [Standalone app ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Standalone-1.0.7-macOS-universal.zip) |
 | Windows cue standalone — x64 | [Standalone EXE ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Standalone-1.0.7-Windows-x64.zip) |
+| Linux x64 — VST3 + cue standalone | [.deb installer](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-Linux-x64.deb) · [Plug-in ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-Linux-x64.zip) |
+| Linux cue standalone — x64 | [Standalone ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Standalone-1.0.7-Linux-x64.zip) |
 | Mac AU + VST3 | [Universal plug-in ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-macOS-universal.zip) |
 | Windows VST3 | [x64 plug-in ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-Windows-x64.zip) |
 
@@ -84,7 +86,24 @@ Download the [full desktop studio Windows x64 installer](https://github.com/jruc
 
 ## Install on Linux
 
-The latest full desktop Linux installers remain v1.0.3. The 1.0.7 published lineup covers Mac, Windows, Android and unsigned iOS. Native Linux x64 VST3/standalone candidates now pass Linux CI and clean-Ubuntu installer testing but are not yet published; see [Linux native validation](docs/linux-native-validation-1.0.7.md).
+**Native VST3 and cue standalone 1.0.7** are available for Ubuntu 24.04-compatible
+x86-64 systems with X11/XWayland. The [.deb installer](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-Linux-x64.deb)
+installs both products and their runtime dependencies:
+
+```sh
+sudo apt install ./Beatmaker-Cues-Plug-ins-1.0.7-Linux-x64.deb
+```
+
+ZIP alternatives are in the native-download table above. Linux's exact
+[corresponding source with dependencies](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Source-1.0.7-Linux-x64.zip)
+is separate from the unchanged existing platform source downloads.
+See [Linux verification and requirements](docs/linux-native-validation-1.0.7.md).
+
+### Earlier full desktop studio
+
+The full desktop Linux installers below remain **v1.0.3**. They are not the native
+VST3/standalone edition; no new full-studio AppImage or ARM64 native package is
+included in the 1.0.7 Linux addition.
 
 | Processor | Portable AppImage | Debian / Ubuntu |
 | --- | --- | --- |

@@ -6,10 +6,13 @@ This work covers the **responsive native VST3 instrument and its standalone app*
 for **Linux x86-64**, built on Ubuntu 24.04. It is not the Electron full desktop
 studio, an AppImage, an ARM64 build, or the separate desktop-layout beta.
 
-The product version remains **1.0.7**. Linux files have not been added to the
-existing release. The published Mac/Windows/Android/unsigned-iOS assets, tag and
-release branch are unchanged. Native Linux validation is complete; publication
-remains subject to user approval.
+The product version remains **1.0.7**. At the user's request, the verified Linux
+packages are added to the [existing public release](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.7).
+The existing Mac/Windows/Android/unsigned-iOS binaries and source downloads are
+byte-preserved, and the original tag is retained. Linux's exact corresponding
+source is attached separately as `Beatmaker-Cues-Plugin-Source-1.0.7-Linux-x64.zip`,
+with `Source-Build-1.0.7-Linux-x64.json`. Its internal source directory remains
+`Beatmaker-Cues-Plugin-Source-1.0.7/`.
 
 ## Fixes
 
@@ -86,9 +89,9 @@ checks. The VST3 and standalone binaries are byte-identical between the Debian
 package and their corresponding ZIPs. Matching source archives identify the same
 clean commit and include the Linux fixes and pinned dependency sources.
 
-## Verified candidate files
+## Verified public Linux files
 
-These are CI artifacts, **not assets of the published v1.0.7 release**.
+These verified CI artifacts are attached to the existing **public v1.0.7 release**.
 
 | Package | Bytes | SHA-256 |
 | --- | ---: | --- |
@@ -99,7 +102,7 @@ These are CI artifacts, **not assets of the published v1.0.7 release**.
 The artifact also contains `Plugin-Build-1.0.7-Linux-x64.json` and
 `SHA256SUMS-Plugins-1.0.7-Linux-x64.txt`.
 
-## Candidate installation
+## Installation
 
 Use an x86-64 Ubuntu 24.04-compatible system with X11 or XWayland.
 

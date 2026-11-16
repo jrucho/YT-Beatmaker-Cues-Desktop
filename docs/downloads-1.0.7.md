@@ -25,18 +25,24 @@ not change the desktop studio's stems/VJ/FX/sequencer/sidechain implementation.
 | Mac cue standalone only | [Universal app ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Standalone-1.0.7-macOS-universal.zip) |
 | Windows VST3/standalone | [x64 ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-Windows-x64.zip) |
 | Windows cue standalone only | [x64 app ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Standalone-1.0.7-Windows-x64.zip) |
+| Linux x64 VST3/standalone installer | [.deb with runtime dependencies](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-Linux-x64.deb) |
+| Linux x64 VST3/standalone archive | [Plug-in ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-Linux-x64.zip) |
+| Linux cue standalone only | [x64 app ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Standalone-1.0.7-Linux-x64.zip) |
 | iOS app and AUv3 | [Unsigned IPA](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-1.0.7-iOS-unsigned.ipa) |
 | iOS portable Xcode project | [Source/dependency ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Xcode-1.0.7.zip) |
-| Current native application source | [Source ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Source-1.0.7.zip) |
-| Native corresponding source with dependencies | [Plug-in source ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Source-1.0.7.zip) |
+| Mac/Windows/Android/iOS application source | [Preserved source ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Source-1.0.7.zip) |
+| Mac/Windows/Android/iOS source with dependencies | [Preserved plug-in source ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Source-1.0.7.zip) |
+| Linux native corresponding source with dependencies | [Linux source ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Source-1.0.7-Linux-x64.zip) · [source build record](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Source-Build-1.0.7-Linux-x64.json) |
 | Checksums | [SHA-256 manifest](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/SHA256SUMS-1.0.7.txt) |
 
 Android updates the existing normal release app with its original certificate.
 The development candidate is a separate installation/library. iOS requires the
 installer's own signing. Mac packages retain ad-hoc signing. Linux full desktop
-installers remain in the earlier releases. Linux native binaries are not part
-of the published 1.0.7 inventory; see the separate
-[Linux native validation](linux-native-validation-1.0.7.md) report.
+installers remain in the earlier releases. The new Linux native packages require
+Ubuntu 24.04-compatible x86-64 and X11/XWayland; they are not a new full desktop
+AppImage or ARM64 build. The Debian installer was tested with runtime dependencies
+only, without development packages. See
+[Linux native verification](linux-native-validation-1.0.7.md).
 
 ## Rebuilding the unchanged desktop studio
 

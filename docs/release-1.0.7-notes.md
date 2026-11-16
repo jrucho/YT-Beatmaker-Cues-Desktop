@@ -2,6 +2,26 @@
 
 [Download the 1.0.7 apps, plug-ins and corresponding source](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/tag/v1.0.7).
 
+## Linux native edition added to this release
+
+**Linux x64 VST3 and cue standalone are now included**, with product version
+**1.0.7** retained. The existing Mac, Windows, Android and unsigned-iOS binaries
+and their exact source downloads remain unchanged.
+
+- [Debian/Ubuntu installer — VST3 + standalone](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-Linux-x64.deb)
+- [VST3 + standalone ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plug-ins-1.0.7-Linux-x64.zip)
+- [Standalone-only ZIP](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Standalone-1.0.7-Linux-x64.zip)
+- [Exact Linux corresponding source, including pinned dependencies](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/releases/download/v1.0.7/Beatmaker-Cues-Plugin-Source-1.0.7-Linux-x64.zip)
+
+Requires **Ubuntu 24.04-compatible x86-64 and X11/XWayland**. This is the
+responsive native edition, **not a new full desktop AppImage or ARM64 build**.
+Linux-specific JUCE fixes repair the WebKit child launcher, Unicode transport and
+runtime-library loading. All seven native suites, 123 browser/native FX cases,
+the real offline WebView/audio/500-track Unicode test, a separate VST3 host and
+clean-Ubuntu installed-package startup pass in
+[Linux CI 43887845345](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/actions/runs/43887845345).
+Physical audio-interface/latency and third-party Linux DAW acceptance remain manual.
+
 ## Refreshed 1.0.7 crossfade build
 
 The 1.0.7 downloads have been refreshed in place; the product version remains
@@ -86,6 +106,11 @@ changes. Build preparation verifies all baseline source files byte for byte.
   signed, as in 1.0.6.
 - **Windows:** the native VST3/standalone ZIPs and the separate full desktop studio
   installer are distinct products. Native packages require WebView2 Runtime.
+- **Linux:** install both native products with
+  `sudo apt install ./Beatmaker-Cues-Plug-ins-1.0.7-Linux-x64.deb`.
+  The standalone appears in the application menu; the VST3 is in
+  `/usr/lib/vst3/Beatmaker Cues.vst3`. Rescan the DAW. ZIPs do not install runtime
+  dependencies; the included `python3 install.py` copies the VST3 to `~/.vst3`.
 - **iOS:** the public IPA is unsigned and includes AUv3. Sign it with your own
   compatible account/method, or build the portable Xcode export. Personal device
   provisioning is excluded.
@@ -103,8 +128,10 @@ hardware-route or acoustic-latency measurement.
 Stable packages are rebuilt from the committed release branch, with native engine,
 library, UI, VST3 host, platform packaging and desktop regression checks. The build
 records identify the exact corrected source commit, CI run and completed checks
-for each asset. Publication requires all seven jobs for **Mac, Windows, Android,
-iOS and source**. Native regressions cover manual, natural, paged and cancelled
+for each asset. The seven original **Mac, Windows, Android, iOS and source** jobs
+remain the verified baseline for the preserved assets; the additive Linux build
+has its own successful CI run and exact corresponding source. Future coordinated
+builds additionally require the Linux native job. Native regressions cover manual, natural, paged and cancelled
 crossfades at 44.1/48/96 kHz, independent stretched/varispeed voices, failed
 destination preservation, track-bound waveform polling and stale-response
 rejection. Browser suites cover desktop and Android, including real double-touch
@@ -114,22 +141,25 @@ sample-only performance. Mac AU validation, actual native keyboard-looper
 recordings, and Mac/Windows VST3/WebView host checks accompany the platform
 builds.
 
-At the user's explicit choice this release retains the existing published platform
-lineup. **Linux native binaries are not included in the published inventory.**
-Separate launcher/Unicode/runtime fixes and validation are tracked in
-[Linux native validation](linux-native-validation-1.0.7.md). Linux full desktop installers
-retain their earlier release version. This does not block the verified published
-targets.
+At the user's explicit request, the verified Linux native edition is added to the
+existing public release. Its build commit is
+`2946741190d42a09f6c59d0a2658dfdbd89c85eb`, independently recorded in the Linux build
+record and source archive. Other platform packages and source downloads are
+byte-preserved. [Linux verification details](https://github.com/jrucho/YT-Beatmaker-Cues-Desktop/blob/release/1.0.7/docs/linux-native-validation-1.0.7.md)
+describe automated coverage and hardware limits. Full desktop Linux installers
+retain their earlier release version.
 
 The original v1.0.7 tag is retained at
 `13bfdcd20ce28effd03a1b300666db98d9527627`; the refreshed assets/build records identify
 their newer corrected source independently. **Use the attached source archives**
 for the current native build. GitHub's automatic source archives for the original
-tag preserve the initial baseline and do not contain these crossfade, waveform and
-fader fixes. `Release-Build-1.0.7.json` records the original tag, the refreshed
-build commit and the publication commit.
+tag preserve the initial baseline and do not contain these crossfade, waveform,
+fader or Linux fixes. `Release-Build-1.0.7.json` records the original tag,
+publication commit and the source commit for each individual asset.
 
-Use **Beatmaker-Cues-Source-1.0.7.zip** or the plug-in corresponding-source archive
-for the current native application source. Use the separate **Desktop-Source** ZIP
-for the intentionally frozen full desktop studio. **SHA256SUMS-1.0.7.txt** lists the
-published asset checksums.
+Use **Beatmaker-Cues-Source-1.0.7.zip** or **Beatmaker-Cues-Plugin-Source-1.0.7.zip**
+for the preserved Mac/Windows/Android/iOS native builds. For Linux, use
+**Beatmaker-Cues-Plugin-Source-1.0.7-Linux-x64.zip** and its separate source build
+record. The Linux source archive unpacks to `Beatmaker-Cues-Plugin-Source-1.0.7/`.
+Use the separate **Desktop-Source** ZIP for the intentionally frozen full desktop
+studio. **SHA256SUMS-1.0.7.txt** lists every published asset checksum.

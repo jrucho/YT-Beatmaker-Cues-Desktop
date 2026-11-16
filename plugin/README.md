@@ -161,8 +161,9 @@ rescan the DAW, create a software-instrument track, and select **Owaega → Beat
 Cues Plug-in**. The `Standalone` directory contains the separate plug-in app.
 Windows hosts may require adding `%LOCALAPPDATA%/Programs/Common/VST3` to their
 scan paths. Linux also has a `.deb` package with runtime dependencies.
-Linux candidates are validated separately from the published 1.0.7 inventory;
-see [Linux native validation](../docs/linux-native-validation-1.0.7.md).
+Linux x64 packages are included in the existing public 1.0.7 release, with their
+exact corresponding source attached separately. See
+[Linux verification and requirements](../docs/linux-native-validation-1.0.7.md).
 
 On Mac, the installer identifies existing copies by bundle ID, including the
 older `Beatmaker Cues Plug-in` filenames. Matching bundles are backed up under

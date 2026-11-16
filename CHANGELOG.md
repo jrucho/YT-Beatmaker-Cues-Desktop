@@ -2,6 +2,12 @@
 
 ## 1.0.7
 
+### Linux native addition (same public release)
+
+- Add verified Linux x64 VST3/standalone ZIPs and a Debian installer with runtime dependencies. Target Ubuntu 24.04-compatible x86-64 with X11/XWayland; full desktop AppImage/ARM64 packages are unchanged.
+- Correct JUCE's executable/module child-launch distinction, UTF-8 framing/decoding/callbacks, short pipe writes and runtime SONAME loading. Verify seven native suites, 123 browser/native FX comparisons, the real WebView/500-track Unicode library, VST3 host audio/UI and installed startup in clean Ubuntu without development packages.
+- Keep version 1.0.7, its original tag, and every existing platform binary/source download. Attach the exact Linux source separately and record per-asset provenance and updated release checksums.
+
 ### Keyboard-looper correction (same-version asset refresh)
 
 - Pair computer number-key looper presses with their original key-up/pad/bank, including changed Shift state, repeat suppression and empty-track recording. A normal tap no longer becomes the 1.2-second hold-to-clear gesture.
