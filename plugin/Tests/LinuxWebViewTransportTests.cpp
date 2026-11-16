@@ -35,6 +35,19 @@ ssize_t transportRead(int,void* data,size_t size){
 #define read transportRead
 namespace juce {
 #include "LinuxWebViewCommandReceiver.h"
+// Only the GTK allocation/string API is a fixture. The callback body and all
+// String/JSON/framing/receiver code under test come from the real dependency.
+struct WebKitJavascriptResult{const char* text;};
+struct WebKitSymbols{
+    static WebKitSymbols* getInstance(){static WebKitSymbols symbols;return &symbols;}
+    const char* juce_webkit_javascript_result_get_js_value(WebKitJavascriptResult* value){return value->text;}
+    const char* juce_jsc_value_to_string(const char* text){return text;}
+    void juce_g_free(const char*){}
+};
+struct GtkCallbackProbe{
+    int outChannel=-1;
+#include "LinuxWebViewJavascriptCallback.h"
+};
 }
 #undef read
 #undef write
@@ -48,9 +61,12 @@ struct Responder final:juce::CommandReceiver::Responder{
     void receiverHadError()override{++errors;}
 };
 
-bool check(const char* name,const juce::String& text,size_t limit,bool interrupt){
+bool check(const char* name,const juce::String& text,size_t limit,bool interrupt,bool callback=false){
     wire.clear();readPosition=0;writeLimit=limit;interruptWrite=interrupt;writeCalls=0;
-    juce::CommandReceiver::sendCommand(-1,"invokeCallback",text);
+    if(callback){
+        juce::WebKitJavascriptResult value{text.toRawUTF8()};
+        juce::GtkCallbackProbe{}.invokeCallback(&value);
+    }else juce::CommandReceiver::sendCommand(-1,"invokeCallback",text);
     if(wire.size()<sizeof(size_t)){std::cerr<<"FAIL: "<<name<<": missing header\n";return false;}
     size_t announced=0;std::memcpy(&announced,wire.data(),sizeof(announced));
     if(announced!=wire.size()-sizeof(size_t)){std::cerr<<"FAIL: "<<name<<": short frame\n";return false;}
@@ -83,5 +99,6 @@ int main(){
     passed=check("short writes","complete every byte",7,false)&&passed;
     passed=check("interrupted short writes",unicode,7,true)&&passed;
     passed=check("large Unicode library",juce::String::repeatedString(unicode,16384),4093,true)&&passed;
+    passed=check("GTK Unicode native callback",unicode,7,true,true)&&passed;
     return passed?0:1;
 }

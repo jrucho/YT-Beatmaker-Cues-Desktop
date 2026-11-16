@@ -78,6 +78,9 @@ new_length = "auto jsonLength = json.getNumBytesAsUTF8();"
 old_decode = "parseJSON (String (buffer.getData(), bufferLength.len));"
 new_decode = "parseJSON (String (CharPointer_UTF8 (buffer.getData()), CharPointer_UTF8 (buffer.getData() + bufferLength.len)));"
 
+old_callback = 'CommandReceiver::sendCommand (outChannel, "invokeCallback", var (s));'
+new_callback = 'CommandReceiver::sendCommand (outChannel, "invokeCallback", var (String::fromUTF8 (s)));'
+
 old_write = """        ssize_t ret;
 
         for (;;)
@@ -108,6 +111,7 @@ patches = [
     ("child module resolution", old_arguments, new_arguments),
     ("UTF-8 frame lengths", old_length, new_length),
     ("UTF-8 frame decoding", old_decode, new_decode),
+    ("UTF-8 JavaScript callbacks", old_callback, new_callback),
     ("complete pipe writes", old_write, new_write),
 ]
 # Development symlinks are not installed by the runtime-only Debian packages.
