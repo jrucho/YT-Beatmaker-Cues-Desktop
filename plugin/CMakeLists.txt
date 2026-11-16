@@ -253,6 +253,13 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT ANDROID)
         target_sources(WebIntegration PRIVATE Tests/NativePadInputFixture_win.cpp)
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         juce_link_with_embedded_linux_subprocess(WebIntegration)
+        # JUCE launches its WebKit child through a helper that dlopens the
+        # current executable and looks up juce_gtkWebkitMain. glibc refuses to
+        # dlopen PIE executables, and the failure is silent: the browser is
+        # simply disabled. Build this harness as a classic executable with an
+        # exported dynamic symbol table so the launcher can resolve it.
+        target_link_options(WebIntegration PRIVATE -no-pie)
+        set_target_properties(WebIntegration PROPERTIES ENABLE_EXPORTS ON)
     endif()
     juce_add_console_app(PluginProbe PRODUCT_NAME "Beatmaker Cues Plugin Probe")
     target_sources(PluginProbe PRIVATE Tests/PluginProbe.cpp)

@@ -146,9 +146,11 @@ jobs:
       - name: Linux WebView child launcher check
         if: runner.os == 'Linux'
         run: |
-          binary="$PWD/plugin/build-release/WebIntegration_artefacts/Release/WebIntegration"
-          file "$binary" || true
+          binary="$PWD/$PLUGIN_BUILD_DIR/WebIntegration_artefacts/Release/WebIntegration"
+          module="$PWD/$PLUGIN_BUILD_DIR/BeatmakerCues_artefacts/Release/VST3/$PLUGIN_PRODUCT.vst3/Contents/x86_64-linux/$PLUGIN_PRODUCT.so"
+          file "$binary" "$module" || true
           "$RUNNER_TEMP/webkit-probe" --dlopen-check "$binary"
+          "$RUNNER_TEMP/webkit-probe" --dlopen-check "$module"
       - name: Real offline Linux WebView and native audio smoke test
         if: runner.os == 'Linux'
         timeout-minutes: 15
@@ -176,6 +178,36 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: '& ${{ env.PLUGIN_BUILD_DIR }}/PluginProbe_artefacts/Release/PluginProbe.exe "${{ env.PLUGIN_BUILD_DIR }}/BeatmakerCues_artefacts/Release/VST3/$env:PLUGIN_PRODUCT.vst3"'
+      - name: Linux standalone WebView startup
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        env:
+          GDK_BACKEND: 'x11'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          NO_AT_BRIDGE: '1'
+          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
+          WEBKIT_DISABLE_COMPOSITING_MODE: '1'
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+        run: |
+          app="$PWD/$PLUGIN_BUILD_DIR/BeatmakerCues_artefacts/Release/Standalone/$PLUGIN_PRODUCT"
+          ls -l "$app"
+          xvfb-run -a dbus-run-session -- sh -c '
+            openbox >/dev/null 2>&1 &
+            sleep 1
+            "$1" >/tmp/standalone.log 2>&1 &
+            pid=$!
+            for i in $(seq 1 45); do
+              if pgrep -f WebKitWebProcess >/dev/null; then echo "standalone: WebKit web process started"; break; fi
+              if ! kill -0 "$pid" 2>/dev/null; then echo "standalone: exited before starting WebKit"; break; fi
+              sleep 1
+            done
+            pgrep -af "WebKitWebProcess|WebKitNetworkProcess" || echo "standalone: no WebKit processes"
+            kill "$pid" 2>/dev/null || true
+            sleep 1
+            kill -9 "$pid" 2>/dev/null || true
+            echo "--- standalone output ---"
+            tail -n 40 /tmp/standalone.log 2>/dev/null || true
+          ' sh "$app"
       - name: Linux VST3 host check
         if: runner.os == 'Linux'
         timeout-minutes: 5
