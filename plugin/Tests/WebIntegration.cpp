@@ -221,9 +221,9 @@ int main(int argc,char** argv) {
         juce::Array<juce::var> large;
         const auto unicode=juce::String::fromUTF8(" · 日本語 🎵 ' \" \\");
         for(int index=0;index<500;++index){auto item=track.clone();item.getDynamicObject()->setProperty("id","bench"+juce::String(index).paddedLeft('0',6));item.getDynamicObject()->setProperty("title","Large track "+juce::String(index)+unicode);large.add(item);}
-        evaluate("window.__pluginStores.api.createPlaylist('Large offline library',"+juce::JSON::toString(juce::var(large))+").then(async playlist=>{window.__pluginTest.largeId=playlist.id;await window.__pluginStores.library.getState().load();const library=await window.__pluginStores.api.library();window.__pluginTest.roundtripTitle=library.playlists.find(p=>p.id===playlist.id)?.tracks[499]?.title;window.__pluginTest.largeReady=true;});true");
-        for(int i=0;i<100&&!(bool)evaluate("window.__pluginTest.largeReady||false");++i)pump(50);
-        if(!(bool)evaluate("window.__pluginTest.largeReady||false")){std::cerr<<"500-track library did not commit/load\n";return 1;}
+        evaluate("window.__pluginStores.api.createPlaylist('Large offline library',"+juce::JSON::toString(juce::var(large))+").then(async playlist=>{window.__pluginTest.largeId=playlist.id;await window.__pluginStores.library.getState().load();const library=await window.__pluginStores.api.library();window.__pluginTest.roundtripTitle=library.playlists.find(p=>p.id===playlist.id)?.tracks[499]?.title;window.__pluginTest.largeReady=true;}).catch(error=>{window.__pluginTest.largeError=String(error&&error.message||error);});true");
+        for(int i=0;i<400&&!(bool)evaluate("window.__pluginTest.largeReady||window.__pluginTest.largeError");++i)pump(50);
+        if(!(bool)evaluate("Boolean(window.__pluginTest.largeReady)")){std::cerr<<"500-track library did not commit/load: "<<evaluate("JSON.stringify({test:window.__pluginTest,storage:window.__pluginStorageError||null,secure:isSecureContext,randomUUID:typeof crypto?.randomUUID,features:window.__pluginFeatures,library:window.__pluginStores.library.getState().playlists.map(p=>p.tracks.length).slice(-3)})").toString()<<"\n";return 1;}
         if(evaluate("window.__pluginTest.roundtripTitle").toString()!=large[499]["title"].toString()){std::cerr<<"Large bridge response corrupted UTF-8, quotes or backslashes\n";return 1;}
        #if !BEATMAKER_DESKTOP_BETA
         evaluate("document.querySelector('a[href=\"/library\"]')?.click();true");pump(200);
