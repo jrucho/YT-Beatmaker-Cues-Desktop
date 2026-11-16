@@ -197,17 +197,21 @@ jobs:
             sleep 1
             "$1" >/tmp/standalone.log 2>&1 &
             pid=$!
+            found=0
             for i in $(seq 1 45); do
-              if pgrep -f WebKitWebProcess >/dev/null; then echo "standalone: WebKit web process started"; break; fi
-              if ! kill -0 "$pid" 2>/dev/null; then echo "standalone: exited before starting WebKit"; break; fi
+              if pgrep -f WebKitWebProcess >/dev/null; then found=1; break; fi
+              if ! kill -0 "$pid" 2>/dev/null; then break; fi
               sleep 1
             done
+            if [ "$found" -eq 1 ]; then echo "standalone: WebKit web process started"; fi
             pgrep -af "WebKitWebProcess|WebKitNetworkProcess" || echo "standalone: no WebKit processes"
+            if kill -0 "$pid" 2>/dev/null; then echo "standalone: still running"; else echo "standalone: exited"; fi
             kill "$pid" 2>/dev/null || true
             sleep 1
             kill -9 "$pid" 2>/dev/null || true
             echo "--- standalone output ---"
             tail -n 40 /tmp/standalone.log 2>/dev/null || true
+            [ "$found" -eq 1 ] || { echo "standalone never started a WebKit process"; exit 1; }
           ' sh "$app"
       - name: Linux VST3 host check
         if: runner.os == 'Linux'
