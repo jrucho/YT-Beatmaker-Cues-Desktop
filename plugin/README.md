@@ -151,7 +151,7 @@ require the Electron desktop app or its server.
 | --- | --- | --- |
 | macOS 12+ | AU, VST3, standalone | Apple Silicon or Intel build; CI targets universal |
 | Windows | VST3, standalone | x64; WebView2 Runtime; FFmpeg on PATH for formats without native decoding |
-| Linux | VST3, standalone | x64; WebKitGTK 4.1, GTK3, ALSA, CURL, FFmpeg |
+| Linux | VST3, standalone | Ubuntu 24.04-compatible x64; X11/XWayland; WebKitGTK 4.1, GTK3, ALSA, CURL, FFmpeg |
 | iOS/iPadOS 15+ | AUv3 instrument and standalone container | Own Apple signing account for the unsigned IPA/Xcode export |
 | Android 7/API 24+ | Native standalone app | arm64; see `docs/android-plugin-standalone.md` |
 
@@ -161,6 +161,8 @@ rescan the DAW, create a software-instrument track, and select **Owaega → Beat
 Cues Plug-in**. The `Standalone` directory contains the separate plug-in app.
 Windows hosts may require adding `%LOCALAPPDATA%/Programs/Common/VST3` to their
 scan paths. Linux also has a `.deb` package with runtime dependencies.
+Linux candidates are validated separately from the published 1.0.7 inventory;
+see [Linux native validation](../docs/linux-native-validation-1.0.7.md).
 
 On Mac, the installer identifies existing copies by bundle ID, including the
 older `Beatmaker Cues Plug-in` filenames. Matching bundles are backed up under

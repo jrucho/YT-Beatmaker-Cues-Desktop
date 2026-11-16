@@ -115,8 +115,9 @@ recordings, and Mac/Windows VST3/WebView host checks accompany the platform
 builds.
 
 At the user's explicit choice this release retains the existing published platform
-lineup. **Linux native binaries are not included:** its engine/FX checks pass, but
-the Linux WebView startup check still times out. Linux full desktop installers
+lineup. **Linux native binaries are not included in the published inventory.**
+Separate launcher/Unicode/runtime fixes and validation are tracked in
+[Linux native validation](linux-native-validation-1.0.7.md). Linux full desktop installers
 retain their earlier release version. This does not block the verified published
 targets.
 

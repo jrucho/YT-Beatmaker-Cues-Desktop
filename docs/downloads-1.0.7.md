@@ -34,8 +34,9 @@ not change the desktop studio's stems/VJ/FX/sequencer/sidechain implementation.
 Android updates the existing normal release app with its original certificate.
 The development candidate is a separate installation/library. iOS requires the
 installer's own signing. Mac packages retain ad-hoc signing. Linux full desktop
-installers remain in the earlier releases. Linux native binaries are excluded
-from 1.0.7 while their WebView startup verification remains unresolved.
+installers remain in the earlier releases. Linux native binaries are not part
+of the published 1.0.7 inventory; see the separate
+[Linux native validation](linux-native-validation-1.0.7.md) report.
 
 ## Rebuilding the unchanged desktop studio
 
