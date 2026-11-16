@@ -1,5 +1,31 @@
 # Native feature port — 1.0.7
 
+## Overlapping song crossfade
+
+Song changes now render independent outgoing and incoming voices with equal-power
+mixing. Crossfade defaults to three seconds and is adjustable from 0.05 to ten
+seconds; short songs use a bounded overlap. Manual navigation and automatic
+playlist advancement prepare the destination while the current song keeps playing.
+An unavailable destination leaves the current source playing. Each voice retains
+its own speed, pitch mode, tuning and decoder/cache state. Pad and looper input
+generations remain tied to the audible song during preparation.
+
+Native overview waveform responses include their track ID. The editor requests
+the current track's waveform, rejects stale responses and continues polling until
+matching peaks arrive, avoiding a completed outgoing waveform blocking the new one.
+Settings, host state and the previous default fade preference migrate to the new
+crossfade mode.
+
+Local checks pass: all six native suites; manual/natural equal-power overlap at
+44.1/48/96 kHz; independently tuned/stretched and varispeed voices; exact paged
+outgoing PCM across a page boundary; cue/pause/preparation cancellation; failed
+destination preparation; allocation-free callbacks; desktop/Android browser
+feature suites; and real hosted/standalone WebViews. The signed iOS standalone and
+embedded AUv3 build successfully, and development build 1.0.718 is installed and
+launch-verified on the user's existing iPhone. An Android development arm64 APK
+also builds locally. Fresh production Android and Mac/Windows plugin CI artifacts
+are required for public distribution of these changes.
+
 ## Same-version keyboard-looper correction
 
 The user reproduced the computer-keyboard looper cutoff in the native standalone

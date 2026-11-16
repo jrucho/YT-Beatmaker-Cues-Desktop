@@ -164,7 +164,7 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withNativeFunction("chopAudio",[this](const auto& args,auto complete){const auto request=args[0];const auto cancel=cancelled;storageTask([this,request,cancel]{return engine.chopSamplerSource(request,[cancel]{return cancel->load();});},std::move(complete),true);})
         .withNativeFunction("assignPadSamples",[this](const auto& args,auto complete){const auto assignments=args[0];storageTask([this,assignments]{return engine.assignPadSamples(assignments);},std::move(complete),true);})
         .withNativeFunction("loadDiagnostics",[this](const auto&,auto complete){complete(engine.loadDiagnostics());})
-        .withNativeFunction("waveform",[this](const auto&,auto complete){complete(engine.waveformSnapshot());})
+        .withNativeFunction("waveform",[this](const auto& args,auto complete){complete(engine.waveformSnapshot(args.isEmpty()?juce::String{}:args[0]["trackId"].toString()));})
         .withNativeFunction("waveformRegion",[this](const auto& args,auto complete){const auto request=args[0];storageTask([this,request]{return engine.waveformRegion(request);},std::move(complete));})
         .withNativeFunction("padSamples",[this](const auto&,auto complete){complete(engine.padSamples());})
         .withNativeFunction("remapPadSamples",[this](const auto& args,auto complete){const auto mappings=args.isEmpty()?juce::var{}:args[0];storageTask([this,mappings]{return engine.remapPadSamples(mappings);},std::move(complete));})

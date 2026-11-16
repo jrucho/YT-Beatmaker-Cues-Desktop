@@ -6,6 +6,7 @@
 #include <mutex>
 #include <thread>
 #include <functional>
+#include <optional>
 #include <signalsmith-stretch/signalsmith-stretch.h>
 #include "LibraryStore.h"
 #include "PagedAudio.h"
@@ -31,6 +32,7 @@ public:
         juce::AudioBuffer<float> audio;
         std::unique_ptr<PagedAudio> paged;
         double rate = 44100; juce::String path;
+        bool overlapPrevious=false;
         int frames() const {return paged?paged->frames():audio.getNumSamples();}
         int channels() const {return paged?paged->channels():audio.getNumChannels();}
         float value(int frame,int channel) const {return paged?paged->value(frame,channel):audio.getSample(juce::jmin(channel,audio.getNumChannels()-1),frame);}
@@ -63,12 +65,12 @@ public:
 
     bool submit(Command); // Non-audio producers; audio-thread consumer never locks.
     bool submitNativePadInput(Command,double startedMs);
-    int audioGeneration() const {return loadGeneration.load();}
+    int audioGeneration() const {return inputGeneration.load();}
     std::atomic<int> nativePadInputAccepted{0},nativePadInputRendered{0};
     std::atomic<double> nativePadInputRenderMs{0};
    #if JUCE_ANDROID
     bool submitAndroidPerformance(Command);
-    int androidAudioGeneration() const {return loadGeneration.load();}
+    int androidAudioGeneration() const {return audioGeneration();}
     std::atomic<int> androidBridgeSourceId{0},androidFastAccepted{0},androidFastRendered{0};
     std::atomic<double> androidFastLastRenderMs{0};
     std::atomic<int> androidCallbackFrames{0};
@@ -129,7 +131,7 @@ public:
     void setTransitions(const juce::var&);
     juce::String getStatus() const;
     juce::var loadDiagnostics() const;
-    juce::var waveformSnapshot();
+    juce::var waveformSnapshot(const juce::String& expectedTrack={});
     void setEffectKernel(const juce::var&);
     juce::var effectKernelState() const;
     void setFxGraph(const juce::var&);
@@ -192,6 +194,17 @@ private:
     void jump(double seconds, float velocity);
     void render(juce::AudioBuffer<float>&, int start, int count);
     void renderCore(juce::AudioBuffer<float>&,int start,int count);
+    bool voiceIsPlaying() const {return renderingOutgoing?outgoingVoice.playing:playing.load();}
+    void stopVoice(){if(renderingOutgoing)outgoingVoice.playing=false;else{playing.store(false);needAdvance.store(true);}}
+    float voiceGain(){return renderingOutgoing?1.0f:outputGain.getNextValue()*(muted.load()?0.0f:1.0f);}
+    bool voiceLoops() const{return renderingOutgoing?outgoingVoice.loop:handoverReady.load()?renderLoopEnabled:loopEnabled.load();}
+    double voiceLoopIn() const{return renderingOutgoing?outgoingVoice.loopIn:handoverReady.load()?renderLoopIn:loopIn.load();}
+    double voiceLoopOut() const{return renderingOutgoing?outgoingVoice.loopOut:handoverReady.load()?renderLoopOut:loopOut.load();}
+    void swapOutgoingState();
+    void prepareOutgoing(int frames);
+    void finishCrossfade();
+    void maybeStartAutomaticTransition();
+    void updateAutoTransitionAvailabilityLocked();
     bool prepareAudio(double from,double to);
     void renderBuffering(juce::AudioBuffer<float>&,int start,int count);
     float processEffect(float sample,int channel) const;
@@ -223,10 +236,13 @@ private:
     juce::var registerRecording(const juce::File&,const juce::String& source);
     juce::File padSampleManifest() const;
     std::atomic<int> loadGeneration{0};
+    // Preparing another song must not invalidate gestures on the audible song.
+    std::atomic<int> inputGeneration{0};
     std::atomic<int> measuredLoadGeneration{0};
     std::atomic<double> loadStartedMs{0},loadDecoderMs{0},loadPcmReadMs{0},loadDownloadMs{0},loadPublishedMs{0},loadFirstRenderMs{0};
     std::atomic<Sample*> published{nullptr};
     std::atomic<Sample*> audioHazard{nullptr};
+    std::atomic<Sample*> outgoingHazard{nullptr},handoverHazard{nullptr};
     // Loaded sample ownership stays off the real-time thread, including old generations.
     std::vector<std::unique_ptr<Sample>> retained;
     mutable std::mutex metadataMutex;
@@ -236,6 +252,10 @@ private:
     juce::String sessionId;
     juce::var nativeQueue;
     juce::var trackPlaybackSettings;
+    struct PendingSongChange {int index=-1,queueGeneration=0,generation=-1;bool automatic=false;juce::String id;juce::var loop,cues;};
+    std::optional<PendingSongChange> pendingSongChange;
+    std::atomic<int> transitionLoadGeneration{-1};
+    std::atomic<bool> handoverReady{false},autoTransitionAvailable{false},automaticTransitionPreparing{false};
     void applyTrackPlayback(const juce::String& trackId);
     std::atomic<int> nativeIndex{0},queueGeneration{0};
     std::atomic<juce::uint64> manualQueueRequest{0};
@@ -260,17 +280,33 @@ private:
     std::atomic<bool> hostInputEnabled{true},hostMonitorRequested{false};
     std::atomic<int> hostBusChannels{0};
     juce::AudioBuffer<float> hostMonitorCopy;
-    juce::SmoothedValue<float> songFade{1.0f};
-    std::atomic<bool> transitionsEnabled{true},fadeInNext{false};
-    std::atomic<double> transitionSeconds{.35};
-    std::atomic<juce::uint32> fadeRequested{0},fadeCompleted{0},fadeSerial{0};
-    juce::uint32 fadeObserved=0;
+    std::atomic<bool> transitionsEnabled{true},transitionStopRequested{false};
+    std::atomic<double> transitionSeconds{3};
+    using Stretch=signalsmith::stretch::SignalsmithStretch<float>;
+    struct OutgoingVoice {
+        Sample* sample=nullptr;
+        double position=0,readPosition=0,fraction=0,loopIn=-1,loopOut=-1;
+        float velocity=1,targetSpeed=1,targetTuning=0;
+        bool playing=false,keepPitch=true,loop=false,seek=true,wasActive=false,waiting=false;
+        int fadeRemaining=0,bufferingRemaining=0;
+        std::array<float,2> last{},fade{},buffering{};
+        juce::SmoothedValue<float> speed{1},tuning{0};
+        std::unique_ptr<Stretch> stretch=std::make_unique<Stretch>();
+        juce::AudioBuffer<float> input,output;
+    } outgoingVoice;
+    juce::AudioBuffer<float> outgoingAudio;
+    bool renderingOutgoing=false,autoTransitionQueued=false,renderPitchPreserved=true,renderWasPlaying=false;
+    float renderTargetSpeed=1,renderTargetTuning=0;
+    bool renderLoopEnabled=false;double renderLoopIn=-1,renderLoopOut=-1;
+    std::array<float,2> lastMixedSong{};
+    int outgoingReadFrame=0,crossfadeFrames=0,crossfadePosition=0;
+    std::atomic<bool> crossfadeActive{false};
     void cancelSongChange();
     juce::SmoothedValue<float> smoothedSpeed{1.0f},smoothedTuning{0.0f};
     double stretchReadPosition=0;
     std::atomic<float>* gainValue=nullptr;
     std::atomic<float>* speedValue=nullptr;
-    signalsmith::stretch::SignalsmithStretch<float> stretch;
+    std::unique_ptr<Stretch> stretch=std::make_unique<Stretch>();
     juce::AudioBuffer<float> stretchInput,stretchOutput;
     bool stretchSeek=true,stretchWasActive=false;
     bool cacheWaiting=false;

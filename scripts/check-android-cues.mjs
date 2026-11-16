@@ -58,7 +58,7 @@ try {
     window.nativeFixture = { calls: [], position: 0, sourceId: 0, queue: { tracks: [], index: 0, repeat: "off" }, eventsEnabled: true };
     window.sampleFixture = [];
     window.__pluginInvoke = async (name, request) => {
-      if(name === 'waveform') return {peaks:Array.from({length:1024},(_,i)=>.1+(i%20)/20),progress:1};
+      if(name === 'waveform') return {trackId:request?.trackId,ready:true,peaks:Array.from({length:1024},(_,i)=>.1+(i%20)/20),progress:1};
       if(name === 'padSamples') return window.sampleFixture;
       if(name !== 'padSample') throw Error(`Unexpected native method ${name}`);
       window.nativeFixture.calls.push({method:'padSample',...request});

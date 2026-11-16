@@ -8,6 +8,8 @@ import {beginEditGesture,endEditGesture} from '../mobile/editHistory';
 import {hasPadLooper,usePadLoopers} from '../mobile/padLoopers';
 import {usePlaybackFrame} from '../player/usePlaybackFrame';
 
+interface WaveformData {peaks:number[];progress:number;trackId?:string;ready?:boolean}
+
 /** Native audio peaks, built off the audio callback; markers edit the current bank. */
 export function CueWaveform({padCount=16}:{padCount?:number}){
   const track=usePlayer(selectCurrent),duration=usePlayer(s=>s.duration);
@@ -17,17 +19,17 @@ export function CueWaveform({padCount=16}:{padCount?:number}){
   const accent=useAppearance(s=>s.accent);
   const root=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null);
   const playhead=useRef<HTMLSpanElement>(null);
-  const [data,setData]=useState<{peaks:number[];progress:number}>({peaks:[],progress:0});
-  const invoke=(window as unknown as {__pluginInvoke?: (name:string)=>Promise<{peaks:number[];progress:number}>}).__pluginInvoke;
+  const [data,setData]=useState<WaveformData>({peaks:[],progress:0});
+  const invoke=(window as unknown as {__pluginInvoke?: (name:string,request?:{trackId:string})=>Promise<WaveformData>}).__pluginInvoke;
   const visible=true;
   usePlaybackFrame(seconds=>{if(playhead.current)playhead.current.style.transform=`translate3d(${duration>0?Math.min(100,Math.max(0,seconds/duration*100)):0}%,0,0)`;},!!invoke&&visible);
   useEffect(()=>{
     setData({peaks:[],progress:0});if(!invoke||!visible||!track)return;
     let disposed=false,busy=false,finished=false;let timer:ReturnType<typeof setInterval>;
     const ready=()=>{const state=usePlayer.getState();return state.status!=='loading'&&selectCurrent(state)?.id===track.id&&beatmakerMedia().readyState>0;};
-    const poll=async()=>{if(busy||finished||!ready())return;busy=true;try{const value=await invoke('waveform');if(!disposed&&ready()){setData(value);if(value.progress>=1&&value.peaks.length){finished=true;clearInterval(timer);}}}catch{}finally{busy=false;}};
-    void poll();timer=setInterval(()=>void poll(),1000);
-    const unsubscribe=usePlayer.subscribe((state,previous)=>{if(state.status!==previous.status)void poll();});
+    const poll=async()=>{if(busy||finished||!ready())return;busy=true;try{const value=await invoke('waveform',{trackId:track.id});if(!disposed&&ready()&&value.ready!==false&&value.trackId===track.id&&Array.isArray(value.peaks)&&value.peaks.length){setData(value);if(value.progress>=1){finished=true;clearInterval(timer);}}}catch{}finally{busy=false;}};
+    void poll();timer=setInterval(()=>void poll(),250);
+    const unsubscribe=usePlayer.subscribe((state,previous)=>{if(state.status!==previous.status||state.duration!==previous.duration)void poll();});
     return()=>{disposed=true;clearInterval(timer);unsubscribe();};
   },[track?.id,visible,invoke]);
   useEffect(()=>{
@@ -44,7 +46,7 @@ export function CueWaveform({padCount=16}:{padCount?:number}){
   },[data,visible,accent]);
   if(!invoke||!visible)return null;
   const timeAt=(clientX:number)=>{const bounds=root.current!.getBoundingClientRect();return Math.max(0,Math.min(duration,(clientX-bounds.left)/bounds.width*duration));};
-  return <div ref={root} className="cue-waveform" data-waveform-progress={data.progress} data-peak-count={data.peaks.length} aria-label="Song waveform" onPointerDown={event=>{if(event.button===0&&duration>0){const time=timeAt(event.clientX);if(event.metaKey||event.ctrlKey||event.shiftKey)useCueStore.getState().setNextCue(time);else usePlayer.getState().seek(time);}}} onDoubleClick={event=>{if(duration>0)useCueStore.getState().setNextCue(timeAt(event.clientX));}}>
+  return <div ref={root} className="cue-waveform" data-waveform-progress={data.progress} data-peak-count={data.peaks.length} data-waveform-track={data.trackId??''} aria-label="Song waveform" onPointerDown={event=>{if(event.button===0&&duration>0){const time=timeAt(event.clientX);if(event.metaKey||event.ctrlKey||event.shiftKey)useCueStore.getState().setNextCue(time);else usePlayer.getState().seek(time);}}} onDoubleClick={event=>{if(duration>0)useCueStore.getState().setNextCue(timeAt(event.clientX));}}>
     <canvas ref={canvas} aria-hidden="true"/>
     <span ref={playhead} className="cue-wave-playhead" hidden={duration<=0} aria-hidden="true"/>
     {duration>0&&Object.entries(cues).filter(([number])=>Number(number)<=padCount&&!samples[`${bank}:${number}`]&&!hasPadLooper(bank,Number(number),track?.id??null)).map(([number,time])=><button key={number} type="button" role="slider" aria-label={`Move cue ${bank}${number}`} aria-valuemin={0} aria-valuemax={duration} aria-valuenow={time} className="cue-wave-marker" style={{left:`${time/duration*100}%`}}

@@ -95,7 +95,7 @@ const server=createServer(async(req,res)=>{
           else if(name==='localMedia')result=f.localMedia;
           else if(name==='renameLocalAudio'){const track=f.localMedia.find(track=>track.id===request.id),previousTitle=track.title;track.title=request.title.trim();const update=items=>items.forEach(item=>{if(item.id===track.id)item.title=track.title;});update(library.favorites);update(library.history);library.playlists.forEach(playlist=>update(playlist.tracks));f.libraryVersion++;realStorage.setItem('ui-fixture-media',JSON.stringify(f.localMedia));realStorage.setItem('ui-fixture-library',JSON.stringify(library));result={track:structuredClone(track),previousTitle,library:JSON.stringify(library)};}
           else if(name==='mixer'){if(request)Object.assign(f.mixer,request);result=structuredClone(f.mixer);}
-          else if(name==='transitions'){if(request)f.transitions=request;result=f.transitions||{enabled:true,seconds:.35};}
+          else if(name==='transitions'){if(request)f.transitions=request;result=f.transitions||{mode:'crossfade',enabled:true,seconds:3};}
           else if(name==='looperState'){result={song:loopSong(),revision:f.loopRevision,generation:1,pads:structuredClone(loopPads().map(pad=>({...pad,duration:pad.mode===1?(Date.now()-pad.started)/1000:pad.duration,length:pad.mode===1?Math.max(48,Math.round((Date.now()-pad.started)*48)):pad.length})))};}
           else if(name==='looperPad'){
             if(request.cmd==='restore'){f.loopSongs[request.data.song||loopSong()]=structuredClone(request.data.pads).map(pad=>({...pad,mode:0}));saveLoops();}
@@ -143,7 +143,7 @@ const server=createServer(async(req,res)=>{
               realStorage.setItem('ui-fixture-samples',JSON.stringify(f.padSamples));result=structuredClone(f.padSamples);}
           }
           else if(name==='midiOptions'){Object.assign(f.midiOptions??={},request);if('suspendPadActions' in request)(f.midiGuardCalls??=[]).push(request.suspendPadActions);}
-          else if(name==='waveform')result={peaks:Array(1024).fill(.5),progress:1};
+          else if(name==='waveform'){f.waveformRequests=(f.waveformRequests||0)+1;result={trackId:f.staleWaveformTrack||loopSong(),ready:true,peaks:Array(1024).fill(.5),progress:1};}
           else if(name==='waveformRegion'){f.regionRequests.push(request);result={peaks:Array.from({length:1024},(_,i)=>.2+(i%19)/25),from:request.from,to:request.to,duration:request.sample ? 0.5 : 60};}
           else if(name==='cachedTrack')result={...tracks.find(t=>t.id===request),...f.localMedia.find(t=>t.id===request),url:'beatmaker-local://'+request,mime:'audio/wav',duration:60};
           else if(name==='audio'){
@@ -295,6 +295,17 @@ try{
     assert.deepEqual(await playback(),{speed:23,speedMode:'pitch',tuning:5},'Playback controls did not survive a native-session reload');
     await page.evaluate(()=>{const player=window.__pluginStores.player.getState();player.setSpeed(0);player.setSpeedMode('speed');player.setTuning(0);});
     console.log('PASS: automatic per-song speed/mode/tuning recall, neutral defaults, saved independent settings and restart persistence without extra toolbar controls.');
+    await page.evaluate(()=>{window.__uiFixture.staleWaveformTrack='ui000000000';window.__pluginStores.player.getState().jumpTo(1);});
+    await page.waitForFunction(()=>window.__pluginStores.player.getState().index===1&&window.__musikeAudioEl.readyState>0);
+    const waveformReads=await page.evaluate(()=>window.__uiFixture.waveformRequests||0);
+    await page.waitForFunction(reads=>window.__uiFixture.waveformRequests>=reads+2,waveformReads);
+    assert.equal(await page.locator('.cue-waveform').getAttribute('data-peak-count'),'0','A completed outgoing waveform was accepted for the incoming song');
+    await page.evaluate(()=>{delete window.__uiFixture.staleWaveformTrack;});
+    await page.waitForFunction(()=>document.querySelector('.cue-waveform')?.dataset.waveformTrack==='ui000000001'&&document.querySelector('.cue-waveform')?.dataset.waveformProgress==='1');
+    await page.evaluate(()=>window.__pluginStores.player.getState().jumpTo(0));await page.waitForFunction(()=>document.querySelector('.cue-waveform')?.dataset.waveformTrack==='ui000000000'&&document.querySelector('.cue-waveform')?.dataset.waveformProgress==='1');
+    console.log('PASS: stale outgoing waveform responses are rejected and polling recovers the matching incoming waveform.');
+    await page.evaluate(()=>{if(window.__pluginStores.player.getState().status==='playing')window.__pluginStores.player.getState().toggle();});
+    await page.waitForFunction(()=>window.__pluginStores.player.getState().status!=='playing');
     await page.evaluate(()=>window.__pluginStores.player.getState().toggle());
     await page.waitForFunction(()=>window.__musikeAudioEl.readyState>0&&window.__pluginStores.player.getState().status==='playing');
     await page.evaluate(()=>window.__pluginStores.cues.getState().setCue(1,12.125));
@@ -711,11 +722,12 @@ try{
   await page.getByRole('button',{name:'Settings',exact:true}).click();
   if(!iosPreview)assert.equal(await page.getByRole('switch',{name:'Always audition while dragging',exact:true}).count(),0,'Preview audition setting leaked into a normal build');
   if(iosPreview){
-    const fades=page.getByRole('switch',{name:'Fade between songs',exact:true});assert.equal(await fades.getAttribute('aria-checked'),'true','Song fades must default On');assert.equal(await page.getByLabel('Song fade duration',{exact:true}).inputValue(),'350');
+    const fades=page.getByRole('switch',{name:'Crossfade between songs',exact:true});assert.equal(await fades.getAttribute('aria-checked'),'true','Crossfade must default On');assert.equal(await page.getByLabel('Song crossfade duration',{exact:true}).inputValue(),'3000');
     await fades.click();await page.waitForFunction(()=>JSON.parse(JSON.parse(window.__uiFixture.savedSession||'{}')['musike:transitions']||'{}').enabled===false);
     await page.reload();await page.locator('.cue-pad-grid').waitFor();await page.getByRole('button',{name:'Settings',exact:true}).click();assert.equal(await fades.getAttribute('aria-checked'),'false','Instant/Off song transitions did not survive restart');
     await fades.click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('musike:transitions')).enabled===true);
-    console.log('PASS: default-On 350 ms song fades, saved Instant/Off setting and restart persistence.');
+    const duration=page.getByLabel('Song crossfade duration',{exact:true});await duration.fill('10000');await duration.dispatchEvent('input');await duration.dispatchEvent('change');await page.waitForFunction(()=>JSON.parse(localStorage.getItem('musike:transitions')).seconds===10);
+    console.log('PASS: default-On 3-second overlapping crossfade, adjustable to 10 seconds, saved Instant/Off setting and restart persistence.');
   }
   await page.getByRole('radiogroup',{name:'Accent color',exact:true}).getByRole('radio',{name:'Pink',exact:true}).click();
   if(iosPreview){
