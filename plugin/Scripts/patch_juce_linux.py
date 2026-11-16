@@ -28,18 +28,28 @@ new_arguments = """            // dladdr reports the module that actually define
             // point. A plug-in shared object can be loaded by the helper; an
             // executable cannot be dlopen()ed at all on glibc, so it is
             // re-executed and handles --juce-gtkwebkitfork-child itself.
-            const auto executable = File::getSpecialLocation (File::currentExecutableFile).getCanonicalFile();
+            const auto canonicalPath = [] (const File& file)
+            {
+                char resolved[4096] = {};
+
+                if (realpath (file.getFullPathName().toRawUTF8(), resolved) != nullptr)
+                    return String (CharPointer_UTF8 { resolved });
+
+                return file.getFullPathName();
+            };
+
+            const auto executable = canonicalPath (File::getSpecialLocation (File::currentExecutableFile));
             auto childModule = executable;
 
             if (Dl_info moduleInfo {}; dladdr (reinterpret_cast<void*> (&juce_gtkWebkitMain), &moduleInfo) != 0
                                         && moduleInfo.dli_fname != nullptr
                                         && moduleInfo.dli_fname[0] != 0)
-                childModule = File (String (CharPointer_UTF8 { moduleInfo.dli_fname })).getCanonicalFile();
+                childModule = canonicalPath (File (String (CharPointer_UTF8 { moduleInfo.dli_fname })));
 
             if (childModule != executable)
             {
                 arguments.emplace_back (subprocessFile->getFile().getFullPathName());
-                arguments.emplace_back (childModule.getFullPathName());
+                arguments.emplace_back (childModule);
                 arguments.emplace_back ("juce_gtkWebkitMain");
             }"""
 
@@ -50,6 +60,7 @@ old_include = """namespace juce
 class WebKitSymbols final : public DeletedAtShutdown"""
 
 new_include = """#include <dlfcn.h>
+#include <stdlib.h>
 
 namespace juce
 {
