@@ -2,6 +2,15 @@ name: Native audio plug-ins
 
 on:
   workflow_dispatch:
+    inputs:
+      linux_only:
+        description: Validate only the native Linux targets
+        default: false
+        type: boolean
+      main_only:
+        description: Build only the released native edition
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       source_sha:
@@ -9,6 +18,11 @@ on:
         type: string
       main_only:
         description: Build the released native edition without the separate desktop-layout beta
+        required: false
+        default: false
+        type: boolean
+      linux_only:
+        description: Validate only the native Linux targets
         required: false
         default: false
         type: boolean
@@ -26,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(inputs.published_platforms_only && '["macos-15", "windows-latest"]' || '["macos-15", "windows-latest", "ubuntu-24.04"]') }}
+        os: ${{ fromJSON(inputs.linux_only && '["ubuntu-24.04"]' || inputs.published_platforms_only && '["macos-15", "windows-latest"]' || '["macos-15", "windows-latest", "ubuntu-24.04"]') }}
         edition: ${{ fromJSON(inputs.main_only && '["main"]' || '["main", "desktop-beta"]') }}
     runs-on: ${{ matrix.os }}
     env:
@@ -71,8 +85,8 @@ jobs:
           WEBKIT_DISABLE_COMPOSITING_MODE: '1'
           WEBKIT_DISABLE_DMABUF_RENDERER: '1'
         run: |
-          # JUCE resolves WebKit at run time through unversioned sonames. Show
-          # what is installed, then let the probe report every dlopen it makes.
+          # The patched JUCE backend uses runtime SONAMEs, not development
+          # symlinks. Report each dlopen and exercise real document/JS loading.
           ls -l /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so* \
                 /usr/lib/x86_64-linux-gnu/libjavascriptcoregtk-4.1.so* \
                 /usr/lib/x86_64-linux-gnu/libsoup-3.0.so* 2>&1 || true
@@ -191,28 +205,7 @@ jobs:
           WEBKIT_DISABLE_DMABUF_RENDERER: '1'
         run: |
           app="$PWD/$PLUGIN_BUILD_DIR/BeatmakerCues_artefacts/Release/Standalone/$PLUGIN_PRODUCT"
-          ls -l "$app"
-          xvfb-run -a dbus-run-session -- sh -c '
-            openbox >/dev/null 2>&1 &
-            sleep 1
-            "$1" >/tmp/standalone.log 2>&1 &
-            pid=$!
-            found=0
-            for i in $(seq 1 45); do
-              if pgrep -f WebKitWebProcess >/dev/null; then found=1; break; fi
-              if ! kill -0 "$pid" 2>/dev/null; then break; fi
-              sleep 1
-            done
-            if [ "$found" -eq 1 ]; then echo "standalone: WebKit web process started"; fi
-            pgrep -af "WebKitWebProcess|WebKitNetworkProcess" || echo "standalone: no WebKit processes"
-            if kill -0 "$pid" 2>/dev/null; then echo "standalone: still running"; else echo "standalone: exited"; fi
-            kill "$pid" 2>/dev/null || true
-            sleep 1
-            kill -9 "$pid" 2>/dev/null || true
-            echo "--- standalone output ---"
-            tail -n 40 /tmp/standalone.log 2>/dev/null || true
-            [ "$found" -eq 1 ] || { echo "standalone never started a WebKit process"; exit 1; }
-          ' sh "$app"
+          xvfb-run -a dbus-run-session -- sh -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$@"' sh python3 scripts/check-linux-standalone.py "$app"
       - name: Linux VST3 host check
         if: runner.os == 'Linux'
         timeout-minutes: 5
@@ -223,9 +216,25 @@ jobs:
           WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
           WEBKIT_DISABLE_COMPOSITING_MODE: '1'
           WEBKIT_DISABLE_DMABUF_RENDERER: '1'
-        run: xvfb-run -a dbus-run-session -- sh -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$@"' sh plugin/build-release/PluginProbe_artefacts/Release/PluginProbe "plugin/build-release/BeatmakerCues_artefacts/Release/VST3/$PLUGIN_PRODUCT.vst3"
+        run: |
+          xvfb-run -a dbus-run-session -- sh -c 'openbox >/dev/null 2>&1 & sleep 1; exec "$@"' sh \
+            plugin/build-release/PluginProbe_artefacts/Release/PluginProbe \
+            "plugin/build-release/BeatmakerCues_artefacts/Release/VST3/$PLUGIN_PRODUCT.vst3" \
+            2>&1 | tee "$RUNNER_TEMP/linux-vst3-host.log"
+          grep -q 'Plugin UI: Beatmaker Cues 1.0.7 plug-in bridge started' "$RUNNER_TEMP/linux-vst3-host.log"
       - name: Package verified native targets
         run: python3 plugin/Scripts/package_release.py --build-dir ${{ env.PLUGIN_BUILD_DIR }} --platform ${{ env.PLUGIN_PLATFORM }} --arch ${{ env.PLUGIN_ARCH }} --checks engine,persistence,concurrency,vst3-host,webview-offline${{ runner.os == 'macOS' && ',auval' || '' }}${{ runner.os != 'Linux' && matrix.edition == 'main' && ',keyboard-looper-release' || '' }}
+      - name: Install Linux package in a clean runtime-only Ubuntu container
+        if: runner.os == 'Linux'
+        timeout-minutes: 12
+        run: |
+          version=$(node -p "require('./package.json').version")
+          package_prefix="${{ matrix.edition == 'desktop-beta' && 'Beatmaker-Cues-Desktop-Beta-Plug-ins' || 'Beatmaker-Cues-Plug-ins' }}"
+          package_name="${{ matrix.edition == 'desktop-beta' && 'beatmaker-cues-desktop-beta' || 'beatmaker-cues-plugin' }}"
+          docker run --rm \
+            -v "$PWD/release:/packages:ro" -v "$PWD/scripts:/checks:ro" \
+            ubuntu:24.04 bash /checks/check-linux-package-runtime.sh \
+            "/packages/$package_prefix-$version-Linux-x64.deb" "$package_name" "$PLUGIN_PRODUCT"
       - uses: actions/upload-artifact@v7
         with:
           name: native-plugins-${{ env.PLUGIN_PLATFORM }}-${{ env.PLUGIN_ARCH }}-${{ matrix.edition }}
@@ -240,6 +249,7 @@ jobs:
           if-no-files-found: error
 
   android-standalone:
+    if: ${{ !inputs.linux_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -288,6 +298,7 @@ jobs:
           if-no-files-found: error
 
   ios-auv3:
+    if: ${{ !inputs.linux_only }}
     runs-on: macos-15
     timeout-minutes: 45
     steps:

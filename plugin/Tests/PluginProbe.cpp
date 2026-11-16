@@ -26,6 +26,11 @@ int main(int argc, char** argv) {
         if (!editor || editor->getWidth() < 320) { std::cerr << "Editor failed\n"; return 1; }
         if(!editor->isResizable()){std::cerr<<"Host reports a fixed-size editor\n";return 1;}
         editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);editor->setVisible(true);
+       #if JUCE_LINUX
+        // The browser is asynchronous. Actually dispatch its events so CI can
+        // require the JavaScript bridge-started log from the loaded VST3.
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(3000);
+       #endif
         for(const auto bounds:{juce::Point<int>(360,760),juce::Point<int>(1280,600),juce::Point<int>(760,760),juce::Point<int>(1600,480),juce::Point<int>(480,1400)}){
             editor->setSize(bounds.x,bounds.y);
             if(editor->getWidth()!=bounds.x||editor->getHeight()!=bounds.y){std::cerr<<"Host editor rejected a valid aspect ratio\n";return 1;}

@@ -12,6 +12,10 @@ object (the plug-in module) is passed to the helper as before. When the symbol
 lives in the executable, the executable is re-executed directly with
 --juce-gtkwebkitfork-child, which is the same mechanism JUCE already uses for
 standalone applications.
+
+The pipe transport also needs byte lengths (not Unicode character counts)
+and must finish short writes. Otherwise non-ASCII library data is truncated
+before it reaches the browser/native callback.
 """
 from pathlib import Path
 import sys
@@ -68,14 +72,64 @@ namespace juce
 //==============================================================================
 class WebKitSymbols final : public DeletedAtShutdown"""
 
-if "Dl_info moduleInfo" in source:
-    print("Linux WebKit child launcher already patched")
-    sys.exit(0)
+old_length = "auto jsonLength = static_cast<size_t> (json.length());"
+new_length = "auto jsonLength = json.getNumBytesAsUTF8();"
 
-for needle in (old_arguments, old_include):
-    if source.count(needle) != 1:
-        raise SystemExit(f"Unexpected JUCE source: expected exactly one match for:\n{needle}")
+old_decode = "parseJSON (String (buffer.getData(), bufferLength.len));"
+new_decode = "parseJSON (String (CharPointer_UTF8 (buffer.getData()), CharPointer_UTF8 (buffer.getData() + bufferLength.len)));"
 
-source = source.replace(old_include, new_include).replace(old_arguments, new_arguments)
+old_write = """        ssize_t ret;
+
+        for (;;)
+        {
+            ret = write (outChannel, buffer.getData(), len);
+
+            if (ret != -1 || errno != EINTR)
+                break;
+        }"""
+
+new_write = """        size_t written = 0;
+
+        while (written < len)
+        {
+            const auto ret = write (outChannel, buffer.getData() + written, len - written);
+
+            if (ret > 0)
+                written += static_cast<size_t> (ret);
+            else if (ret < 0 && errno == EINTR)
+                continue;
+            else
+                break;
+        }"""
+
+changes = []
+patches = [
+    ("child launcher includes", old_include, new_include),
+    ("child module resolution", old_arguments, new_arguments),
+    ("UTF-8 frame lengths", old_length, new_length),
+    ("UTF-8 frame decoding", old_decode, new_decode),
+    ("complete pipe writes", old_write, new_write),
+]
+# Development symlinks are not installed by the runtime-only Debian packages.
+for library, soname in [
+    ("libgtk-3.so", "libgtk-3.so.0"),
+    ("libglib-2.0.so", "libglib-2.0.so.0"),
+    ("libwebkit2gtk-4.1.so", "libwebkit2gtk-4.1.so.0"),
+    ("libjavascriptcoregtk-4.1.so", "libjavascriptcoregtk-4.1.so.0"),
+    ("libsoup-3.0.so", "libsoup-3.0.so.0"),
+    ("libwebkit2gtk-4.0.so", "libwebkit2gtk-4.0.so.37"),
+    ("libjavascriptcoregtk-4.0.so", "libjavascriptcoregtk-4.0.so.18"),
+    ("libsoup-2.4.so", "libsoup-2.4.so.1"),
+]:
+    patches.append((library + " runtime SONAME", f'"{library}"', f'"{soname}"'))
+
+for name, old, new in patches:
+    if source.count(new) == 1:
+        continue
+    if source.count(old) != 1:
+        raise SystemExit(f"Unexpected JUCE source for {name}: expected exactly one match for:\n{old}")
+    source = source.replace(old, new, 1)
+    changes.append(name)
+
 module.write_text(source)
-print("Patched Linux WebKit child launcher to resolve the module that owns juce_gtkWebkitMain")
+print("Patched Linux WebKit: " + ", ".join(changes) if changes else "Linux WebKit already patched")

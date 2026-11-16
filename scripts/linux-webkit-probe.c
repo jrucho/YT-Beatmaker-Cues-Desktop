@@ -3,8 +3,8 @@
  * loadable, and prove that WebKitGTK can load a document and execute
  * JavaScript in this display/session environment.
  *
- * JUCE dlopens unversioned library names and silently disables the browser if
- * any of them are missing, which looks like a hang in higher-level tests.
+ * Probe the runtime SONAMEs used by the patched JUCE Linux backend. These
+ * must work without the unversioned symlinks from development packages.
  * Exit status 0 means: libraries loaded, document loaded, JavaScript ran.
  */
 #include <dlfcn.h>
@@ -16,8 +16,8 @@
 
 static int load_libraries(void) {
     const char* names[] = {
-        "libwebkit2gtk-4.1.so", "libjavascriptcoregtk-4.1.so", "libsoup-3.0.so",
-        "libgtk-3.so", "libglib-2.0.so", NULL
+        "libwebkit2gtk-4.1.so.0", "libjavascriptcoregtk-4.1.so.0", "libsoup-3.0.so.0",
+        "libgtk-3.so.0", "libglib-2.0.so.0", NULL
     };
     int failures = 0;
     for (int i = 0; names[i] != NULL; ++i) {
