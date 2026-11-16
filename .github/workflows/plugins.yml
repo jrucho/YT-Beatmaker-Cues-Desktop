@@ -149,7 +149,8 @@ jobs:
           binary="$PWD/$PLUGIN_BUILD_DIR/WebIntegration_artefacts/Release/WebIntegration"
           module="$PWD/$PLUGIN_BUILD_DIR/BeatmakerCues_artefacts/Release/VST3/$PLUGIN_PRODUCT.vst3/Contents/x86_64-linux/$PLUGIN_PRODUCT.so"
           file "$binary" "$module" || true
-          "$RUNNER_TEMP/webkit-probe" --dlopen-check "$binary"
+          # Executables are re-executed by the patched launcher, so only the
+          # plug-in module has to be loadable by the helper.
           "$RUNNER_TEMP/webkit-probe" --dlopen-check "$module"
       - name: Real offline Linux WebView and native audio smoke test
         if: runner.os == 'Linux'

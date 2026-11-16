@@ -15,6 +15,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/patch_juce_ios.py" "${JUCE_SOURCE_PATH}"
         COMMAND_ERROR_IS_FATAL ANY)
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    FetchContent_GetProperties(JUCE SOURCE_DIR JUCE_SOURCE_PATH)
+    execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/patch_juce_linux.py" "${JUCE_SOURCE_PATH}"
+        COMMAND_ERROR_IS_FATAL ANY)
+endif()
 
 set(BEATMAKER_IOS_PREVIEW_VERSION "" CACHE STRING "Private iPhone feature-test version; enables iOS preview controls")
 set(BEATMAKER_IOS_PREVIEW_BUILD "" CACHE STRING "Internal iPhone development build number")
@@ -253,13 +259,6 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT ANDROID)
         target_sources(WebIntegration PRIVATE Tests/NativePadInputFixture_win.cpp)
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         juce_link_with_embedded_linux_subprocess(WebIntegration)
-        # JUCE launches its WebKit child through a helper that dlopens the
-        # current executable and looks up juce_gtkWebkitMain. glibc refuses to
-        # dlopen PIE executables, and the failure is silent: the browser is
-        # simply disabled. Build this harness as a classic executable with an
-        # exported dynamic symbol table so the launcher can resolve it.
-        target_link_options(WebIntegration PRIVATE -no-pie)
-        set_target_properties(WebIntegration PROPERTIES ENABLE_EXPORTS ON)
     endif()
     juce_add_console_app(PluginProbe PRODUCT_NAME "Beatmaker Cues Plugin Probe")
     target_sources(PluginProbe PRIVATE Tests/PluginProbe.cpp)

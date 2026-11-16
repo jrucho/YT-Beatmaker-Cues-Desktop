@@ -22,6 +22,15 @@ void traceStage(const char* stage){
 }
 
 int main(int argc,char** argv) {
+   #if JUCE_LINUX
+    // JUCE starts the WebKit UI process by re-executing this binary when the
+    // child entry point lives in the executable rather than a shared object.
+    // Handle that before any JUCE or test state is created.
+    if(argc>=3&&juce::String(argv[1])=="--juce-gtkwebkitfork-child"){
+        extern "C" int juce_gtkWebkitMain(int,const char* const*);
+        return juce_gtkWebkitMain(argc,reinterpret_cast<const char* const*>(argv));
+    }
+   #endif
     std::cout<<std::unitbuf;
     std::cerr<<std::unitbuf;
     traceStage("process started");
