@@ -2,6 +2,7 @@
 #if JUCE_MAC
 #include <CoreFoundation/CoreFoundation.h>
 #endif
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #if JUCE_MAC
@@ -13,13 +14,23 @@ void pumpNativeWebIntegration();
 bool checkNativePadInputRouting(CueProcessor&,MobileWebEditor&);
 #endif
 
+namespace {
+const auto processStart=std::chrono::steady_clock::now();
+void traceStage(const char* stage){
+    std::cerr<<"[webview] +"<<std::chrono::duration<double>(std::chrono::steady_clock::now()-processStart).count()<<"s "<<stage<<std::endl;
+}
+}
+
 int main(int argc,char** argv) {
     std::cout<<std::unitbuf;
+    std::cerr<<std::unitbuf;
+    traceStage("process started");
     const bool keyboardStandalone=argc>1&&juce::String(argv[1])=="--looper-keyboard-standalone";
     const bool sharedOffline=argc>1&&juce::String(argv[1])=="--shared-offline";
     const bool offline=keyboardStandalone||sharedOffline||(argc>1&&juce::String(argv[1])=="--offline");
     const bool profilePlaylist=argc>2&&juce::String(argv[1])=="--profile-playlist";
     juce::ScopedJuceInitialiser_GUI initialise;
+    traceStage("JUCE GUI initialised");
     const auto testData=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("beatmaker-web-test",{});
     testData.createDirectory();
    #if JUCE_WINDOWS
@@ -35,8 +46,11 @@ int main(int argc,char** argv) {
     juce::AudioProcessor::setTypeOfNextNewPlugin(keyboardStandalone?juce::AudioProcessor::wrapperType_Standalone:juce::AudioProcessor::wrapperType_VST3);
     CueProcessor processor;processor.prepareToPlay(48000,512);
     juce::AudioProcessor::setTypeOfNextNewPlugin(juce::AudioProcessor::wrapperType_Undefined);
+    traceStage("processor prepared");
     auto editor=std::make_unique<MobileWebEditor>(processor,offline);
+    traceStage("editor constructed");
     editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);editor->setVisible(true);
+    traceStage("editor visible");
    #if JUCE_MAC
     showNativeWebIntegration(*editor);
    #endif
@@ -53,12 +67,16 @@ int main(int argc,char** argv) {
             processor.processBlock(output,midi);renderedAudio=renderedAudio||output.getMagnitude(0,output.getNumSamples())>0.0001f;}};
     const auto evaluate=[&](juce::String script){juce::var result;bool completed=false;
         editor->evaluate(script,[&](auto value){if(value.getResult())result=*value.getResult();else if(value.getError())std::cerr<<value.getError()->message<<"\n";completed=true;});
-        for(int i=0;i<100&&!completed;++i)pump(50);return result;};
+        for(int i=0;i<100&&!completed;++i)pump(50);
+        if(!completed)traceStage("JavaScript evaluation timed out");
+        return result;};
     for(int i=0;i<100;++i){pump(100);if((bool)evaluate("Boolean(window.__pluginStores)"))break;}
+    traceStage("plugin stores evaluated");
     // Exported stores become available before React's first commit and before
     // fonts/ResizeObserver have established virtual row measurements on CI.
     for(int i=0;i<100;++i){pump(50);if((bool)evaluate("Boolean(document.querySelector('.bm-app[data-engine-ready=\"true\"],.music-app main'))"))break;}
     if(!(bool)evaluate("Boolean(document.querySelector('.bm-app[data-engine-ready=\"true\"],.music-app main'))")){std::cerr<<"Editor UI did not mount\n";return 1;}
+    traceStage("editor UI mounted");
     evaluate("document.fonts.ready.then(()=>window.__pluginFontsReady=true);true");
     for(int i=0;i<100&&!(bool)evaluate("Boolean(window.__pluginFontsReady)");++i)pump(50);
     std::cout<<"DOM: "<<evaluate("document.body.innerText").toString()<<"\n";
