@@ -727,6 +727,14 @@ try{
     await page.reload();await page.locator('.cue-pad-grid').waitFor();await page.getByRole('button',{name:'Settings',exact:true}).click();assert.equal(await fades.getAttribute('aria-checked'),'false','Instant/Off song transitions did not survive restart');
     await fades.click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('musike:transitions')).enabled===true);
     const duration=page.getByLabel('Song crossfade duration',{exact:true});await duration.fill('10000');await duration.dispatchEvent('input');await duration.dispatchEvent('change');await page.waitForFunction(()=>JSON.parse(localStorage.getItem('musike:transitions')).seconds===10);
+    const faderBounds=await duration.boundingBox();
+    for(const value of ['50','900','3000','10000']){await duration.fill(value);await duration.dispatchEvent('input');await duration.dispatchEvent('change');const bounds=await duration.boundingBox();assert(Math.abs(bounds.x-faderBounds.x)<.1&&Math.abs(bounds.width-faderBounds.width)<.1,'Changing duration text shifted the fader');}
+    await duration.dblclick();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('musike:transitions')).seconds===3);
+    await duration.fill('10000');await duration.dispatchEvent('input');await duration.dispatchEvent('change');
+    const touch=await page.context().newCDPSession(page),point={x:faderBounds.x+faderBounds.width*.75,y:faderBounds.y+faderBounds.height/2};
+    for(let tap=0;tap<2;tap++){await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...point,id:0}]});await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});}
+    await page.waitForFunction(()=>JSON.parse(localStorage.getItem('musike:transitions')).seconds===3);await touch.detach();
+    console.log('PASS: settings fader keeps identical bounds across 0.05–10 seconds and resets to 3 seconds on mouse double-click or real double touch.');
     console.log('PASS: default-On 3-second overlapping crossfade, adjustable to 10 seconds, saved Instant/Off setting and restart persistence.');
   }
   await page.getByRole('radiogroup',{name:'Accent color',exact:true}).getByRole('radio',{name:'Pink',exact:true}).click();

@@ -24,7 +24,7 @@ import { BANK_PAIRS, nextPairedBank, readBankButtonMode, readMidiVelocity, saveB
 import { toast } from "../stores/ui";
 import { useAppearance } from '../stores/appearance';
 import { complementaryColor, inkFor } from '../lib/accent';
-import { beginEditGesture, endEditGesture } from '../mobile/editHistory';
+import { ResettableRange } from '../components/ResettableRange';
 import { useWarmPadWaveforms } from '../mobile/waveforms';
 import { MediaImportPanel, type MediaRequest } from '../components/MediaImportPanel';
 import { useRecording, useRecordingStatus } from '../mobile/audioRouting';
@@ -97,7 +97,6 @@ export default function Cues() {
   const [devices, setDevices] = useState<MidiDevice[]>([]);
   /** Legacy hold-to-mark timers; preview performance holds leave saved cues intact. */
   const presses = useRef(new Map<number, number>());
-  const faderTap = useRef({ started: 0, startX: 0, startY: 0, previous: 0, previousX: 0, previousY: 0 });
   useWarmPadWaveforms(track,duration,bank,cues,samples,mapping.padToNote.length,padLayoutEnabled);
 
   useEffect(()=>{
@@ -553,46 +552,19 @@ export default function Cues() {
             <section className="cue-speed mt-6 rounded-[16px] bg-surface-2 p-4">
               <div className="flex items-baseline justify-between gap-3">
                 <h2 className="text-sm font-semibold">{speedMode === "pitch" ? t.cues.pitch : t.cues.speed}</h2>
-                <span className="text-right">
+                <span className="w-[6ch] shrink-0 text-right tabular-nums">
                   <span className="block font-mono text-sm text-accent-text">{speed > 0 ? "+" : ""}{speed}%</span>
                 </span>
               </div>
-              <input
-                type="range"
+              <ResettableRange
                 min={-50}
                 max={100}
                 step={1}
                 value={speed}
                 style={{'--cue-speed-fill':`${(speed+50)/150*100}%`} as CSSProperties}
                 onChange={(e) => usePlayer.getState().setSpeed(Number(e.target.value))}
-                onDoubleClick={() => usePlayer.getState().setSpeed(0)}
-                onPointerDown={(e) => {
-                  beginEditGesture(`playback:${track?.id}`);
-                  const tap = faderTap.current;
-                  tap.started = performance.now();
-                  tap.startX = e.clientX;
-                  tap.startY = e.clientY;
-                }}
-                onPointerUp={(e) => {
-                  endEditGesture();
-                  if (e.pointerType === "mouse") return;
-                  const tap = faderTap.current;
-                  const now = performance.now();
-                  const moved = Math.hypot(e.clientX - tap.startX, e.clientY - tap.startY);
-                  if (moved > 10 || now - tap.started > 250) {
-                    tap.previous = 0;
-                    return;
-                  }
-                  if (tap.previous > 0 && now - tap.previous < 300 && Math.hypot(e.clientX - tap.previousX, e.clientY - tap.previousY) < 24) {
-                    usePlayer.getState().setSpeed(0);
-                    tap.previous = 0;
-                  } else {
-                    tap.previous = now;
-                    tap.previousX = e.clientX;
-                    tap.previousY = e.clientY;
-                  }
-                }}
-                onPointerCancel={() => { endEditGesture();faderTap.current.previous = 0; }}
+                onReset={() => usePlayer.getState().setSpeed(0)}
+                gesture={`playback:${track?.id}`}
                 className="mt-3 w-full touch-manipulation accent-[var(--color-accent)]"
                 aria-label={speedMode === "pitch" ? t.cues.pitch : t.cues.speed}
               />

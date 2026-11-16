@@ -45,9 +45,12 @@ try{
   const point=await padPoint(1);before=await platform();motion('DOWN',point);await delay(750);motion('UP',point);await delay(200);after=await platform();assert.equal(after.fastCommandsAccepted-before.fastCommandsAccepted,1);assert.equal(await evaluate('__pluginStores.cues.getState().cues[1]'),.05);
   pass('Native single-hit cue receipts, preserved Android X, and non-overwriting performance holds');
   await click('button[aria-label="Settings"]');assert.equal(await evaluate(`document.querySelector('[aria-label="Crossfade between songs"]').getAttribute("aria-checked")`),'true');await click('[aria-label="Crossfade between songs"]');await wait(async()=>!(await evaluate('__pluginInvoke("transitions")')).enabled,'Saved Instant/Off did not reach native transitions');await click('[aria-label="Crossfade between songs"]');await close();
-  pass('Default-On fades with native Instant/Off preference');
+  pass('Default-On crossfade with native Instant/Off preference');
   await click('.cue-song-import');await click('[aria-label="Import gallery video"]');await delay(600);
-  const picker=adb('shell','dumpsys','activity','activities');assert(/topResumedActivity[^\n]*PhotoPickerActivity/i.test(picker),'Phone gallery did not open the Android photo/video picker');adb('shell','input','keyevent','KEYCODE_BACK');await wait(()=>evaluate(`!!document.querySelector('[aria-label="Import gallery video"]:not(:disabled)')`),'Cancelling gallery did not restore the source menu');await close();
+  const picker=adb('shell','dumpsys','activity','activities');assert(/topResumedActivity[^\n]*PhotoPickerActivity/i.test(picker),'Phone gallery did not open the Android photo/video picker');adb('shell','input','keyevent','KEYCODE_BACK');await wait(()=>evaluate(`document.hasFocus()&&!!document.querySelector('[aria-label="Import gallery video"]:not(:disabled)')`),'Cancelling gallery did not restore the focused source menu');
+  // The picker result can precede Activity focus/its closing surface animation.
+  // Wait for the native input window before injecting the next real touch.
+  await delay(750);await close();
   pass('Real Android gallery video picker and non-destructive cancellation');
   await click('.cue-record');await text('Start recording');await wait(()=>evaluate('__pluginInvoke("recordAudio",{cmd:"state"}).then(state=>state.recording&&state.seconds>.2)'),'Native playback callbacks did not feed the take');await text('Finish & play');await wait(()=>evaluate('!document.querySelector("[role=dialog]")'),'Playback take was not saved');
   pass('Native playback recording, retained WAV and immediate Imports/Cues');
@@ -59,7 +62,7 @@ try{
   await evaluate('__pluginInvoke("configureAudio",{monitor:false,inputEnabled:false})');
   pass('Real input callbacks/permission, monitor-only updates during capture, and retained microphone WAV');
   await evaluate('window.__sampleDone=false;window.__sampleResult=null;window.__sampleError=null;__pluginInvoke("padSample",{cmd:"load",bank:"A",pad:1}).then(value=>{window.__sampleResult=value;window.__sampleDone=true;},error=>{window.__sampleError=error.message;window.__sampleDone=true;});true');await pickFixture();await wait(()=>evaluate('__pluginInvoke("padSamples").then(pads=>pads.some(pad=>pad.bank==="A"&&pad.pad===1&&pad.ready))'),'Native sample import did not become ready');
-  await evaluate('__pluginStores.player.getState().newEmptyTrack()');await wait(()=>evaluate('!__pluginStores.player.getState().queue.length'),'Empty workspace retained the song');await delay(350);before=await platform();await tap(1);after=await platform();assert.equal(after.fastCommandsAccepted-before.fastCommandsAccepted,1);
+  await evaluate('window.__emptyTrackRequest=__pluginStores.player.getState().newEmptyTrack();true');await wait(()=>evaluate('!__pluginStores.player.getState().queue.length'),'Empty workspace retained the song');await delay(350);before=await platform();await tap(1);after=await platform();assert.equal(after.fastCommandsAccepted-before.fastCommandsAccepted,1);
   await click('.cue-looper-edit');await click('.cue-pad[data-pad-number="16"]');await wait(()=>evaluate('__pluginInvoke("looperState").then(state=>state.pads.some(pad=>pad.pad===16))'),'Looper assignment failed');await click('.cue-looper-edit');await delay(350);
   before=await platform();await tap(16);after=await platform();assert.equal(after.fastCommandsAccepted-before.fastCommandsAccepted,1,'Looper touch replayed its native receipt');await delay(1300);
   assert(await evaluate('__pluginInvoke("looperState").then(state=>state.pads.find(pad=>pad.pad===16)?.mode===1)'),'Native touch-up did not release the looper hold');await tap(1);await tap(16);

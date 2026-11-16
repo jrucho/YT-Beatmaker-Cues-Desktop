@@ -20,6 +20,7 @@ import { iosPadLayoutEnabled } from '../mobile/padLayout';
 import { saveAlwaysAudition, useAlwaysAudition } from '../mobile/waveformPreferences';
 import { AudioRoutingControls } from './AudioRecording';
 import { saveSongTransitions, useSongTransitions } from '../mobile/transitionPreferences';
+import { ResettableRange } from './ResettableRange';
 
 function Segmented<T extends string>({
   label,
@@ -191,8 +192,8 @@ export function SettingsDialog({ studio = false }: { studio?: boolean }) {
         {!studio&&iosPadLayoutEnabled()&&<section className="flex flex-col gap-2">
           <h3 className="text-xs font-medium text-fg-3">Song transitions</h3>
           <label className="flex items-center justify-between gap-3 rounded-xl bg-surface-1 p-3 text-sm"><span>Crossfade between songs</span><button type="button" role="switch" aria-label="Crossfade between songs" aria-checked={songTransitions.enabled} onClick={()=>saveSongTransitions({enabled:!songTransitions.enabled})} className={cn('shrink-0 rounded-full px-3 py-2 text-xs font-semibold',songTransitions.enabled?'bg-accent text-accent-ink':'bg-surface-3 text-fg-2')}>{songTransitions.enabled?'On':'Off · instant'}</button></label>
-          {songTransitions.enabled&&<label className="flex items-center gap-3 px-1 text-xs text-fg-2"><span className="shrink-0">Overlap · {Number(songTransitions.seconds.toFixed(2))} s</span><input type="range" aria-label="Song crossfade duration" min={50} max={10000} step={50} value={Math.round(songTransitions.seconds*1000)} onChange={event=>saveSongTransitions({seconds:Number(event.target.value)/1000})} className="min-w-0 flex-1 accent-[var(--accent)]"/></label>}
-          <p className="px-1 text-[11px] text-fg-3">The next song starts while the current song fades out.</p>
+          {songTransitions.enabled&&<label className="grid grid-cols-[8rem_minmax(0,1fr)] items-center gap-3 px-1 text-xs text-fg-2"><span className="whitespace-nowrap tabular-nums">Overlap · <span className="font-mono">{songTransitions.seconds.toFixed(2)} s</span></span><ResettableRange aria-label="Song crossfade duration" min={50} max={10000} step={50} value={Math.round(songTransitions.seconds*1000)} onChange={event=>saveSongTransitions({seconds:Number(event.target.value)/1000})} onReset={()=>saveSongTransitions({seconds:3})} gesture="song-crossfade" className="min-w-0 w-full touch-manipulation accent-[var(--accent)]"/></label>}
+          <p className="px-1 text-[11px] text-fg-3">The next song starts while the current song fades out. Double-tap the fader to reset to 3 seconds.</p>
         </section>}
 
         {!studio&&iosPadLayoutEnabled()&&<section className="flex flex-col gap-2">

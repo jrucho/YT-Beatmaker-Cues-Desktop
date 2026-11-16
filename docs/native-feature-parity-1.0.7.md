@@ -16,6 +16,13 @@ matching peaks arrive, avoiding a completed outgoing waveform blocking the new o
 Settings, host state and the previous default fade preference migrate to the new
 crossfade mode.
 
+The crossfade duration control reserves a fixed-width, tabular readout so changing
+numbers cannot move or resize its fader. Double-touch or double-click resets the
+duration to three seconds; the speed fader uses the same drag-aware tap handling
+and resets to zero percent. Real browser touch injection verifies reset and stable
+slider geometry across the duration range. Android device-fixture timing waits
+for focus/animation restoration after the gallery picker before the next touch.
+
 Local checks pass: all six native suites; manual/natural equal-power overlap at
 44.1/48/96 kHz; independently tuned/stretched and varispeed voices; exact paged
 outgoing PCM across a page boundary; cue/pause/preparation cancellation; failed
