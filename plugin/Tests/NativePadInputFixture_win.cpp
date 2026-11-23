@@ -27,12 +27,44 @@ bool checkNativePadInputRouting(CueProcessor& processor,MobileWebEditor& editor)
     const auto evaluate=[&](const juce::String& script){juce::var result;bool done=false;editor.evaluate(script,[&](auto value){if(value.getResult())result=*value.getResult();done=true;});for(int i=0;i<100&&!done;++i)pump(20);return result;};
     const auto diagnostics=[&]{evaluate("window.__padDiagnostics=null;window.__pluginInvoke('padTouchDiagnostics').then(value=>window.__padDiagnostics=value);true");for(int i=0;i<100;++i){pump(10);const auto value=evaluate("JSON.stringify(window.__padDiagnostics)").toString();if(value!="null"&&!value.isEmpty())return juce::JSON::parse(value);}return juce::var{};};
     pump(200);evaluate("window.__pluginStores.cues.getState().setBank('A');window.__pluginStores.cues.getState().setCue(1,.125);true");pump(250);
-    const auto point=juce::JSON::parse(evaluate("JSON.stringify((()=>{const r=document.querySelector('.cue-pad').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,width:innerWidth,height:innerHeight};})())").toString());
-    const auto state=diagnostics();check((bool)state["supported"]&&(int)state["mappedPads"]>0,"Native WebView2 observer/map is not ready");
+    juce::var point,state;
+    const auto layoutReady=[&]{
+        return (bool)point["hit"]&&(bool)state["supported"]&&(bool)state["mapEnabled"]&&(int)state["mappedPads"]>0
+            &&(int)state["viewportWidth"]==(int)point["width"]&&(int)state["viewportHeight"]==(int)point["height"]
+            &&(int)state["mapLayoutRevision"]==(int)state["layoutRevision"];
+    };
+    const auto layoutDeadline=juce::Time::getMillisecondCounterHiRes()+2500;
+    do {
+        point=juce::JSON::parse(evaluate("JSON.stringify((()=>{const pad=document.querySelector('.cue-pad'),r=pad.getBoundingClientRect();"
+            "const x=r.x+r.width/2,y=r.y+r.height/2;return {x,y,width:innerWidth,height:innerHeight,hit:pad.contains(document.elementFromPoint(x,y))};})())").toString());
+        state=diagnostics();
+        if(layoutReady())break;
+        pump(40);
+    }while(juce::Time::getMillisecondCounterHiRes()<layoutDeadline);
+    if(!layoutReady()){
+        std::cerr<<"FAIL: Native WebView2 pointer map did not match the latest layout: point="
+            <<juce::JSON::toString(point,true)<<" native="<<juce::JSON::toString(state,true)<<"\n";
+        return false;
+    }
     const auto before=processor.padStates[0].load()>>1;const int accepted=processor.nativePadInputAccepted.load(),claimed=state["claimed"];
-    check(click(native,point["x"],point["y"],point["width"],point["height"]),"SendInput did not inject a Windows pointer event");pump(250);
+    check(click(native,point["x"],point["y"],point["width"],point["height"]),"SendInput did not inject a Windows pointer event");
+    // Wait for the asynchronous WebView receipt, but demand exactly one native hit.
+    const auto receiptDeadline=juce::Time::getMillisecondCounterHiRes()+2000;
+    do {pump(25);}while(processor.nativePadInputAccepted.load()==accepted
+        &&(processor.padStates[0].load()>>1)==before&&juce::Time::getMillisecondCounterHiRes()<receiptDeadline);
+    while(juce::Time::getMillisecondCounterHiRes()<receiptDeadline){
+        if((int)diagnostics()["claimed"]!=claimed)break;
+        pump(40);
+    }
+    pump(150); // Give a delayed duplicate enough time to reach the engine.
     const auto after=diagnostics();
-    check(processor.nativePadInputAccepted.load()==accepted+1&&(processor.padStates[0].load()>>1)==before+1&&(int)after["claimed"]==claimed+1,"Windows native mouse and WebView2 did not reconcile exactly one hit");
+    if(processor.nativePadInputAccepted.load()!=accepted+1||(processor.padStates[0].load()>>1)!=before+1||(int)after["claimed"]!=claimed+1){
+        std::cerr<<"FAIL: Windows native mouse and WebView2 did not reconcile exactly one hit: accepted delta="
+            <<processor.nativePadInputAccepted.load()-accepted<<" rendered pad delta="<<(processor.padStates[0].load()>>1)-before
+            <<" claimed delta="<<(int)after["claimed"]-claimed<<" point="<<juce::JSON::toString(point,true)
+            <<" state="<<juce::JSON::toString(after,true)<<"\n";
+        return false;
+    }
     const auto stallBefore=processor.padStates[0].load()>>1;const int stallAccepted=processor.nativePadInputAccepted.load(),stallClaimed=after["claimed"];
     evaluate("setTimeout(()=>{window.__stallStart=Date.now();const until=performance.now()+450;while(performance.now()<until){}window.__stallEnd=Date.now();},25);true");pump(80);
     const double pressed=juce::Time::currentTimeMillis();click(native,point["x"],point["y"],point["width"],point["height"]);pump(40);
