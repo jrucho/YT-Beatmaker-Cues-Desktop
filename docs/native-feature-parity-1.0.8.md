@@ -13,8 +13,8 @@ its pinned source, without porting the native feature changes.
 | Open and reopen the Cues playlist panel on the actual queue position without moving playback or tracking subsequent song changes. | Native WebView and UI regressions, compact and wide, past row 500 and with a duplicate song. |
 | New songs select Pitch (varispeed); the rate fader is immediately usable. Previously used songs retain their saved mode and values. | Native engine tests, Cues UI regression and iOS WebView fixture. |
 | A saved playlist's cover is editable, including saved YouTube imports and empty playlists. Mobile offers Photos and Files; desktop offers an image-file picker. Only the small JPEG is stored with the playlist. | Native library UI regression and iOS native picker fixture. |
-| Now Playing meets the opaque tab bar in phone layouts. Source links are accent-coloured, not underlined. | Native library UI and iOS WebView regressions. |
-| Mobile Home keeps two shortcut columns: three rows on standard phone layouts, four on taller ones. Recent covers and names remain visible above the player. Missing YouTube art tries the alternate size before showing the waveform tile. | Native library UI regression at standard, compact and tall phone sizes. |
+| Now Playing meets the opaque tab bar in phone layouts and never covers the tabs while opening or closing. Source links are accent-coloured, not underlined. | Native library UI and iOS WebView regressions. |
+| Mobile Home keeps two shortcut columns: four rows on iPhone 17 Pro-sized and taller layouts, three on shorter ones. Recent covers and names remain visible above the player. Missing YouTube art tries the alternate size before showing the waveform tile. | Native library UI regression at standard, compact and tall phone sizes. |
 | Every matching saved playlist is visible. YouTube Songs, Videos, Albums and Playlists can load more. Native playlists support up to 10,000 tracks. | Catalog/UI and large-playlist regressions. |
 
 Native playback sources remain YouTube and imported local audio. These changes

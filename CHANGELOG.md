@@ -9,8 +9,9 @@
 - Show all saved playlist name matches and load additional results in all four
   YouTube search categories. Native playlists support up to 10,000 tracks.
 - Start new songs in Pitch mode without changing saved playback preferences.
-- Keep mobile Home shortcuts to two columns and three rows (four on taller
-  screens), with Recently Played covers and track names in view. Replace
+- Keep mobile Home shortcuts in two columns with four rows when there's room
+  (including the iPhone 17 Pro) and keep Recently Played covers and names in
+  view. Keep the tabs clear during the Now Playing animation. Replace
   missing YouTube art with a minimal waveform tile after trying the alternate size.
 - Apply these improvements to macOS, Windows, Linux, Android and iOS/AUv3 native
   editions. Rebuild the full desktop studio installers as 1.0.8 from the same

@@ -35,7 +35,8 @@
 :root[data-plugin-editor] .music-app .safe-top {padding-left:0;padding-right:0;}
 :root[data-plugin-editor] [role="dialog"] {width:calc(100% - var(--plugin-safe-left,env(safe-area-inset-left)) - var(--plugin-safe-right,env(safe-area-inset-right)));max-height:calc(var(--plugin-viewport-height,100dvh) - var(--plugin-safe-top,env(safe-area-inset-top)) - var(--plugin-safe-bottom,env(safe-area-inset-bottom)) - 12px);overflow-y:auto;}
 /* Now Playing fills the area up to the opaque tab bar, not the inset used for ordinary dialogs. */
-:root[data-plugin-editor] .native-now-playing-docked[role="dialog"] {bottom:calc(64px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));width:auto;max-height:none;overflow:hidden;}
+:root[data-plugin-editor] .native-now-playing-frame {bottom:calc(64px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));}
+:root[data-plugin-editor] .native-now-playing-docked[role="dialog"] {width:auto;max-height:none;overflow:hidden;pointer-events:auto;}
 :root[data-plugin-editor] .native-now-playing-docked .overlay-top {
   padding-top:var(--plugin-safe-top,env(safe-area-inset-top));
   padding-left:calc(20px + var(--plugin-safe-left,env(safe-area-inset-left)));

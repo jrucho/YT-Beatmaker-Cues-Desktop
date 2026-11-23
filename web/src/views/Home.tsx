@@ -66,9 +66,9 @@ export default function Home() {
   const t = useT();
   const show = useAppearance();
   const wide = useMediaQuery(MD);
-  // Reserve a fourth shortcut row for tall phone layouts, leaving room for
-  // the full-sized Recently Played caption and the mini-player.
-  const tall = useMediaQuery("(min-height: 900px)");
+  // A fourth row fits on the iPhone 17 Pro and taller phones while keeping
+  // the full-sized Recently Played caption above the mini-player.
+  const tall = useMediaQuery("(min-height: 850px)");
   const compact = nativeLibraryToolsEnabled() && !wide;
   const empty = status === "ready" && !favorites.length && !playlists.length && !history.length;
 

@@ -240,6 +240,34 @@ try{
     await main.getByRole('button',{name:'Play Short song 0',exact:true}).click();
     const stateWait=(condition,arg)=>page.waitForFunction(condition,arg);
     await stateWait(()=>window.__pluginStores.player.getState().status==='playing');
+    const watchSheetAnimation=()=>page.evaluate(()=>{
+      let frame=0;
+      const result={movingFrames:0,problems:[]};
+      const check=()=>{
+        const sheet=document.querySelector('.native-now-playing-docked'),nav=document.querySelector('.music-app>nav');
+        if(sheet&&nav){
+          if(sheet.getBoundingClientRect().top>1)result.movingFrames++;
+          if(getComputedStyle(nav).backgroundColor!==getComputedStyle(sheet).backgroundColor)
+            result.problems.push('The tab bar lost its opaque background before the sheet finished');
+          for(const link of nav.querySelectorAll('a')){
+            const b=link.getBoundingClientRect(),x=b.x+b.width/2,y=b.y+b.height/2;
+            if(document.elementsFromPoint(x,y).some(el=>sheet.contains(el)))
+              result.problems.push('The moving sheet entered the tab bar at '+link.textContent.trim());
+            if(document.elementFromPoint(x,y)?.closest('a')!==link)
+              result.problems.push('A tab was not tappable during the transition');
+          }
+        }
+        frame=requestAnimationFrame(check);
+      };
+      frame=requestAnimationFrame(check);
+      window.__endSheetAnimationCheck=()=>{cancelAnimationFrame(frame);return result;};
+    });
+    const checkSheetAnimation=async()=>{
+      const {movingFrames,problems}=await page.evaluate(()=>window.__endSheetAnimationCheck());
+      assert(movingFrames>0,'Verify actual animated frames, not just the final position');
+      assert.deepEqual([...new Set(problems)],[],'Now Playing must stay above the tabs throughout its animation');
+    };
+    await watchSheetAnimation();
     await openNowPlaying('Short song 0');
     await coloredLink('Playing from: Set A');
     await dialog.getByText('YouTube',{exact:true}).waitFor();
@@ -262,11 +290,20 @@ try{
           &&nav.querySelectorAll('li').length===4;
       });
     }
+    await checkSheetAnimation();
     await page.evaluate(()=>{
       for(const edge of ['top','bottom','left','right'])document.documentElement.style.removeProperty('--plugin-safe-'+edge);
     });
     await page.setViewportSize({width:393,height:852});
+    await watchSheetAnimation();
     await closeNowPlaying();
+    await checkSheetAnimation();
+    await openNowPlaying('Short song 0');
+    await stateWait(()=>document.querySelector('.native-now-playing-docked')?.getBoundingClientRect().top<=1);
+    await watchSheetAnimation();
+    await page.goBack();
+    await dialog.waitFor({state:'detached'});
+    await checkSheetAnimation();
     await main.getByRole('button',{name:'Back',exact:true}).click();
     await cleanLibrary();
     await playingLabel(sourceId).waitFor();
@@ -666,7 +703,7 @@ try{
     await page.getByRole('link',{name:'Home',exact:true}).click();
     const recentCards=main.locator('.home-recent .recent-track-card');
     await recentCards.first().waitFor();
-    for(const [width,height,top,bottom,rows] of [[402,874,62,34,3],[360,760,28,24,3],[320,568,20,0,3],[440,956,62,34,4],[412,915,30,24,4]]){
+    for(const [width,height,top,bottom,rows] of [[402,874,62,34,4],[393,852,59,34,4],[360,760,28,24,3],[320,568,20,0,3],[440,956,62,34,4],[412,915,30,24,4]]){
       await page.setViewportSize({width,height});
       await page.evaluate(({top,bottom})=>{
         document.documentElement.style.setProperty('--plugin-safe-top',top+'px');

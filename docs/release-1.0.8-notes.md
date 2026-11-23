@@ -27,11 +27,11 @@ VST3 and standalone, and Linux x64 VST3 and standalone**.
   **Files** on mobile, or an image file on desktop. Covers stay in your
   library until changed or reset. Nothing is written back to YouTube.
 - **A cleaner Now Playing view.** On phone layouts it joins the tab bar
-  without a strip of the page behind it. Source links use the accent
-  colour, with no underline.
-- **More room on mobile Home.** On standard phones, the shortcuts under the
-  greeting use two columns and three rows. Taller screens can fit a fourth row
-  while leaving the larger Recently Played covers and names visible below.
+  without a strip of the page behind it and never covers the tabs while
+  opening or closing. Source links use the accent colour, with no underline.
+- **More room on mobile Home.** The shortcuts use two columns and four rows
+  on the iPhone 17 Pro and similar or taller phone screens. Shorter screens use
+  three rows so the larger Recently Played covers and names remain visible.
 - **Cleaner thumbnails.** If one YouTube image size is missing, the app tries
   the alternate size. A simple waveform tile replaces missing artwork.
 

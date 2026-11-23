@@ -133,13 +133,20 @@ function MusicApp({ onStudio, cues }: { onStudio?: () => void; cues?: boolean })
   }, [location.pathname]);
 
   const sheetOpen = !isMd && location.hash === SHEET_HASH;
-  const dockedSheet = nativeLibraryToolsEnabled() && sheetOpen && hasTrack;
   const closeSheet = () => {
     // Pop the history entry the sheet pushed, so Back and the close button behave the same.
     const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
     if (idx > 0) navigate(-1);
     else navigate({ hash: "" }, { replace: true });
   };
+  // AnimatePresence retains the sheet after the route hash disappears. Keep
+  // the tabs opaque and above it for that entire exit, including Back.
+  const [sheetPresent, setSheetPresent] = useState(false);
+  const sheetVisible = sheetOpen && hasTrack;
+  useLayoutEffect(() => {
+    if (sheetVisible) setSheetPresent(true);
+  }, [sheetVisible]);
+  const dockedSheet = !isMd && nativeLibraryToolsEnabled() && (sheetVisible || sheetPresent);
 
   return (
     <div className={cn("music-app grain flex h-dvh flex-col bg-bg md:gap-2 md:p-2", desktop && "md:pt-0", cueWorkspace && "cue-workspace-active")}>
@@ -178,7 +185,7 @@ function MusicApp({ onStudio, cues }: { onStudio?: () => void; cues?: boolean })
         {panelOpen && hasTrack && !cueWorkspace && <SidePanel />}
       </div>
 
-      {cueWorkspace ? <TabBar cues/> : isMd ? (
+      {cueWorkspace ? <TabBar cues flush={dockedSheet} /> : isMd ? (
         !cueWorkspace && <PlayerBar />
       ) : (
         <>
@@ -187,7 +194,7 @@ function MusicApp({ onStudio, cues }: { onStudio?: () => void; cues?: boolean })
       )}
 
       <PanelDrawer />
-      <NowPlayingSheet open={sheetOpen} onClose={closeSheet} />
+      <NowPlayingSheet open={sheetOpen} onClose={closeSheet} onExitComplete={() => setSheetPresent(false)} />
       <FloatingVideo />
       <Theater />
       <TrackMenu />

@@ -84,13 +84,26 @@ int main(int argc,char** argv) {
     {   // A browser that failed to initialise silently (for example, a missing
         // run-time library) never calls back from JavaScript. Detect that here
         // instead of spinning through the UI readback loops for minutes.
-        bool executed=false;
+        bool executed=false, javascriptReady=false;
         editor->evaluate("1+1",[&](auto value){
             if(value.getError())std::cerr<<"JavaScript probe error: "<<value.getError()->message<<"\n";
-            else if(value.getResult())std::cout<<"JavaScript probe returned "<<juce::JSON::toString(*value.getResult())<<"\n";
+            else if(value.getResult()){
+                javascriptReady=(double)*value.getResult()==2;
+                std::cout<<"JavaScript probe returned "<<juce::JSON::toString(*value.getResult())<<"\n";
+            }
             executed=true;});
-        for(int i=0;i<100&&!executed;++i)pump(50);
-        if(!executed){std::cerr<<"WebView JavaScript round-trip did not complete in 5 seconds\n";return 2;}
+       #if JUCE_WINDOWS
+        // A cold WebView2 profile must start Edge's child processes on the CI runner.
+        constexpr int startupMs=20000;
+       #else
+        constexpr int startupMs=5000;
+       #endif
+        for(int i=0;i<startupMs/50&&!executed;++i)pump(50);
+        if(!javascriptReady){
+            std::cerr<<(executed?"WebView JavaScript probe returned an unexpected result":"WebView JavaScript round-trip timed out")
+                <<" (startup budget "<<startupMs<<" ms)\n";
+            return 2;
+        }
         traceStage("JavaScript round-trip");}
     for(int i=0;i<100;++i){pump(100);if((bool)evaluate("Boolean(window.__pluginStores)"))break;}
     traceStage("plugin stores evaluated");

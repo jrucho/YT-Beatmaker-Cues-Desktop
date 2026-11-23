@@ -234,7 +234,7 @@ export function PanelDrawer() {
 }
 
 /** Phone Now Playing docks above the tabs in native builds. Drag down (or Back) to close. */
-export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function NowPlayingSheet({ open, onClose, onExitComplete }: { open: boolean; onClose: () => void; onExitComplete: () => void }) {
   const track = usePlayer(selectCurrent);
   const reduce = useReducedMotion();
   const drag = useDragControls();
@@ -242,8 +242,8 @@ export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () 
   const t = useT();
   const docked = nativeLibraryToolsEnabled();
 
-  return createPortal(
-    <AnimatePresence onExitComplete={() => setView("player")}>
+  const sheet = (
+    <AnimatePresence onExitComplete={() => { setView("player"); onExitComplete(); }}>
       {open && track && (
         <motion.div
           role="dialog"
@@ -261,7 +261,7 @@ export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () 
           onDragEnd={(_, info) => {
             if (info.offset.y > 120 || info.velocity.y > 700) onClose();
           }}
-          className={cn("fixed inset-0 z-40 flex flex-col overflow-hidden bg-bg md:hidden", docked && "native-now-playing-docked")}
+          className={cn("inset-0 flex flex-col overflow-hidden bg-bg", docked ? "native-now-playing-docked absolute" : "fixed z-40 md:hidden")}
         >
           <img
             src={track.thumb}
@@ -308,7 +308,12 @@ export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () 
           </div>
         </motion.div>
       )}
-    </AnimatePresence>,
+    </AnimatePresence>
+  );
+  return createPortal(
+    // Only the inner sheet slides. The stationary frame clips its entire path
+    // above the navigation, even when it is dragged or closing.
+    docked ? <div className="native-now-playing-frame pointer-events-none fixed inset-0 z-40 overflow-hidden md:hidden">{sheet}</div> : sheet,
     document.body,
   );
 }
