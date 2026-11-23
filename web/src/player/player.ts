@@ -4,7 +4,7 @@ import { api, capabilities, explainStreamError, streamSource, systemMedia, type 
 import { createAudio, cueAudio, navigateAudio, readAudioPosition, readDisplayAudioPosition, setAudioLoop, setAudioPlaylist, setAudioStart, setAudioTuning, supportsIndependentPitch, unloadAudio } from "../lib/audio";
 import { shuffled } from "../lib/format";
 import { isLocalAudio, type Track } from "../lib/types";
-import { iosLibraryToolsEnabled } from "../native/host";
+import { nativeLibraryToolsEnabled } from "../native/host";
 import { useLibrary } from "../stores/library";
 import { openSettings } from "../stores/system";
 import { toast } from "../stores/ui";
@@ -14,6 +14,7 @@ export type Repeat = "off" | "all" | "one";
 export type StatusNote = "findingClip" | "preparingHd" | "loadingVideo" | "fetchingRadio" | { error: string };
 export type Status = "idle" | "loading" | "playing" | "paused" | "error";
 export type SpeedMode = "pitch" | "speed";
+const defaultSpeedMode = (): SpeedMode => window.__pluginFeatures === true ? "pitch" : "speed";
 /** Identifies the collection that started playback, independently of the audio provider. */
 export type PlaybackSource = { kind: "playlist"; id: string } | { kind: "favorites" | "history" | "radio" };
 /** Manually inserted and auto-radio tracks don't inherit the original collection. */
@@ -329,7 +330,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
   async function continueWithRadio() {
     const s = get();
     const last = s.queue[s.index];
-    if (!last || (iosLibraryToolsEnabled() && isLocalAudio(last.id))) return;
+    if (!last || (nativeLibraryToolsEnabled() && isLocalAudio(last.id))) return;
     const playingToken = token;
     set({ status: "loading", statusText: "fetchingRadio" });
     try {
@@ -337,7 +338,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       if (playingToken !== token || get().queue[get().index]?.id !== last.id) return;
       const known = new Set(get().queue.map((t) => t.id));
       const more = related.filter((t) => !known.has(t.id)).slice(0, 25)
-        .map((track) => iosLibraryToolsEnabled() ? { ...track, queueOrigin: "radio" as const } : track);
+        .map((track) => nativeLibraryToolsEnabled() ? { ...track, queueOrigin: "radio" as const } : track);
       if (!more.length) throw new Error("empty");
       set((st) => ({
         queue: [...st.queue, ...more],
@@ -384,7 +385,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     }
     if (s.index < s.queue.length - 1) return load(s.index + 1);
     if (s.repeat === "all" && s.queue.length) return load(0);
-    if (s.autoRadio && !(iosLibraryToolsEnabled() && isLocalAudio(s.queue[s.index]?.id ?? ""))) {
+    if (s.autoRadio && !(nativeLibraryToolsEnabled() && isLocalAudio(s.queue[s.index]?.id ?? ""))) {
       return void continueWithRadio();
     }
     set({ status: "paused", position: 0 });
@@ -524,7 +525,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     status: saved.queue?.length ? "paused" : "idle",
     statusText: null,
     mediaKind: "audio",
-    source: iosLibraryToolsEnabled() && saved.queue?.length ? saved.source ?? null : null,
+    source: nativeLibraryToolsEnabled() && saved.queue?.length ? saved.source ?? null : null,
     videoNote: null,
     videoAspect: 16 / 9,
     position: saved.position ?? 0,
@@ -540,7 +541,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     autoRadio: saved.autoRadio ?? true,
     loop: initialLoop(),
     speed: Math.min(100, Math.max(-50, saved.speed ?? 0)),
-    speedMode: saved.speedMode === "pitch" ? "pitch" : "speed",
+    speedMode: saved.speedMode === "pitch" || saved.speedMode === "speed" ? saved.speedMode : defaultSpeedMode(),
     tuning: Number.isFinite(saved.tuning) ? Math.max(-12, Math.min(12, Math.round(saved.tuning!))) : 0,
 
     newEmptyTrack: async () => {
@@ -549,7 +550,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       await unloadAudio(audio);
       if(mine!==token)return;
       set({queue:[],original:null,index:0,status:'idle',statusText:null,mediaKind:'audio',source:null,videoNote:null,
-        position:0,duration:0,buffered:0,loop:{from:null,to:null,on:false},speed:0,speedMode:'speed',tuning:0});
+        position:0,duration:0,buffered:0,loop:{from:null,to:null,on:false},speed:0,speedMode:defaultSpeedMode(),tuning:0});
       applyPlaybackRate(audio);
       if('mediaSession' in navigator){navigator.mediaSession.metadata=null;navigator.mediaSession.playbackState='none';}
       syncSystemMedia();
@@ -557,21 +558,21 @@ export const usePlayer = create<PlayerState>((set, get) => {
 
     playList: (items, start = 0, source = null) => {
       if (!items.length) return;
-      const preview = iosLibraryToolsEnabled();
-      const tracks = preview ? (items as QueuedTrack[]).map((track) => {
+      const libraryTools = nativeLibraryToolsEnabled();
+      const tracks = libraryTools ? (items as QueuedTrack[]).map((track) => {
         if (!track.queueOrigin) return track;
         const { queueOrigin: _origin, ...clean } = track;
         return clean;
       }) : items;
       if (!tracks[start]) start = 0;
-      const origin = preview ? source : null;
+      const origin = libraryTools ? source : null;
       if (get().shuffle) {
         const rest = tracks.filter((_, i) => i !== start);
         set({ queue: [tracks[start], ...shuffled(rest)], original: tracks.slice(), source: origin,
-          ...(preview ? { index: 0 } : {}) });
+          ...(libraryTools ? { index: 0 } : {}) });
         load(0);
       } else {
-        set({ queue: tracks.slice(), original: null, source: origin, ...(preview ? { index: start } : {}) });
+        set({ queue: tracks.slice(), original: null, source: origin, ...(libraryTools ? { index: start } : {}) });
         load(start);
       }
     },
@@ -579,7 +580,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     playTrack: (track) => {
       const s = get();
       const at = s.queue.findIndex((t) => t.id === track.id);
-      if (iosLibraryToolsEnabled() && at >= 0 && s.queue[at].queueOrigin !== "queue" && (s.source || s.queue[at].queueOrigin)) {
+      if (nativeLibraryToolsEnabled() && at >= 0 && s.queue[at].queueOrigin !== "queue" && (s.source || s.queue[at].queueOrigin)) {
         // "Play now" outside the collection is explicit, even if the same song is in its queue.
         const fromQueue: QueuedTrack = { ...track, queueOrigin: "queue" };
         const original = s.queue[at];
@@ -589,7 +590,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       if (at >= 0) return load(at);
       if (!s.queue.length) return get().playList([track]);
       const insert = s.index + 1;
-      const queued: QueuedTrack = iosLibraryToolsEnabled() ? { ...track, queueOrigin: "queue" } : track;
+      const queued: QueuedTrack = nativeLibraryToolsEnabled() ? { ...track, queueOrigin: "queue" } : track;
       set({
         queue: [...s.queue.slice(0, insert), queued, ...s.queue.slice(insert)],
         original: s.original ? [...s.original, queued] : null,
@@ -601,7 +602,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       const s = get();
       if (!s.queue.length) return get().playList([track]);
       const insert = s.index + 1;
-      const queued: QueuedTrack = iosLibraryToolsEnabled() ? { ...track, queueOrigin: "queue" } : track;
+      const queued: QueuedTrack = nativeLibraryToolsEnabled() ? { ...track, queueOrigin: "queue" } : track;
       set({
         queue: [...s.queue.slice(0, insert), queued, ...s.queue.slice(insert)],
         original: s.original ? [...s.original, queued] : null,
@@ -612,7 +613,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     addToQueue: (track) => {
       const s = get();
       if (!s.queue.length) return get().playList([track]);
-      const queued: QueuedTrack = iosLibraryToolsEnabled() ? { ...track, queueOrigin: "queue" } : track;
+      const queued: QueuedTrack = nativeLibraryToolsEnabled() ? { ...track, queueOrigin: "queue" } : track;
       set({ queue: [...s.queue, queued], original: s.original ? [...s.original, queued] : null });
       toast(getT().player.addedToQueue(track.title));
     },
@@ -645,7 +646,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     },
 
     startRadio: async (track) => {
-      if (iosLibraryToolsEnabled() && isLocalAudio(track.id)) return;
+      if (nativeLibraryToolsEnabled() && isLocalAudio(track.id)) return;
       toast(getT().player.startingRadio(track.title));
       try {
         const related = await api.radio(track.id);
@@ -880,8 +881,9 @@ syncNativePlaylist();
 function persist() {
   const s = usePlayer.getState();
   const data: Saved = {
-    queue: s.queue.slice(0, 500),
-    original: s.original?.slice(0, 500) ?? null,
+    // Native snapshots preserve the actual queue index, even past the old 500-track cap.
+    queue: nativeLibraryToolsEnabled() ? s.queue : s.queue.slice(0, 500),
+    original: nativeLibraryToolsEnabled() ? s.original : s.original?.slice(0, 500) ?? null,
     index: s.index,
     position: s.position,
     volume: s.volume,

@@ -128,7 +128,7 @@ export function MiniPlayer() {
             className="flex min-w-0 flex-1 items-center gap-3 text-left"
             aria-label={t.player.openNowPlaying(track.title)}
           >
-            <Artwork src={track.thumb} className="size-11 rounded-[10px]" />
+            <Artwork src={track.thumb} fallback={track.art} className="size-11 rounded-[10px]" />
             <span className="min-w-0">
               <span className="block truncate text-sm font-medium">{track.title}</span>
               <span className={cn("block truncate text-xs", status === "error" ? "text-danger" : "text-fg-2")}>

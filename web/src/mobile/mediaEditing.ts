@@ -4,7 +4,7 @@ import { useLibrary } from '../stores/library';
 import { beginEditGesture, endEditGesture, recordEdit, useEditHistory } from './editHistory';
 import { usePadSamples, type PadSample } from './padSamples';
 import { usePlayer } from '../player/player';
-import { iosLibraryToolsEnabled } from '../native/host';
+import { nativeLibraryToolsEnabled } from '../native/host';
 
 export const mediaInvoke=<T=any>(name:string,...args:unknown[]):Promise<T>=>(window as any).__pluginInvoke(name,...args);
 export interface ImportedAudio {
@@ -17,7 +17,7 @@ export const shareLocalAudio=(track:Track)=>mediaInvoke<{shared:boolean;cancelle
 export async function renameLocalAudio(track:Track,title:string){
   const clean=title.trim();if(!clean||clean.length>200)throw new Error('Enter a song name of 1 to 200 characters');
   const apply=async(value:string,expectedTitle?:string)=>{
-    const result=await mediaInvoke<{track:Track;previousTitle:string;library:string}>('renameLocalAudio',{id:track.id,title:value,...(iosLibraryToolsEnabled()?{expectedTitle}:{})});
+    const result=await mediaInvoke<{track:Track;previousTitle:string;library:string}>('renameLocalAudio',{id:track.id,title:value,...(nativeLibraryToolsEnabled()?{expectedTitle}:{})});
     useLibrary.setState({...JSON.parse(result.library) as Library,status:'ready'});
     const update=(items:Track[])=>items.map(item=>item.id===track.id?{...item,title:result.track.title}:item);
     usePlayer.setState(state=>({queue:update(state.queue),original:state.original?update(state.original):null}));
@@ -61,7 +61,7 @@ let recovery:Promise<void>|undefined;
 export function recoverImportedAudio(){
   return recovery??=(async()=>{
     const recovered = await mediaInvoke<Track[]>('recordAudio',{cmd:'recover'});
-    if (iosLibraryToolsEnabled()) {
+    if (nativeLibraryToolsEnabled()) {
       // A removed reference must stay removed. Already-registered, unfiled audio is
       // still available from a playlist's Add Tracks dialog.
       if(recovered?.length)await playImportedAudio(recovered,false);

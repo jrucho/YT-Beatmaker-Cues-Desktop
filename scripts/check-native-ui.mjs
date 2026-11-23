@@ -58,10 +58,10 @@ async function checkKeyboardLoopers(page,edition){
 }
 
 const root=process.cwd(),web=path.resolve(process.env.NATIVE_UI_WEB_DIR||'plugin/build-web');
-const libraryOnly=process.argv.includes('--ios-library');
-const legacyIosPreview=libraryOnly||process.argv.includes('--ios-preview');
-const iosPreview=legacyIosPreview||process.argv.includes('--features');
-const fixturePlatform=process.argv.find(value=>value.startsWith('--platform='))?.slice(11)||(legacyIosPreview?'ios':'desktop');
+const libraryOnly=process.argv.includes('--native-library')||process.argv.includes('--ios-library');
+const legacyIosPreview=process.argv.includes('--ios-preview');
+const iosPreview=libraryOnly||legacyIosPreview||process.argv.includes('--features');
+const fixturePlatform=process.argv.find(value=>value.startsWith('--platform='))?.slice(11)||((libraryOnly||legacyIosPreview)?'ios':'desktop');
 const microphoneName=fixturePlatform==='ios'?'iPhone microphone':'Built-in microphone',speakerName=fixturePlatform==='ios'?'iPhone speaker':'Device speaker';
 const html=await readFile(path.join(web,'index.html'),'utf8');
 const bootHtml=html.replace(/<script\b(?=[^>]*type="module")[^>]*src="([^"]+)"[^>]*><\/script>/,(_tag,src)=>`<script type="module">await window.__pluginInit;await import(${JSON.stringify(src)});</script>`);
@@ -73,7 +73,7 @@ const server=createServer(async(req,res)=>{
       const realStorage=window.localStorage;
       const catalogFixture=${catalogFixture.toString()};
       const art='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="teal"/></svg>');
-      const tracks=Array.from({length:500},(_,i)=>({id:'ui'+String(i).padStart(9,'0'),title:(i%2?'A very long track title that must wrap safely without cutting the playlist ':'Short song ')+i,artist:'Artist '+i,duration:60,kind:'song',thumb:i%3===0?art:i%3===1?'':'/missing-art.png',art:i%3===0?art:i%3===1?'':'/missing-art.png'}));
+      const tracks=Array.from({length:${libraryOnly?700:500}},(_,i)=>({id:'ui'+String(i).padStart(9,'0'),title:(i%2?'A very long track title that must wrap safely without cutting the playlist ':'Short song ')+i,artist:'Artist '+i,duration:60,kind:'song',thumb:i%3===0?art:i%3===1?'':'/missing-art.png',art:i%3===0?art:i%3===1?'':'/missing-art.png'}));
       const library=JSON.parse(realStorage.getItem('ui-fixture-library')||'null')||{favorites:[],history:tracks.slice(0,16),playlists:[{id:'fixture-playlist',name:'A long playlist name '+('with words '.repeat(12)),tracks}]};
       window.__uiFixture={tracks,library,libraryVersion:1,position:12.125,sourceId:0,queue:{tracks:[],index:0},ready:false,playing:false,padSamples:JSON.parse(realStorage.getItem('ui-fixture-samples')||'[]'),localMedia:JSON.parse(realStorage.getItem('ui-fixture-media')||'[]'),regionRequests:[],waveformDelay:0,sampleTriggers:0,samplePreviews:0,cueTriggers:0,routes:{supported:true,platform:${JSON.stringify(fixturePlatform)},inputEnabled:false,inputActive:false,input:'automatic',output:'automatic',activeOutput:'speaker',outputAccepted:true,monitor:false,monitorLevel:.5,sampleRate:48000,inputs:[],actualInput:'Off',actualOutput:${JSON.stringify(speakerName)},permission:'granted'},recording:{hasTake:false,recording:false,source:'playback',seconds:0}};
       const listeners={};
@@ -85,7 +85,7 @@ const server=createServer(async(req,res)=>{
       const captureLoop=(bank,pad)=>{const loop=loopPads().find(p=>p.mode===1||p.mode===3);if(!loop)return;if(loop.mode===3&&loop.undone){loop.events=loop.events.filter(word=>Number(BigInt(word)>>47n)!==loop.layers);loop.layers--;loop.undone=false;loop.base=loop.events.length;}const at=loop.mode===1?Math.round((Date.now()-loop.started)*48):Math.round((Date.now()-loop.playAt)*48)%loop.length;const layer=loop.mode===1?1:loop.layers+1;loop.events.push(Number(BigInt(at)|(BigInt(bank.charCodeAt(0)-65)<<32n)|(BigInt(pad-1)<<36n)|(127n<<40n)|(BigInt(layer)<<47n)));loop.count=loop.events.length;saveLoops();};
       const stopLoop=pad=>{if(pad.mode===1){pad.length=Math.max(48,Math.round((Date.now()-pad.started)*48));pad.duration=pad.length/48000;}if(pad.mode===3&&pad.events.length>pad.base)pad.layers++;pad.mode=0;};
       const pressLoop=pad=>{const now=Date.now(),double=pad.mode!==1&&f.loopLast===pad&&now-f.loopLastAt<300;f.loopLast=pad;f.loopLastAt=now;if(f.loopHold)clearTimeout(f.loopHold);if(double){stopLoop(pad);}else if(pad.mode===1){stopLoop(pad);pad.mode=2;pad.playAt=now;}else if(pad.mode===2){pad.mode=3;pad.base=pad.events.length;}else if(pad.mode===3){stopLoop(pad);pad.mode=2;}else{for(const other of loopPads())if(other!==pad&&other.mode)stopLoop(other);if(!pad.length){pad.mode=1;pad.started=now;pad.layers=1;pad.events=[];pad.count=0;}else{pad.mode=2;pad.playAt=now;}}f.loopHold=setTimeout(()=>{if(double){pad.undone=!pad.undone;pad.mode=2;}else{pad.mode=0;pad.events=[];pad.count=pad.length=pad.duration=pad.layers=0;}saveLoops();},double?600:1200);saveLoops();};
-      window.__JUCE__={initialisationData:{hostedPlugin:[${url.searchParams.get('hosted')==='1'}],desktopPlatform:[${fixturePlatform==='desktop'}],nativePlatform:[${JSON.stringify(fixturePlatform)}],performanceFeatures:[${iosPreview}],iosPreviewFeatures:[${legacyIosPreview}],songTransitions:[${iosPreview}],pluginStorage:['{}']},backend:{
+      window.__JUCE__={initialisationData:{hostedPlugin:[${url.searchParams.get('hosted')==='1'}],desktopPlatform:[${fixturePlatform==='desktop'}],nativePlatform:[${JSON.stringify(fixturePlatform)}],performanceFeatures:[${iosPreview}],iosPreviewFeatures:[${legacyIosPreview}],libraryFeatures:[${libraryOnly}],songTransitions:[${iosPreview}],pluginStorage:['{}']},backend:{
         addEventListener(name,fn){(listeners[name]??=[]).push(fn);},
         emitEvent(event,{name,params,resultId}){setTimeout(()=>{
           let result=true;const f=window.__uiFixture,request=params[0];
@@ -106,7 +106,7 @@ const server=createServer(async(req,res)=>{
            else if(name==='pickPlaylistCover'){
              f.coverRequest=request;
              const canvas=document.createElement('canvas');canvas.width=canvas.height=24;
-             const context=canvas.getContext('2d');context.fillStyle=request==='files'?'tomato':'royalblue';context.fillRect(0,0,24,24);
+             const context=canvas.getContext('2d');context.fillStyle=request==='files'&&!f.alternateCover?'tomato':'royalblue';context.fillRect(0,0,24,24);
              result={image:f.cancelCover||f.rejectCover?'':canvas.toDataURL('image/jpeg'),failed:!!f.rejectCover};
            }
           else if(name==='renameLocalAudio'){const track=f.localMedia.find(track=>track.id===request.id),previousTitle=track.title;track.title=request.title.trim();const update=items=>items.forEach(item=>{if(item.id===track.id)item.title=track.title;});update(library.favorites);update(library.history);library.playlists.forEach(playlist=>update(playlist.tracks));f.libraryVersion++;realStorage.setItem('ui-fixture-media',JSON.stringify(f.localMedia));realStorage.setItem('ui-fixture-library',JSON.stringify(library));result={track:structuredClone(track),previousTitle,library:JSON.stringify(library)};}
@@ -252,11 +252,11 @@ try{
         for(const [edge,value] of Object.entries(insets))document.documentElement.style.setProperty('--plugin-safe-'+edge,value+'px');
       },{top,bottom,left,right});
       await stateWait(()=>{
-        const nav=document.querySelector('nav.playback-tabbar'),sheet=document.querySelector('.ios-now-playing-docked');
+        const nav=document.querySelector('nav.playback-tabbar'),sheet=document.querySelector('.native-now-playing-docked');
         if(!nav||!sheet)return false;
         const a=sheet.getBoundingClientRect(),b=nav.getBoundingClientRect();
         return Math.abs(a.bottom-b.top)<=1&&a.top<=1&&a.left<=1&&a.right>=innerWidth-1
-          &&document.elementFromPoint(4,b.top-2)?.closest('.ios-now-playing-docked')
+          &&document.elementFromPoint(4,b.top-2)?.closest('.native-now-playing-docked')
           &&document.elementFromPoint(4,b.top+2)?.closest('nav')===nav
           &&getComputedStyle(nav).backgroundColor===getComputedStyle(sheet).backgroundColor
           &&nav.querySelectorAll('li').length===4;
@@ -402,13 +402,16 @@ try{
     assert.equal(await page.evaluate(()=>window.__uiFixture.coverRequest),'files');
 
     await editCover.click();
+    const photos=coverDialog.getByRole('button',{name:'Choose from Photos',exact:true});
+    const chooseImage=fixturePlatform==='desktop'?coverDialog.getByRole('button',{name:'Choose from Files',exact:true}):photos;
+    assert.equal(await photos.count(),fixturePlatform==='desktop'?0:1);
     await page.evaluate(()=>{window.__uiFixture.cancelCover=true;});
-    await coverDialog.getByRole('button',{name:'Choose from Photos',exact:true}).click();
+    await chooseImage.click();
     await coverDialog.waitFor({state:'detached'});
     assert.equal(await customCover.getAttribute('src'),filesCover,'Cancelling a photo import changed the cover');
-    await page.evaluate(()=>{window.__uiFixture.cancelCover=false;});
+    await page.evaluate(()=>{window.__uiFixture.cancelCover=false;window.__uiFixture.alternateCover=true;});
     await editCover.click();
-    await coverDialog.getByRole('button',{name:'Choose from Photos',exact:true}).click();
+    await chooseImage.click();
     await coverDialog.waitFor({state:'detached'});
     const photosCover=await customCover.getAttribute('src');
     assert.notEqual(photosCover,filesCover);
@@ -556,16 +559,16 @@ try{
       const {tracks}=window.__uiFixture,{player}=window.__pluginStores;
       // Shuffle starts at queue index zero, not at the track's saved rank.
       player.setState({shuffle:true});
-      player.getState().playList(tracks,438,{kind:'playlist',id:'fixture-playlist'});
-      return tracks[438].title;
+      player.getState().playList(tracks,638,{kind:'playlist',id:'fixture-playlist'});
+      return tracks[638].title;
     });
     await playingLabel('fixture-playlist').waitFor();
     assert.equal(await deepPlaylist.locator('.playlist-playing-label').evaluate(label=>{
       const count=label.previousElementSibling;
-      return count.textContent==='500 tracks'&&count.scrollWidth<=count.clientWidth+1;
+      return count.textContent==='700 tracks'&&count.scrollWidth<=count.clientWidth+1;
     }),true,'The active card must show the full track count beside Playing');
     await deepPlaylist.click();
-    await expectTrackInView(438,lateSong);
+    await expectTrackInView(638,lateSong);
 
     const expectCardInView=()=>stateWait(()=>{
       const main=document.querySelector('main'),card=main.querySelector('a[href="/playlist/fixture-playlist"]');
@@ -588,31 +591,55 @@ try{
     await query.fill('A long playlist name');
     await main.getByRole('tab',{name:'Playlists',exact:true}).click();
     await main.getByRole('region',{name:'Saved playlists',exact:true}).locator('a[href="/playlist/fixture-playlist"]').click();
-    await expectTrackInView(438,lateSong);
+    await expectTrackInView(638,lateSong);
     await main.getByRole('button',{name:'Back',exact:true}).click();
     await expectCardInView(); // Even when the playing playlist was entered from Search.
     await deepPlaylist.click();
-    await expectTrackInView(438,lateSong);
+    await expectTrackInView(638,lateSong);
     await openNowPlaying(lateSong); // Link to the same playlist, not just from a different page.
     await (await coloredLink(/Playing from: A long playlist name/)).click();
     await dialog.waitFor({state:'detached'});
-    await expectTrackInView(438,lateSong);
+    await expectTrackInView(638,lateSong);
     const onSong=await main.evaluate(el=>el.scrollTop);
     await main.evaluate(el=>{el.scrollTop-=300;});
     await stateWait(top=>document.querySelector('main').scrollTop<top-200,onSong);
     await openNowPlaying(lateSong);
     await (await coloredLink(/Playing from: A long playlist name/)).click();
     await dialog.waitFor({state:'detached'});
-    await expectTrackInView(438,lateSong);
+    await expectTrackInView(638,lateSong);
+
+    // Use the actual (unshuffled) queue position, not the first 500 tracks.
+    await page.evaluate(()=>{
+      const {player}=window.__pluginStores;
+      player.setState({shuffle:false});
+      player.getState().playList(window.__uiFixture.tracks,638,{kind:'playlist',id:'fixture-playlist'});
+    });
 
     await stateWait(()=>{
       const saved=JSON.parse(JSON.parse(window.__uiFixture.savedSession||'{}')['musike:player']||'{}');
-      return saved.source?.id==='fixture-playlist'&&saved.queue?.[saved.index]?.id===window.__uiFixture.tracks[438].id;
+      return saved.source?.id==='fixture-playlist'&&saved.index===638&&saved.queue?.[638]?.id===window.__uiFixture.tracks[638].id;
     });
     await page.getByRole('link',{name:'Cues',exact:true}).click();
     await page.reload();
+    const queueToggle=main.getByRole('button',{name:'Toggle playlist',exact:true});
+    const expectCueTrack=async(fixturePage,index,title)=>{
+      await fixturePage.waitForFunction(({index,title})=>{
+        const list=document.querySelector('.cue-song-list'),row=list?.querySelector(`.track-row[data-index="${index}"]`);
+        if(row?.querySelector('.track-title')?.textContent!==title||row.getAttribute('aria-current')!=='true'||!list.scrollTop)return false;
+        const r=row.getBoundingClientRect(),l=list.getBoundingClientRect();
+        return r.top>=l.top-1&&r.bottom<=l.bottom+1;
+      },{index,title});
+    };
+    for(let i=0;i<2;i++){
+      if(await queueToggle.getAttribute('aria-expanded')==='true')await queueToggle.click();
+      await queueToggle.click();
+      await expectCueTrack(page,638,lateSong);
+      await main.getByRole('region',{name:'Playlist songs'}).evaluate(el=>{el.scrollTop=0;});
+      await stateWait(()=>document.querySelector('.cue-song-list').scrollTop<=1);
+    }
+    await queueToggle.click();
     await main.locator('a.cue-track-label[href="/playlist/fixture-playlist"]').click();
-    await expectTrackInView(438,lateSong);
+    await expectTrackInView(638,lateSong);
     assert.equal(await page.evaluate(()=>window.__pluginStores.player.getState().status),'paused','Revealing a saved song after restart should not start it');
 
     const lateRadio=await page.evaluate(()=>{
@@ -636,6 +663,39 @@ try{
     await expectTrackInView(122,lateRadio);
     assert.equal(await page.evaluate(()=>window.__pluginStores.player.getState().index),123,'The source links must not change the queue index');
 
+    await page.getByRole('link',{name:'Home',exact:true}).click();
+    const recentCards=main.locator('.home-recent .recent-track-card');
+    await recentCards.first().waitFor();
+    for(const [width,height,top,bottom,rows] of [[402,874,62,34,3],[360,760,28,24,3],[320,568,20,0,3],[440,956,62,34,4],[412,915,30,24,4]]){
+      await page.setViewportSize({width,height});
+      await page.evaluate(({top,bottom})=>{
+        document.documentElement.style.setProperty('--plugin-safe-top',top+'px');
+        document.documentElement.style.setProperty('--plugin-safe-bottom',bottom+'px');
+      },{top,bottom});
+      await stateWait(({height,rows})=>document.documentElement.style.getPropertyValue('--plugin-viewport-height')===`${height}px`&&
+        document.querySelectorAll('.home-shortcut').length===2*rows,{height,rows});
+      const layout=await main.evaluate(el=>{
+        const rect=node=>node.getBoundingClientRect();
+        const shortcuts=[...el.querySelectorAll('.home-shortcut')].map(rect);
+        const card=el.querySelector('.recent-track-card');
+        const art=rect(card.querySelector('[data-artwork-state]'));
+        const title=card.querySelector('.recent-track-title');
+        const player=document.querySelector('.mini-player');
+        return {
+          columns:new Set(shortcuts.map(r=>r.x)).size,rows:new Set(shortcuts.map(r=>r.y)).size,
+          count:shortcuts.length,targets:shortcuts.every(r=>r.height>=44),
+          text:title.textContent,artSize:art.width,cardBottom:rect(card).bottom,
+          clearTo:rect(player).top,scrollTop:el.scrollTop,
+        };
+      });
+      assert.deepEqual([layout.columns,layout.rows,layout.count],[2,rows,2*rows]);
+      assert(layout.targets&&layout.text&&layout.artSize>64&&layout.scrollTop===0&&layout.cardBottom<=layout.clearTo+1,
+        `Recently played artwork/name is below the fold at ${width}×${height}: ${JSON.stringify(layout)}`);
+    }
+    await page.setViewportSize({width:1024,height:768});
+    await main.locator('.home-shortcut').nth(7).waitFor(); // Keep the full shortcut set on desktop.
+    await page.setViewportSize({width:393,height:852});
+
     await page.evaluate(async()=>{
       const {api,library}=window.__pluginStores;
       for(let i=0;i<6;i++)await api.createPlaylist('Set match '+i);
@@ -648,6 +708,11 @@ try{
 
     // Exercise the bundled YouTube Music parser over the native HTTP bridge.
     // The iOS custom WebView origin may not expose crypto.randomUUID.
+    await page.route(/^https:\/\/i\.ytimg\.com\/vi\/result\d{5}\/(?:mqdefault|hq720)\.jpg$/,route=>{
+      const available=route.request().url().endsWith('/result00001/hq720.jpg');
+      const size=available?'width="480" height="270"':'width="120" height="90"';
+      return route.fulfill({contentType:'image/svg+xml',body:`<svg xmlns="http://www.w3.org/2000/svg" ${size}><rect width="100%" height="100%" fill="${available?'teal':'gray'}"/></svg>`});
+    });
     await page.addInitScript(()=>{Object.defineProperty(window.crypto,'randomUUID',{value:undefined});});
     await page.goto(origin+'/search?q=fixture');
     const showMore=main.getByRole('button',{name:'Show more',exact:true});
@@ -658,6 +723,12 @@ try{
         : main.getByRole('button',{name:`Play Fixture ${kind} ${n}`,exact:true});
       await item(1).waitFor();
       assert.equal(await item(3).count(),0);
+      if(kind==='song'){
+        await item(1).locator('..').locator('[data-artwork-state="ok"] img[src$="/hq720.jpg"]').waitFor();
+        const missing=item(2).locator('..');
+        await missing.locator('[data-artwork-placeholder] svg').waitFor();
+        assert.equal(await missing.locator('.track-artwork img').count(),0,'A YouTube empty image should not be displayed');
+      }
       await showMore.click();
       await item(3).waitFor();
       assert.equal(await item(2).count(),1,'Do not show a duplicate from the next page');
@@ -703,8 +774,37 @@ try{
     assert.equal(await hosted.getByRole('button',{name:'Library health',exact:true}).count(),0);
     await hosted.locator('main a[href="/playlist/fixture-playlist"]').first().click();
     await hosted.locator('.collection-hero').waitFor();
-    assert.equal(await hosted.getByRole('button',{name:'Add tracks',exact:true}).count(),0);
-    console.log('PASS: iPhone flush Now Playing, theme accent/count, active playlist navigation, playlist-first Add tracks, custom covers including cancel/restart/undo, search pagination and radio.');
+    await hosted.getByRole('button',{name:'Add tracks',exact:true}).waitFor();
+    await hosted.getByRole('button',{name:'Edit playlist cover',exact:true}).waitFor();
+    await hosted.setViewportSize({width:1200,height:760});
+    await hosted.evaluate(()=>{
+      const queue=window.__uiFixture.tracks.slice(),{player}=window.__pluginStores;
+      queue[634]=queue[638]; // An earlier entry for the same song must not be targeted.
+      player.setState({queue,index:638,status:'paused',source:{kind:'playlist',id:'fixture-playlist'}});
+      [...document.querySelectorAll('a[href="/cues"]')].find(a=>a.getBoundingClientRect().height>0)?.click();
+    });
+    await expectCueTrack(hosted,638,lateSong);
+    assert.equal(await hosted.locator('.cue-song-list [data-index="634"]').getAttribute('aria-current'),null);
+    await hosted.getByRole('region',{name:'Playlist songs'}).evaluate(async list=>{
+      // Wait for the one-time opening jump to finish its row measurements.
+      for(let i=0;i<10;i++)await new Promise(requestAnimationFrame);
+      list.scrollTop=0;
+    });
+    await hosted.waitForFunction(()=>document.querySelector('.cue-song-list').scrollTop<=1);
+    const nextTitle=await hosted.evaluate(()=>{
+      const {player}=window.__pluginStores;
+      player.setState({index:639});
+      return player.getState().queue[639].title;
+    });
+    const hostedToggle=hosted.getByRole('button',{name:'Toggle playlist',exact:true});
+    assert.equal(await hosted.locator('.cue-song-list').evaluate(async list=>{
+      for(let i=0;i<10;i++)await new Promise(requestAnimationFrame);
+      return list.scrollTop;
+    }),0,'Do not chase playback while the panel is open');
+    await hostedToggle.click();
+    await hostedToggle.click();
+    await expectCueTrack(hosted,639,nextTitle);
+    console.log(`PASS: ${fixturePlatform} native library and host UI, including Cues panel jumping to queue row 639, playback source, cover, undo, and search.`);
   }else{
   const page=await browser.newPage({viewport:{width:1024,height:768},hasTouch:true});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -807,21 +907,28 @@ try{
     assert.equal(await page.locator('.cue-bank-buttons>button').count(),10);
     await page.evaluate(()=>window.__pluginStores.cues.getState().setBank('A'));
     console.log('PASS: velocity/native option persistence, A/F–E/J switching, pulsing second banks, reduced-motion fallback, restart and original ten-bank layout.');
-    await page.evaluate(()=>{const player=window.__pluginStores.player.getState();player.setSpeed(23);player.setSpeedMode('pitch');player.setTuning(5);});
     const playback=()=>page.evaluate(()=>{const state=window.__pluginStores.player.getState();return {speed:state.speed,speedMode:state.speedMode,tuning:state.tuning};});
-    assert.deepEqual(await playback(),{speed:23,speedMode:'pitch',tuning:5});
+    const pitchMode=page.getByRole('button',{name:'Pitch (varispeed)',exact:true});
+    const speedMode=page.getByRole('button',{name:'Speed (pitch kept)',exact:true});
+    assert.equal(await pitchMode.getAttribute('aria-pressed'),'true','Pitch must be selected for a first-time song');
+    const pitchFader=page.getByRole('slider',{name:'Pitch',exact:true});
+    await pitchFader.press('ArrowRight');
+    assert.deepEqual(await playback(),{speed:1,speedMode:'pitch',tuning:0},'The fader should work immediately in Pitch mode');
+    await speedMode.click();
+    await page.evaluate(()=>{const player=window.__pluginStores.player.getState();player.setSpeed(23);player.setTuning(5);});
+    assert.deepEqual(await playback(),{speed:23,speedMode:'speed',tuning:5});
     await page.evaluate(()=>window.__pluginStores.player.getState().jumpTo(1));
     await page.waitForFunction(()=>window.__pluginStores.player.getState().index===1);
-    assert.deepEqual(await playback(),{speed:0,speedMode:'speed',tuning:0},'An unseen song inherited the previous speed/tuning');
-    await page.evaluate(()=>{const player=window.__pluginStores.player.getState();player.setSpeed(-15);player.setSpeedMode('speed');player.setTuning(-4);});
+    assert.deepEqual(await playback(),{speed:0,speedMode:'pitch',tuning:0},'An unseen song did not default to neutral Pitch');
+    await page.evaluate(()=>{const player=window.__pluginStores.player.getState();player.setSpeed(-15);player.setTuning(-4);});
     await page.evaluate(()=>window.__pluginStores.player.getState().jumpTo(0));
     await page.waitForFunction(()=>window.__pluginStores.player.getState().index===0);
-    assert.deepEqual(await playback(),{speed:23,speedMode:'pitch',tuning:5},'Returning to a song did not restore its playback controls');
+    assert.deepEqual(await playback(),{speed:23,speedMode:'speed',tuning:5},'Returning to a song did not restore its playback controls');
     await page.waitForFunction(()=>{const saved=JSON.parse(window.__uiFixture.savedSession||'{}');const songs=JSON.parse(saved['musike:track-playback']||'{}');return JSON.parse(saved['musike:player']||'{}').index===0&&songs.ui000000000?.speed===23&&songs.ui000000001?.tuning===-4;});
     await page.reload();await page.locator('.cue-pad-grid').waitFor();
-    assert.deepEqual(await playback(),{speed:23,speedMode:'pitch',tuning:5},'Playback controls did not survive a native-session reload');
+    assert.deepEqual(await playback(),{speed:23,speedMode:'speed',tuning:5},'Playback controls did not survive a native-session reload');
     await page.evaluate(()=>{const player=window.__pluginStores.player.getState();player.setSpeed(0);player.setSpeedMode('speed');player.setTuning(0);});
-    console.log('PASS: automatic per-song speed/mode/tuning recall, neutral defaults, saved independent settings and restart persistence without extra toolbar controls.');
+    console.log('PASS: Pitch fader defaults, automatic per-song speed/mode/tuning recall and restart persistence.');
     await page.evaluate(()=>{window.__uiFixture.staleWaveformTrack='ui000000000';window.__pluginStores.player.getState().jumpTo(1);});
     await page.waitForFunction(()=>window.__pluginStores.player.getState().index===1&&window.__musikeAudioEl.readyState>0);
     const waveformReads=await page.evaluate(()=>window.__uiFixture.waveformRequests||0);

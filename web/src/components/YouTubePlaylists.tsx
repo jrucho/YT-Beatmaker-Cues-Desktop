@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRightIcon, PlaylistIcon, PlayIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, PlayIcon } from "@phosphor-icons/react";
 import { api, type CatalogPlaylist, type CatalogPlaylistPage } from "../lib/api";
 import type { Playlist, Track } from "../lib/types";
 import { useLibrary } from "../stores/library";
@@ -95,7 +95,7 @@ export function YouTubePlaylists({ query, onImported, onPreview, layout = "grid"
     {error && <div role="alert"><p>{error}</p><button type="button" onClick={() => setRetry(n => n + 1)}>Retry playlist search</button></div>}
     {!busy && !error && !results.length && <p>{query.trim() ? "No playlists found." : "Search YouTube playlists or paste a playlist link."}</p>}
     <div className="yt-playlist-grid" tabIndex={layout === "row" ? 0 : undefined} aria-label={layout === "row" ? "Scroll YouTube playlists" : undefined}>{results.map(p => <button type="button" className="yt-playlist-result" key={p.id} aria-label={`Open YouTube playlist ${p.title}`} onClick={() => setSelected(p)}>
-      {p.thumb ? <img src={p.thumb} alt="" loading="lazy" /> : <PlaylistIcon size={28} />}
+      <Artwork src={p.thumb} className="h-[52px] w-[60px] rounded-[7px]" />
       <span><strong>{p.title}</strong><small>{p.author || "YouTube playlist"}</small></span><ArrowRightIcon size={15} />
     </button>)}</div>
     {cursor && <div className="mt-3 flex justify-center">
@@ -110,7 +110,7 @@ export function YouTubePlaylists({ query, onImported, onPreview, layout = "grid"
       {page && <>
         <div className="mb-3 flex items-center justify-between gap-3"><span className="text-sm text-fg-2">{page.tracks.length} tracks{page.complete===false?' · loading more…':page.truncated ? ` · first ${page.tracks.length.toLocaleString()} playable tracks` : ""}</span><button type="button" disabled={saving||page.complete===false} onClick={() => void save()} className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-40">{saving ? "Adding…" : existing ? "Open in library" : "Add playlist to library"}</button></div>
         <div className="scroll-area max-h-[45dvh] overflow-y-auto"><VirtualList items={page.tracks} itemKey={track=>track.id} renderItem={(t,_index,virtual)=><li {...virtual}><button type="button" aria-label={`Preview playlist track ${t.title}`} onClick={() => preview(t)} className="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-surface-3">
-          <Artwork src={t.thumb} className="size-10 shrink-0 rounded-md" /><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{t.title}</strong><small className="text-fg-2">{t.artist}</small></span><PlayIcon size={16} />
+          <Artwork src={t.thumb} fallback={t.art} className="size-10 shrink-0 rounded-md" /><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{t.title}</strong><small className="text-fg-2">{t.artist}</small></span><PlayIcon size={16} />
         </button></li>}/></div>
       </>}
     </Modal>

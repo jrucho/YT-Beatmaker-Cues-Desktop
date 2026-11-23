@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { useT } from "../i18n";
 import type { Playlist } from "../lib/types";
 import { pickPlaylistCover } from "../mobile/libraryTools";
+import { playlistPhotosEnabled } from "../native/host";
 import { useLibrary } from "../stores/library";
 import { Cover } from "./Cover";
 import { Modal } from "./Modal";
@@ -52,9 +53,9 @@ export function PlaylistCover({ playlist, className }: { playlist: Playlist; cla
       </button>
       <Modal open={open} onClose={() => { if (!working.current) setOpen(false); }} title={labels.edit}>
         <div className="flex flex-col gap-2">
-          <button type="button" className={action} disabled={busy} onClick={() => void edit("photos")}>
+          {playlistPhotosEnabled() && <button type="button" className={action} disabled={busy} onClick={() => void edit("photos")}>
             <ImagesIcon size={18} aria-hidden="true" /> {labels.photos}
-          </button>
+          </button>}
           <button type="button" className={action} disabled={busy} onClick={() => void edit("files")}>
             <FileImageIcon size={18} aria-hidden="true" /> {labels.files}
           </button>

@@ -1,0 +1,184 @@
+name: Beatmaker Cues 1.0.8 release
+
+on:
+  push:
+    branches: ['release/1.0.8']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beatmaker-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    uses: ./.github/workflows/plugins.yml
+    with:
+      source_sha: ${{ github.sha }}
+      main_only: true
+      committed_ui: true
+    secrets: inherit
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: macOS
+            command: installer:mac
+          - os: windows-latest
+            platform: Windows
+            command: installer:win
+          - os: ubuntu-24.04
+            platform: Linux
+            command: installer:linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: release/desktop-studio-source
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Prepare the pinned studio source with only the version changed
+        working-directory: .
+        run: python3 scripts/prepare-desktop-maintenance.py
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: release/desktop-studio-source/pnpm-lock.yaml
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - name: Verify studio storage and controls
+        run: |
+          node scripts/check-library-persistence.mjs
+          node scripts/check-backup-state.mjs
+          node scripts/check-tool-discovery.mjs
+          node scripts/check-controller-mapping.mjs
+          node scripts/check-audio-ranges.mjs
+      - name: Build version-aligned Electron installers
+        run: pnpm ${{ matrix.command }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - if: runner.os != 'Linux'
+        run: pnpm exec playwright install chromium
+      - if: runner.os == 'Linux'
+        run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:app --shared-library
+      - name: Verify both Mac signatures and disk images
+        if: runner.os == 'macOS'
+        run: |
+          codesign --verify --deep --strict "desktop/out/mac-arm64/YT Beatmaker Cues Desktop.app"
+          codesign --verify --deep --strict "desktop/out/mac/YT Beatmaker Cues Desktop.app"
+          hdiutil verify release/*-macOS-arm64.dmg
+          hdiutil verify release/*-macOS-x64.dmg
+      - name: Verify Linux studio package architectures and versions
+        if: runner.os == 'Linux'
+        run: |
+          version=$(node -p "require('./package.json').version")
+          for arch in x64 arm64; do
+            prefix="release/YT-Beatmaker-Cues-Desktop-$version-Linux-$arch"
+            expected=amd64
+            machine='Advanced Micro Devices X86-64'
+            if [ "$arch" = arm64 ]; then
+              expected=arm64
+              machine=AArch64
+            fi
+            test "$(dpkg-deb -f "$prefix.deb" Architecture)" = "$expected"
+            test "$(dpkg-deb -f "$prefix.deb" Version)" = "$version"
+            readelf -h "$prefix.AppImage" | grep -F "$machine"
+            target="$RUNNER_TEMP/studio-$arch"
+            mkdir -p "$target"
+            dpkg-deb -x "$prefix.deb" "$target"
+            app=$(find "$target/opt" -type f -name musike -print -quit)
+            test -n "$app"
+            readelf -h "$app" | grep -F "$machine"
+          done
+      - name: Verify the unchanged desktop source and hash the installers
+        working-directory: .
+        run: python3 scripts/prepare-desktop-maintenance.py --record ${{ matrix.platform }} --checks typecheck,persistence,backups,tool-discovery,midi-mappings,audio-ranges,desktop-regression,native-packaging
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-maintenance-${{ matrix.platform }}
+          path: |
+            release/desktop-studio-source/release/YT-Beatmaker-Cues-Desktop-*
+            release/desktop-studio-source/release/Main-Build-*.json
+            release/Beatmaker-Cues-Desktop-Source-*.zip
+          if-no-files-found: error
+
+  source-and-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Export clean corresponding source
+        run: python3 scripts/export-release-sources.py
+      - name: Verify the exported source and bundled UI
+        run: |
+          version=$(node -p "require('./package.json').version")
+          unzip -q "release/Beatmaker-Cues-Source-$version.zip" -d "$RUNNER_TEMP/native-source"
+          source="$RUNNER_TEMP/native-source/Beatmaker-Cues-Source-$version"
+          cd "$source"
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          python3 plugin/Scripts/build_mobile_ui.py .
+          cmp "$GITHUB_WORKSPACE/plugin/Assets/mobile-ui.zip" plugin/Assets/mobile-ui.zip
+          pnpm exec playwright install --with-deps chromium
+          node scripts/check-playlist-loading.mjs
+          node --import ./server/node_modules/tsx/dist/loader.mjs scripts/check-catalog-search.mjs
+          for platform in ios android desktop; do
+            node scripts/check-native-ui.mjs --native-library --platform="$platform"
+          done
+          node scripts/check-native-ui.mjs --features --platform=desktop
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-verified-source
+          path: |
+            release/Beatmaker-Cues-Source-*
+            release/Beatmaker-Cues-Plugin-Source-*
+            release/Source-Build-*.json
+            release/SHA256SUMS-Source-*.txt
+          if-no-files-found: error
+
+  publish:
+    if: github.repository == 'jrucho/YT-Beatmaker-Cues-Desktop' && github.ref == 'refs/heads/release/1.0.8'
+    needs: [desktop, native, source-and-ui]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-staging
+      - name: Verify binaries, signatures, source provenance and upload inventory
+        run: python3 scripts/prepare-release-1.0.8.py release-staging release-final
+      - name: Verify the GitHub draft, then publish the new version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/create-release-draft.mjs release-final --publish-stable-108

@@ -177,7 +177,7 @@ export function SelectableRow({
       )}
 
       <button type="button" onClick={onPlay} aria-label={t.common.playX(track.title)} className="group/art relative shrink-0">
-        <Artwork src={track.thumb} className="size-11 rounded-[10px]" />
+        <Artwork src={track.thumb} fallback={track.art} className="size-11 rounded-[10px]" />
         <span
           className={cn(
             "absolute inset-0 grid place-items-center rounded-[10px] bg-black/45 text-white transition-opacity",

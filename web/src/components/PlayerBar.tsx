@@ -31,7 +31,7 @@ export function PlayerBar() {
                 aria-label={t.player.showNowPlaying}
                 className="group relative shrink-0 rounded-[10px] transition-transform active:scale-[0.96]"
               >
-                <Artwork src={track.thumb} className="size-14 rounded-[10px]" />
+                <Artwork src={track.thumb} fallback={track.art} className="size-14 rounded-[10px]" />
               </button>
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{track.title}</p>

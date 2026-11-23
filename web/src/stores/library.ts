@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { getT } from "../i18n";
 import { api } from "../lib/api";
 import type { Library, Playlist, Track } from "../lib/types";
-import { iosLibraryToolsEnabled } from "../native/host";
+import { nativeLibraryToolsEnabled } from "../native/host";
 import { toast } from "./ui";
 
 interface LibraryState extends Library {
@@ -137,7 +137,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
       const t = getT();
       if (!Array.isArray(tracks) || added === 1) toast(t.toasts.addedTo(p.name));
       else if (added > 0) toast(t.toasts.addedManyTo(added, p.name));
-      else if (!iosLibraryToolsEnabled() || tracks.every((track) => p.tracks.some((item) => item.id === track.id))) {
+      else if (!nativeLibraryToolsEnabled() || tracks.every((track) => p.tracks.some((item) => item.id === track.id))) {
         toast(t.toasts.allAlreadyIn(p.name));
       }
       return p;
@@ -155,7 +155,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     try {
       const p = await api.removeFromPlaylist(id, trackId);
       set((s) => ({ playlists: replacePlaylist(s.playlists, p) }));
-      if (iosLibraryToolsEnabled()) toast(getT().libraryTools.trackRemoved);
+      if (nativeLibraryToolsEnabled()) toast(getT().libraryTools.trackRemoved);
     } catch (e) {
       set({ playlists: prev });
       toast((e as Error).message, "error");

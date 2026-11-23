@@ -31,6 +31,11 @@ on:
         required: false
         default: false
         type: boolean
+      committed_ui:
+        description: Use the exact shared UI archive verified by the calling release workflow
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -101,6 +106,7 @@ jobs:
         shell: pwsh
         run: if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg --yes --no-progress }
       - name: Build real mobile interface
+        if: ${{ !inputs.committed_ui }}
         run: python3 plugin/Scripts/build_mobile_ui.py . ${{ matrix.edition == 'desktop-beta' && '--desktop-beta' || '' }}
       - name: Configure macOS universal plug-ins
         if: runner.os == 'macOS'
@@ -221,7 +227,8 @@ jobs:
             plugin/build-release/PluginProbe_artefacts/Release/PluginProbe \
             "plugin/build-release/BeatmakerCues_artefacts/Release/VST3/$PLUGIN_PRODUCT.vst3" \
             2>&1 | tee "$RUNNER_TEMP/linux-vst3-host.log"
-          grep -q 'Plugin UI: Beatmaker Cues 1.0.7 plug-in bridge started' "$RUNNER_TEMP/linux-vst3-host.log"
+          version=$(node -p "require('./package.json').version")
+          grep -Fq "Plugin UI: Beatmaker Cues $version plug-in bridge started" "$RUNNER_TEMP/linux-vst3-host.log"
       - name: Package verified native targets
         run: python3 plugin/Scripts/package_release.py --build-dir ${{ env.PLUGIN_BUILD_DIR }} --platform ${{ env.PLUGIN_PLATFORM }} --arch ${{ env.PLUGIN_ARCH }} --checks engine,persistence,concurrency,vst3-host,webview-offline${{ runner.os == 'macOS' && ',auval' || '' }}${{ runner.os != 'Linux' && matrix.edition == 'main' && ',keyboard-looper-release' || '' }}
       - name: Install Linux package in a clean runtime-only Ubuntu container
@@ -272,7 +279,8 @@ jobs:
       - name: Host dependencies for JUCE's cross-build resource compiler
         run: sudo apt-get update && sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l apt-get install -y --no-install-recommends libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev libfreetype6-dev libfontconfig1-dev
       - run: pnpm install --frozen-lockfile
-      - run: python3 plugin/Scripts/build_mobile_ui.py .
+      - if: ${{ !inputs.committed_ui }}
+        run: python3 plugin/Scripts/build_mobile_ui.py .
       - name: Configure persistent Android signing
         env:
           KEYSTORE_BASE64: ${{ secrets.MUSIKE_KEYSTORE_BASE64 }}
@@ -317,7 +325,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pnpm install --frozen-lockfile
-      - run: python3 plugin/Scripts/build_mobile_ui.py .
+      - if: ${{ !inputs.committed_ui }}
+        run: python3 plugin/Scripts/build_mobile_ui.py .
       - name: Configure the real AUv3 and standalone Xcode targets
         run: cmake -S plugin -B plugin/build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
       - name: Build the unsigned container with embedded instrument extension

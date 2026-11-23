@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.8
+
+- Open the playing playlist at the current song, including when opening the
+  Cues playlist panel. Keep playback source and queue position across restarts.
+- Add tracks from playlists, all library tracks or audio files; undo library
+  edits safely. Choose a custom cover for any saved playlist.
+- Show all saved playlist name matches and load additional results in all four
+  YouTube search categories. Native playlists support up to 10,000 tracks.
+- Start new songs in Pitch mode without changing saved playback preferences.
+- Keep mobile Home shortcuts to two columns and three rows (four on taller
+  screens), with Recently Played covers and track names in view. Replace
+  missing YouTube art with a minimal waveform tile after trying the alternate size.
+- Apply these improvements to macOS, Windows, Linux, Android and iOS/AUv3 native
+  editions. Rebuild the full desktop studio installers as 1.0.8 from the same
+  pinned studio source, without changing desktop studio features.
+
 ## 1.0.7
 
 ### Linux native addition (same public release)

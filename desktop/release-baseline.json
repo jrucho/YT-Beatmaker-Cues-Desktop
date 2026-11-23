@@ -1,5 +1,5 @@
 {
-  "version": "1.0.7",
+  "version": "1.0.8",
   "baselineVersion": "1.0.6",
   "baselineCommit": "a7e5a2034cbf3a36a9c01e67b389b41e4d54537d",
   "versionedFiles": ["package.json", "desktop/package.json", "web/package.json"],

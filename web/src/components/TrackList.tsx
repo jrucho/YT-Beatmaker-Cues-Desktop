@@ -3,7 +3,7 @@ import { memo, useCallback, type MouseEvent } from "react";
 import { useT } from "../i18n";
 import { cn, formatTime } from "../lib/format";
 import type { Track } from "../lib/types";
-import { iosLibraryToolsEnabled } from "../native/host";
+import { nativeLibraryToolsEnabled } from "../native/host";
 import { selectCurrent, usePlayer, type PlaybackSource } from "../player/player";
 import { useAppearance } from "../stores/appearance";
 import { useLibrary, favoriteIds } from "../stores/library";
@@ -19,12 +19,15 @@ interface RowProps {
   virtual: VirtualRowProps;
   playlistId?: string;
   playFromCollection: boolean;
+  isPlaybackQueue: boolean;
   showAlbum: boolean;
 }
 
-const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, playFromCollection, showAlbum, virtual }: RowProps) {
-  const isCurrent = usePlayer((s) => selectCurrent(s)?.id === track.id);
-  const isPlaying = usePlayer((s) => selectCurrent(s)?.id===track.id&&(s.status === "playing" || s.status === "loading"));
+const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, playFromCollection, isPlaybackQueue, showAlbum, virtual }: RowProps) {
+  // A song can occur more than once in a queue. Only the actual position is current.
+  const isCurrent = usePlayer((s) => isPlaybackQueue ? s.index === position : selectCurrent(s)?.id === track.id);
+  const isPlaying = usePlayer((s) => (isPlaybackQueue ? s.index === position : selectCurrent(s)?.id === track.id)
+    && (s.status === "playing" || s.status === "loading"));
   const isFavorite = useLibrary((s) => favoriteIds(s.favorites).has(track.id));
   const toggleFavorite = useLibrary((s) => s.toggleFavorite);
   const openMenu = useUi((s) => s.openMenu);
@@ -42,6 +45,7 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, p
   return (
     <li
       {...virtual}
+      aria-current={isPlaybackQueue && isCurrent ? "true" : undefined}
       onContextMenu={menuAt}
       className={cn(
         "track-row group relative grid min-w-0 items-center gap-3 rounded-xl px-2 py-1.5 transition-colors duration-150 hover:bg-surface-2 md:px-3",
@@ -62,7 +66,7 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, p
       </span>
 
       <div className="track-artwork pointer-events-none relative size-11">
-        <Artwork src={track.thumb} className="size-11 rounded-[10px]" />
+        <Artwork src={track.thumb} fallback={track.art} className="size-11 rounded-[10px]" />
         {isCurrent && (
           <span className="absolute inset-0 grid place-items-center rounded-[10px] bg-black/45 md:hidden">
             <Equalizer live={isPlaying} />
@@ -121,16 +125,17 @@ interface ListProps {
   playbackSource?: PlaybackSource;
   showAlbum?: boolean;
   header?: boolean;
+  isPlaybackQueue?: boolean;
   onSelect?: (index:number)=>void;
   reveal?: ListReveal;
 }
 
-export function TrackList({ tracks, context, playlistId, playbackSource, showAlbum: albumWanted = true, header = true, onSelect, reveal }: ListProps) {
+export function TrackList({ tracks, context, playlistId, playbackSource, showAlbum: albumWanted = true, header = true, isPlaybackQueue = false, onSelect, reveal }: ListProps) {
   const playList = usePlayer((s) => s.playList);
   const t = useT();
   // Pages ask for the album column where it makes sense; Settings can turn it off everywhere.
   const showAlbum = useAppearance((s) => s.albumColumn) && albumWanted;
-  const playFromCollection = iosLibraryToolsEnabled() && !!playbackSource;
+  const playFromCollection = nativeLibraryToolsEnabled() && !!playbackSource;
   const onPlay = useCallback((index: number) => onSelect ? onSelect(index) : playList(context ?? tracks, index, playbackSource),
     [playList, context, tracks, onSelect, playbackSource]);
   return (
@@ -161,6 +166,7 @@ export function TrackList({ tracks, context, playlistId, playbackSource, showAlb
             position={i}
             playlistId={playlistId}
             playFromCollection={playFromCollection}
+            isPlaybackQueue={isPlaybackQueue}
             showAlbum={showAlbum}
             onPlay={onPlay}
             virtual={virtual}

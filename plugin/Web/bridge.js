@@ -37,12 +37,14 @@
   window.__pluginHosted=window.__JUCE__.initialisationData.hostedPlugin?.[0]===true;
   window.__pluginDesktopBeta=window.__JUCE__.initialisationData.desktopBeta?.[0]===true;
   window.__pluginIOSPreview=window.__JUCE__.initialisationData.iosPreviewFeatures?.[0]===true;
-  const libraryTools=window.__pluginPlatform==='ios'&&window.__pluginIOSPreview&&!window.__pluginHosted;
+  const libraryTools=window.__JUCE__.initialisationData.libraryFeatures?.[0]===true ||
+    (window.__pluginPlatform==='ios'&&window.__pluginIOSPreview&&!window.__pluginHosted);
+  window.__pluginLibraryTools=libraryTools;
   const songPlaybackKey='musike:track-playback';
   let reconcilingPlayback=false;
   const cleanSongPlayback=value=>({
     speed:Math.max(-75,Math.min(100,Math.round(Number.isFinite(value?.speed)?value.speed:0))),
-    speedMode:value?.speedMode==='pitch'?'pitch':'speed',
+    speedMode:value?.speedMode==='speed'?'speed':'pitch',
     tuning:Math.max(-12,Math.min(12,Math.round(Number.isFinite(value?.tuning)?value.tuning:0)))
   });
   const songPlaybackMap=()=>{try{const value=JSON.parse(localStorage.getItem(songPlaybackKey)||'{}');return value&&typeof value==='object'&&!Array.isArray(value)?value:{};}catch{return {};}};

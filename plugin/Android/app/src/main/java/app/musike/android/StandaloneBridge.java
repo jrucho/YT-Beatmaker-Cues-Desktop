@@ -13,11 +13,18 @@ public final class StandaloneBridge {
     private static Context context;
     private static java.lang.ref.WeakReference<MainActivity> activity = new java.lang.ref.WeakReference<>(null);
     public static native void galleryResult(String uri, String name);
+    public static native void playlistImageResult(String image, boolean failed);
     private static native void audioDevicesChanged();
     private static android.os.HandlerThread routeThread;
     private static android.media.AudioDeviceCallback routeCallback;
     static void setActivity(MainActivity value) { activity = new java.lang.ref.WeakReference<>(value); }
     public static boolean pickGallery() { MainActivity current=activity.get();if(current==null)return false;current.runOnUiThread(current::pickGalleryVideo);return true; }
+    public static boolean pickPlaylistImage(boolean photos) {
+        MainActivity current=activity.get();
+        if(current==null)return false;
+        current.runOnUiThread(()->current.pickPlaylistImage(photos));
+        return true;
+    }
     private static boolean background, focused, resumeTransient;
     private static int interruptedRevision;
     private static AudioFocusRequest focus;

@@ -25,9 +25,7 @@ public:
     void registerMedia(const juce::String& id,const juce::var& metadata);
     juce::var media(const juce::String& id);
     juce::var allMedia();
-   #if JUCE_IOS
     juce::var localAudioStatus();
-   #endif
     juce::var renameLocalMedia(const juce::String& id,const juce::String& title,const juce::String& expectedTitle = {});
     juce::var eraseLocalMedia(const juce::String& id,const juce::StringArray& protectedPaths);
     juce::File mediaDirectory() const {return sharedStore?sharedStore->mediaDirectory():folder.getChildFile("Media");}

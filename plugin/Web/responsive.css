@@ -35,13 +35,38 @@
 :root[data-plugin-editor] .music-app .safe-top {padding-left:0;padding-right:0;}
 :root[data-plugin-editor] [role="dialog"] {width:calc(100% - var(--plugin-safe-left,env(safe-area-inset-left)) - var(--plugin-safe-right,env(safe-area-inset-right)));max-height:calc(var(--plugin-viewport-height,100dvh) - var(--plugin-safe-top,env(safe-area-inset-top)) - var(--plugin-safe-bottom,env(safe-area-inset-bottom)) - 12px);overflow-y:auto;}
 /* Now Playing fills the area up to the opaque tab bar, not the inset used for ordinary dialogs. */
-:root[data-plugin-editor] .ios-now-playing-docked[role="dialog"] {bottom:calc(64px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));width:auto;max-height:none;overflow:hidden;}
-:root[data-plugin-editor] .ios-now-playing-docked .overlay-top {
+:root[data-plugin-editor] .native-now-playing-docked[role="dialog"] {bottom:calc(64px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));width:auto;max-height:none;overflow:hidden;}
+:root[data-plugin-editor] .native-now-playing-docked .overlay-top {
   padding-top:var(--plugin-safe-top,env(safe-area-inset-top));
   padding-left:calc(20px + var(--plugin-safe-left,env(safe-area-inset-left)));
   padding-right:calc(20px + var(--plugin-safe-right,env(safe-area-inset-right)));
 }
 :root[data-plugin-editor] .playback-tabbar {z-index:41;}
+
+/* Leave the Recently Played artwork and its caption above the phone player. */
+.native-mobile-home .home-greeting {padding-top:4px;padding-bottom:14px;}
+.native-mobile-home .home-sections {gap:16px;}
+.native-mobile-home .home-shortcuts {row-gap:6px;}
+.native-mobile-home .home-shortcut {height:48px;gap:8px;}
+.native-mobile-home .home-shortcut-art {width:48px;height:48px;}
+.native-mobile-home .home-recent {gap:8px;}
+@media (max-height:700px) {
+  .native-mobile-home > header > div {height:44px;}
+  .native-mobile-home .home-greeting {padding-top:0;padding-bottom:6px;}
+  .native-mobile-home .home-greeting h1 {font-size:24px;}
+  .native-mobile-home .home-sections {gap:8px;}
+  .native-mobile-home .home-shortcuts {row-gap:4px;}
+  .native-mobile-home .home-shortcut {height:44px;}
+  .native-mobile-home .home-shortcut-art {width:44px;height:44px;}
+  .native-mobile-home .home-recent {gap:6px;}
+  .native-mobile-home .recent-track-card {
+    width:clamp(84px, calc(var(--plugin-viewport-height,100dvh) - var(--plugin-safe-top,env(safe-area-inset-top)) - var(--plugin-safe-bottom,env(safe-area-inset-bottom)) - 468px), 144px);
+    gap:4px;
+  }
+  .native-mobile-home .recent-track-caption {gap:2px;}
+  .native-mobile-home .recent-track-title {min-height:32px;font-size:13px;line-height:16px;}
+}
+
 :root[data-plugin-editor] .cue-workspace-main {overflow:hidden;padding-bottom:calc(64px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));}
 :root[data-plugin-editor] .cue-workspace {height:100%;min-height:0;display:flex;flex-direction:column;padding-bottom:0;}
 :root[data-plugin-editor] .cue-workspace>header {flex:none;}

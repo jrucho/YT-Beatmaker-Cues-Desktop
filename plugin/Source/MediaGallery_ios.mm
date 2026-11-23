@@ -2,9 +2,7 @@
 #if JUCE_IOS
 #import <PhotosUI/PhotosUI.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
-#if BEATMAKER_IOS_PREVIEW
 #import <ImageIO/ImageIO.h>
-#endif
 
 namespace {
 UIViewController* galleryPresenter(juce::Component& parent){
@@ -61,7 +59,6 @@ private:
 }
 std::unique_ptr<MediaGallery> pickGalleryVideo(juce::Component& parent,std::function<void(GallerySelection)> complete){return std::make_unique<IOSGallery>(parent,std::move(complete));}
 
-#if BEATMAKER_IOS_PREVIEW
 namespace {
 constexpr int coverMaxFileBytes=64*1024*1024;
 constexpr int coverMaxJPEGBytes=128*1024;
@@ -173,5 +170,4 @@ private:
 std::unique_ptr<MediaGallery> pickGalleryImage(juce::Component& parent,std::function<void(PlaylistCoverSelection)> complete){
     return std::make_unique<IOSCoverGallery>(parent,std::move(complete));
 }
-#endif
 #endif

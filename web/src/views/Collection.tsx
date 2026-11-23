@@ -15,7 +15,7 @@ import { useT } from "../i18n";
 import { cn, shuffled } from "../lib/format";
 import { paths, type LibraryReturnState } from "../lib/routes";
 import type { Track } from "../lib/types";
-import { iosLibraryToolsEnabled } from "../native/host";
+import { nativeLibraryToolsEnabled } from "../native/host";
 import { selectPlaybackSource, selectPlayingPlaylistId, usePlayer, type PlaybackSource } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { useUi } from "../stores/ui";
@@ -39,7 +39,7 @@ export default function Collection({ kind }: Props) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [addTo, setAddTo] = useState<string | null>(null);
   const t = useT();
-  const libraryTools = iosLibraryToolsEnabled();
+  const libraryTools = nativeLibraryToolsEnabled();
   const playingPlaylistId = usePlayer((s) => libraryTools && kind === "playlist" ? selectPlayingPlaylistId(s) : null);
   const backToPlaylist: LibraryReturnState | undefined = id && playingPlaylistId === id ? { revealPlaylistId: id } : undefined;
 

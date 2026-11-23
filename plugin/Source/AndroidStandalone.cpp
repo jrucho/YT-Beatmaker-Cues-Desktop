@@ -18,7 +18,7 @@ std::atomic<int> minimumBufferFrames{0},requestedBufferFrames{0},initialXRuns{-1
 std::atomic<int> forcedBufferBursts{0};
  #endif
 jclass bridge=nullptr;jmethodID publishMethod=nullptr,shutdownMethod=nullptr,backgroundMethod=nullptr,nativeRateMethod=nullptr;
-jmethodID galleryMethod=nullptr;
+jmethodID galleryMethod=nullptr,playlistImageMethod=nullptr;
 jmethodID audioDevicesMethod=nullptr;
 class AndroidNowPlaying final:public StandaloneNowPlaying,private juce::Timer {
 public:
@@ -123,6 +123,7 @@ const bool registered=[] {registerStandaloneNowPlayingFactory(makeAndroid);retur
 }
 int androidInsetsRevision(){return insetsRevision.load();}
 bool androidOpenGallery(){return bridge&&galleryMethod&&juce::getEnv()->CallStaticBooleanMethod(bridge,galleryMethod);}
+bool androidOpenPlaylistImage(bool photos){return bridge&&playlistImageMethod&&juce::getEnv()->CallStaticBooleanMethod(bridge,playlistImageMethod,(jboolean)photos);}
 juce::var androidAudioDevices(){if(!bridge||!audioDevicesMethod)return juce::var(juce::Array<juce::var>{});const auto text=juce::LocalRef<jstring>((jstring)juce::getEnv()->CallStaticObjectMethod(bridge,audioDevicesMethod));return juce::JSON::parse(juce::juceString(text.get()));}
 extern "C" JNIEXPORT void JNICALL Java_app_musike_android_StandaloneBridge_audioDevicesChanged(JNIEnv*,jclass){androidAudioDevicesChanged();}
 juce::var androidPlatformState(){
@@ -166,6 +167,7 @@ extern "C" JNIEXPORT void JNICALL Java_app_musike_android_StandaloneBridge_bind(
     publishMethod=env->GetStaticMethodID(type,"publish","(Ljava/lang/String;)V");shutdownMethod=env->GetStaticMethodID(type,"shutdown","()V");backgroundMethod=env->GetStaticMethodID(type,"isBackground","()Z");
     nativeRateMethod=env->GetStaticMethodID(type,"nativeSampleRate","()I");
     galleryMethod=env->GetStaticMethodID(type,"pickGallery","()Z");
+    playlistImageMethod=env->GetStaticMethodID(type,"pickPlaylistImage","(Z)Z");
     audioDevicesMethod=env->GetStaticMethodID(type,"audioDevices","()Ljava/lang/String;");
 }
 extern "C" JNIEXPORT jboolean JNICALL Java_app_musike_android_StandaloneBridge_performance(JNIEnv*,jclass,jint action,jint sourceId,jdouble value,jint bank,jint pad){

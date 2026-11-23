@@ -10,7 +10,7 @@ import { cn } from "../lib/format";
 import { paths, type LibraryReturnState } from "../lib/routes";
 import { centerInScrollArea } from "../lib/scroll";
 import type { Playlist, Track } from "../lib/types";
-import { iosLibraryToolsEnabled } from "../native/host";
+import { nativeLibraryToolsEnabled } from "../native/host";
 import { selectPlayingPlaylistId, usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { useUi } from "../stores/ui";
@@ -61,7 +61,7 @@ export default function Library() {
   const location = useLocation();
   const navigationType = useNavigationType();
   const t = useT();
-  const libraryTools = iosLibraryToolsEnabled();
+  const libraryTools = nativeLibraryToolsEnabled();
   const playingPlaylistId = usePlayer((s) => libraryTools ? selectPlayingPlaylistId(s) : null);
   const revealedId = libraryTools && navigationType !== "POP"
     ? (location.state as LibraryReturnState | null)?.revealPlaylistId

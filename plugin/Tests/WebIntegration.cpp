@@ -290,6 +290,32 @@ int main(int argc,char** argv) {
         if(editor->getWidth()!=480||editor->getHeight()!=1400){std::cerr<<"Editor dimensions were not restored\n";return 1;}
         for(int i=0;i<100;++i){pump(100);if((bool)evaluate("Boolean(window.__pluginStores)"))break;}
         if((double)evaluate("window.__pluginStores.cues.getState().cues[1]||0")!=0.125){std::cerr<<"Offline editor recall lost cues\n";return 1;}
+        if((bool)evaluate("window.__pluginLibraryTools===true")){
+            editor->setSize(1200,650);pump(250);
+            evaluate(R"js((()=>{
+                const {player}=window.__pluginStores;
+                const queue=Array.from({length:700},(_,i)=>({
+                    id:`cue${String(i).padStart(8,'0')}`,title:`Cues queue row ${i}`,artist:'Native fixture',duration:60,kind:'song',thumb:'',art:''
+                }));
+                queue[634]=queue[638];
+                player.setState({queue,index:638,status:'paused'});
+                [...document.querySelectorAll('a[href="/cues"]')].find(a=>a.getBoundingClientRect().height>0)?.click();
+                return true;
+            })())js");
+            const char* cueRowVisible=R"js((()=>{
+                const list=document.querySelector('.cue-song-list'),row=list?.querySelector('[aria-current="true"]');
+                if(row?.dataset.index!=='638'||list.scrollTop<=0)return false;
+                const a=list.getBoundingClientRect(),b=row.getBoundingClientRect();
+                return b.top>=a.top-1&&b.bottom<=a.bottom+1&&window.__pluginStores.player.getState().status==='paused';
+            })())js";
+            const auto revealed=[&]{for(int i=0;i<100;++i){if((bool)evaluate(cueRowVisible))return true;pump(50);}return false;};
+            if(!revealed()){std::cerr<<"The wide hosted Cues playlist did not reveal queue row 639\n";return 1;}
+            evaluate("document.querySelector('.cue-queue-toggle')?.click();true");pump(100);
+            editor->setSize(440,800);pump(250);
+            evaluate("document.querySelector('.cue-queue-toggle')?.click();true");
+            if(!revealed()){std::cerr<<"Reopening the compact hosted Cues playlist did not reveal queue row 639\n";return 1;}
+            std::cout<<"PASS: hosted Cues sidebar and compact playlist reveal the actual row past 500 without resuming playback\n";
+        }
         CueProcessor cold;bool found=false;const auto library=juce::JSON::parse(cold.libraryStore.readLibrary());
         if(const auto* playlists=library["playlists"].getArray())for(const auto& item:*playlists)found=found||item["name"].toString()=="Offline saved playlist";
         editor.reset();

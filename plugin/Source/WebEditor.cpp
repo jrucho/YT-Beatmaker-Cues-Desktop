@@ -101,6 +101,9 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withInitialisationData("appVersion",JucePlugin_VersionString)
         .withInitialisationData("songTransitions",true)
         .withInitialisationData("performanceFeatures",BEATMAKER_PERFORMANCE_FEATURES&&!BEATMAKER_DESKTOP_BETA)
+       #if (BEATMAKER_LIBRARY_FEATURES || BEATMAKER_IOS_PREVIEW) && !BEATMAKER_DESKTOP_BETA
+        .withInitialisationData("libraryFeatures",true)
+       #endif
        #if JUCE_ANDROID
         .withInitialisationData("nativePlatform","android")
        #elif JUCE_IOS
@@ -147,7 +150,7 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withNativeFunction("librarySnapshot",[this](const auto&,auto complete){storageTask([this]{return engine.libraryStore.readSnapshot();},std::move(complete));})
         .withNativeFunction("libraryCommit",[this](const auto& args,auto complete){
             const auto baseline=args[0]["base"].toString(),next=args[0]["next"].toString();
-           #if JUCE_IOS && BEATMAKER_IOS_PREVIEW
+           #if (BEATMAKER_LIBRARY_FEATURES || BEATMAKER_IOS_PREVIEW) && !BEATMAKER_DESKTOP_BETA
             if((bool)args[0]["captureUndo"]){
                 storageTask([this,baseline,next]{
                     juce::String previous;
@@ -158,7 +161,7 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
            #endif
             storageTask([this,baseline,next]{return juce::var(engine.libraryStore.commitLibrary(baseline,next));},std::move(complete));
         })
-       #if JUCE_IOS && BEATMAKER_IOS_PREVIEW
+       #if (BEATMAKER_LIBRARY_FEATURES || BEATMAKER_IOS_PREVIEW) && !BEATMAKER_DESKTOP_BETA
         .withNativeFunction("libraryReplayEdit",[this](const auto& args,auto complete){
             const auto expected=args[0]["base"].toString(),desired=args[0]["next"].toString();
             storageTask([this,expected,desired]{return juce::var(engine.libraryStore.commitLibrary(expected,desired,nullptr,true));},std::move(complete));
@@ -168,7 +171,7 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
          })
          .withNativeFunction("pickPlaylistCover",[this](const auto& args,auto complete){
              const auto source=args.isEmpty()?juce::String{}:args[0].toString();
-             if(galleryBusy||engine.wrapperType==juce::AudioProcessor::wrapperType_AudioUnitv3||(source!="photos"&&source!="files")){
+             if(galleryBusy||(source!="photos"&&source!="files")){
                  complete(object({{"image",juce::String{}},{"failed",true}}));return;
              }
              galleryBusy=true;
@@ -177,12 +180,21 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
                  if(safe){safe->galleryBusy=false;complete(result);}
              };
              auto result=[](const PlaylistCoverSelection& image){return object({{"image",image.image},{"failed",image.failed}});};
-             if(source=="photos"){
-                 gallery=pickGalleryImage(*this,[safe,finish,result](PlaylistCoverSelection image){
+             auto selected=[safe,finish,result](PlaylistCoverSelection image){
                      if(safe)safe->storageTask([image,result]{return result(image);},finish,true);
-                 });
-             }else{
-                 exporter=std::make_unique<juce::FileChooser>("Choose a playlist cover",juce::File{},"*.jpg;*.jpeg;*.png;*.heic;*.heif;*.webp;*.gif;*.tiff;*.tif");
+             };
+            #if JUCE_ANDROID
+             gallery=pickAndroidPlaylistImage(source=="photos",std::move(selected));
+            #else
+            #if JUCE_IOS
+             if(source=="photos"){gallery=pickGalleryImage(*this,std::move(selected));return;}
+             const auto extensions="*.jpg;*.jpeg;*.png;*.heic;*.heif;*.webp;*.gif;*.tiff;*.tif";
+            #else
+             if(source!="files"){finish(result({{},true}));return;}
+             const auto extensions="*.jpg;*.jpeg;*.png;*.gif";
+            #endif
+             {
+                 exporter=std::make_unique<juce::FileChooser>("Choose a playlist cover",juce::File{},extensions);
                  exporter->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe,finish,result](const auto& chooser){
                      if(!safe)return;
                      const auto file=chooser.getURLResult();
@@ -190,6 +202,7 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
                      safe->storageTask([file,result]{return result(playlistCoverFromFile(file));},finish,true);
                  });
              }
+            #endif
          })
         #endif
         .withNativeFunction("cachedTrack",[this](const auto& args,auto complete){const auto id=args[0].toString();storageTask([this,id]{return engine.cachedTrack(id);},std::move(complete));})
@@ -480,7 +493,7 @@ juce::var MobileWebEditor::audio(const juce::var& message) {
     else if(command=="rate") {
         if(engine.songPlaybackEnabled.load()&&message["trackId"].isString()){
             engine.setTrackPlayback(message["trackId"].toString(),object({{"speed",((double)message["value"]-1)*100},
-                {"speedMode",message["preservePitch"].isVoid()||(bool)message["preservePitch"]?"speed":"pitch"},{"tuning",message["semitones"]}}));
+                {"speedMode",(bool)message["preservePitch"]?"speed":"pitch"},{"tuning",message["semitones"]}}));
             return object({});
         }
         engine.preservePitch.store(message["preservePitch"].isVoid()?true:(bool)message["preservePitch"]);

@@ -1,7 +1,7 @@
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import type { LibraryStorage } from "../../../server/src/library";
 import {Capacitor,registerPlugin} from '@capacitor/core';
-import { iosLibraryToolsEnabled } from "./host";
+import { nativeLibraryToolsEnabled } from "./host";
 
 const SharedLibrary=registerPlugin<{info():Promise<{enabled:boolean}>;read(options?:{legacy?:string}):Promise<{json?:string;needsMigration?:boolean}>;commit(options:{base:string;edited:string}):Promise<{json:string}>}>('MusikeLibrary');
 let sharedEnabled:Promise<boolean>|undefined;
@@ -30,7 +30,7 @@ export const nativeStorage: LibraryStorage = {
   reloadBeforeRead:Capacitor.getPlatform()==='ios'||typeof(globalThis as any).__pluginInvoke==='function',
   read: async () => {
     // The plug-in owns validation and disk recovery. A read failure is not an empty library.
-    if (iosLibraryToolsEnabled()) {
+    if (nativeLibraryToolsEnabled()) {
       const { data } = await Filesystem.readFile({ path: FILE, ...where });
       return typeof data === "string" ? data : await data.text();
     }
@@ -54,8 +54,8 @@ export const nativeStorage: LibraryStorage = {
     await Filesystem.writeFile({ path: TMP, data: json, ...where });
     await Filesystem.deleteFile({ path: FILE, directory: Directory.Data }).catch(() => {});
     const result = await Filesystem.rename({ from: TMP, to: FILE, directory: Directory.Data, toDirectory: Directory.Data });
-    // Reconcile the caller with the authoritative three-way merge returned by the iOS preview bridge.
-    if (iosLibraryToolsEnabled()) return (result as { json?: string } | undefined)?.json;
+    // Reconcile the caller with the authoritative three-way merge returned by the native bridge.
+    if (nativeLibraryToolsEnabled()) return (result as { json?: string } | undefined)?.json;
   },
 };
 async function readPrivate():Promise<string|null>{

@@ -354,7 +354,6 @@ void LibraryStore::registerMedia(const juce::String& id,const juce::var& metadat
 }
 juce::var LibraryStore::media(const juce::String& id){if(sharedStore){ensureSharedMigration();return sharedStore->media(id);}const juce::ScopedLock local(localLock);Lock lock(processLock);return readDocument()["media"][juce::Identifier(id)].clone();}
 juce::var LibraryStore::allMedia(){if(sharedStore){ensureSharedMigration();return sharedStore->allMedia();}const juce::ScopedLock local(localLock);Lock lock(processLock);juce::Array<juce::var> result;const auto media=readDocument()["media"];if(const auto* fields=media.getDynamicObject())for(const auto& entry:fields->getProperties())result.add(entry.value.clone());return juce::var(result);}
-#if JUCE_IOS
 juce::var LibraryStore::localAudioStatus(){
     if(sharedStore){ensureSharedMigration();return sharedStore->localAudioStatus();}
     const juce::ScopedLock local(localLock);Lock lock(processLock);
@@ -379,7 +378,6 @@ juce::var LibraryStore::localAudioStatus(){
     result->setProperty("tracks",tracks);
     return juce::var(result);
 }
-#endif
 juce::var LibraryStore::renameLocalMedia(const juce::String& id,const juce::String& title,const juce::String& expectedTitle){
     if(sharedStore){ensureSharedMigration();return sharedStore->renameLocalMedia(id,title,expectedTitle);}
     const auto clean=title.trim();

@@ -274,7 +274,7 @@ private:
         evaluate("document.querySelector('.mini-player button')?.click();true");
         check(waitFor("document.querySelector('[aria-label=\"Now playing\"]')?.textContent.includes('Playing from: Files fixture')"),
             "Now Playing lost its playlist source after returning to Library");
-        check(waitFor(R"js((()=>{const sheet=document.querySelector('.ios-now-playing-docked'),nav=document.querySelector('nav.playback-tabbar');if(!sheet||!nav)return false;const a=sheet.getBoundingClientRect(),b=nav.getBoundingClientRect();return Math.abs(a.bottom-b.top)<=1&&a.top<=1&&a.left<=1&&a.right>=innerWidth-1&&getComputedStyle(sheet).backgroundColor===getComputedStyle(nav).backgroundColor;})())js"),
+        check(waitFor(R"js((()=>{const sheet=document.querySelector('.native-now-playing-docked'),nav=document.querySelector('nav.playback-tabbar');if(!sheet||!nav)return false;const a=sheet.getBoundingClientRect(),b=nav.getBoundingClientRect();return Math.abs(a.bottom-b.top)<=1&&a.top<=1&&a.left<=1&&a.right>=innerWidth-1&&getComputedStyle(sheet).backgroundColor===getComputedStyle(nav).backgroundColor;})())js"),
             "Now Playing did not meet the opaque iOS tab bar");
         evaluate("document.querySelector('[aria-label=\"Now playing\"] button[aria-label=Close]')?.click();true");
         waitFor("!document.querySelector('[role=dialog]')");
@@ -307,6 +307,10 @@ private:
         check(waitFor("!document.querySelector('[role=dialog]')"),"Now Playing did not close on navigation");
         evaluate("document.querySelector('nav a[href=\"/cues\"]')?.click();true");
         check(waitFor("document.querySelector('a.cue-track-label')?.getAttribute('href')==='/playlist/'+window.__scrollFixtureId"),"Cues lost the deep playlist's source");
+        evaluate("if(!document.querySelector('.cue-song-list'))document.querySelector('.cue-queue-toggle')?.click();true");
+        check(waitFor(R"js((()=>{const list=document.querySelector('.cue-song-list'),row=list?.querySelector('.track-row[data-index="139"]');if(!list?.scrollTop||!row)return false;const a=list.getBoundingClientRect(),b=row.getBoundingClientRect();return b.top>=a.top-1&&b.bottom<=a.bottom+1;})())js"),
+            "Opening the Cues playlist panel did not reveal the playing row");
+        evaluate("document.querySelector('.cue-queue-toggle')?.click();true");
         evaluate("document.querySelector('a.cue-track-label')?.click();true");
         check(waitFor(trackInView),"Native Cues did not scroll to the actual playlist row");
 
@@ -413,17 +417,18 @@ private:
                 check(processor->selectedBank.load()==5,"iOS A/F button did not select native bank F");
                 evaluate("document.querySelector('.cue-bank-pair').click();true");pump(150);
                 check(processor->selectedBank.load()==0,"iOS A/F button did not return to native bank A");
-                const auto second=processor->importLocalFile(file);
-                evaluate("window.__pluginStores.player.getState().setSpeed(25);window.__pluginStores.player.getState().setSpeedMode('pitch');window.__pluginStores.player.getState().setTuning(4);true");pump(150);
-                check((double)processor->nativeSnapshot()["playback"]["speed"]==25&&!processor->preservePitch.load()&&processor->semitones.load()==4,"iOS speed/mode/tuning edit did not reach native song settings");
-                evaluate("window.__pluginStores.player.getState().playList(["+juce::JSON::toString(track)+","+juce::JSON::toString(second)+"]);window.__pluginStores.player.getState().jumpTo(1);true");
-                for(int i=0;i<100;++i){pump(30);if(processor->ready.load()&&processor->nativeSnapshot()["trackId"].toString()==second["id"].toString())break;}
-                check((double)processor->nativeSnapshot()["playback"]["speed"]==0&&processor->preservePitch.load()&&processor->semitones.load()==0,"A new iOS song inherited previous-song playback controls");
-                evaluate("window.__pluginStores.player.getState().jumpTo(0);true");
-                for(int i=0;i<100;++i){pump(30);if(processor->ready.load()&&processor->nativeSnapshot()["trackId"].toString()==track["id"].toString())break;}
-                check((double)processor->nativeSnapshot()["playback"]["speed"]==25&&!processor->preservePitch.load()&&processor->semitones.load()==4,"Returning to an iOS song did not recall its native controls");
-                evaluate("window.__pluginStores.player.getState().setSpeed(0);window.__pluginStores.player.getState().setSpeedMode('speed');window.__pluginStores.player.getState().setTuning(0);true");pump(100);
-            }
+             }
+             const auto second=processor->importLocalFile(file);
+             evaluate("window.__pluginStores.player.getState().setSpeed(25);window.__pluginStores.player.getState().setSpeedMode('speed');window.__pluginStores.player.getState().setTuning(4);true");pump(150);
+             check((double)processor->nativeSnapshot()["playback"]["speed"]==25&&processor->preservePitch.load()&&processor->semitones.load()==4,"iOS speed/mode/tuning edit did not reach native song settings");
+             evaluate("window.__pluginStores.player.getState().playList(["+juce::JSON::toString(track)+","+juce::JSON::toString(second)+"]);window.__pluginStores.player.getState().jumpTo(1);true");
+             for(int i=0;i<100;++i){pump(30);if(processor->ready.load()&&processor->nativeSnapshot()["trackId"].toString()==second["id"].toString())break;}
+             check((double)processor->nativeSnapshot()["playback"]["speed"]==0&&!processor->preservePitch.load()&&processor->semitones.load()==0,"A new iOS song did not default to neutral Pitch");
+             check(waitFor("document.querySelector('button[aria-label=\"Pitch (varispeed)\"]')?.getAttribute('aria-pressed')==='true'"),"iOS Cues did not show the Pitch fader by default");
+             evaluate("window.__pluginStores.player.getState().jumpTo(0);true");
+             for(int i=0;i<100;++i){pump(30);if(processor->ready.load()&&processor->nativeSnapshot()["trackId"].toString()==track["id"].toString())break;}
+             check((double)processor->nativeSnapshot()["playback"]["speed"]==25&&processor->preservePitch.load()&&processor->semitones.load()==4,"Returning to an iOS song did not recall its native controls");
+             evaluate("window.__pluginStores.player.getState().setSpeed(0);window.__pluginStores.player.getState().setTuning(0);true");pump(100);
             const int beforeSampleClaim=diagnostics()["claimed"];
             processor->importPadSample(0,0,file);evaluate("window.__musikeAudioEl.removeAttribute('src');true");pump(300);
             pointer(observer,web,pointForPad(1),1);check((int)diagnostics()["claimed"]==beforeSampleClaim+1,"Sample-only UIKit input did not claim its native receipt");
@@ -586,10 +591,9 @@ private:
             check((int)diagnostics()["mappedPads"]==0,"Modal dialog did not clear the UIKit input regions");
             evaluate("document.querySelector('[role=\"dialog\"] button[aria-label=\"Close\"]').click();true");pump(200);
             evaluate("document.querySelector('nav a[href=\"/library\"]')?.click();true");pump(200);
-            if((bool)evaluate("window.__pluginIOSPreview===true")){
+            if((bool)evaluate("window.__pluginIOSPreview===true"))
                 check(web.scrollView.bounces==originalBounce,"Leaving Cues did not restore the browser's original bounce behavior");
-                checkPlaylistTools(file);
-            }
+            if((bool)evaluate("window.__pluginLibraryTools===true"))checkPlaylistTools(file);
         }
         std::cout<<(passed?"PASS":"FAIL")<<": iOS simulator UIKit observer/WKWebView/native audio, one-time cue/sample receipts, non-cancelling gesture and modal exclusion (injected touch, hardware latency not measured)\n"<<std::flush;
         std::exit(passed?0:1);

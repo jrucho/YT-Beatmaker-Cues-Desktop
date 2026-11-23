@@ -93,7 +93,7 @@ juce::var cleanTrackPlayback(const juce::var& value){
     const auto number=[](const juce::var& input,double low,double high){const double v=(input.isInt()||input.isInt64()||input.isDouble())?(double)input:0;return std::isfinite(v)?juce::jlimit(low,high,std::round(v)):0.0;};
     auto* result=new juce::DynamicObject;
     result->setProperty("speed",number(value["speed"],-75,100));
-    result->setProperty("speedMode",value["speedMode"].toString()=="pitch"?"pitch":"speed");
+    result->setProperty("speedMode",value["speedMode"].toString()=="speed"?"speed":"pitch");
     result->setProperty("tuning",number(value["tuning"],-12,12));return juce::var(result);
 }
 }
@@ -107,6 +107,7 @@ CueProcessor::CueProcessor(AudioTransport transport)
       parameters(*this, nullptr, "Parameters", parameterLayout()),audioTransport(std::move(transport)) {
     for (auto& bank : cues) for (auto& cue : bank) cue.store(-1);
     songPlaybackEnabled.store(BEATMAKER_PERFORMANCE_FEATURES&&!BEATMAKER_DESKTOP_BETA);
+    if(songPlaybackEnabled.load())preservePitch.store(false);
     gainValue=parameters.getRawParameterValue("gain");speedValue=parameters.getRawParameterValue("speed");
     sessionId=wrapperType==wrapperType_Standalone||wrapperType==wrapperType_Undefined?"standalone":juce::Uuid().toString();
     if(wrapperType!=wrapperType_Standalone&&wrapperType!=wrapperType_Undefined)preset.store(3);

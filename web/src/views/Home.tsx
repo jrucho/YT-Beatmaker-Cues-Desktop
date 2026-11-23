@@ -6,9 +6,12 @@ import { LogoMark } from "../components/Brand";
 import { PageHeader, Section } from "../components/Page";
 import { TrackList, TrackListSkeleton } from "../components/TrackList";
 import { ViewModeToggle } from "../components/ViewModeToggle";
+import { MD, useMediaQuery } from "../hooks/useMediaQuery";
 import { useT } from "../i18n";
+import { cn } from "../lib/format";
 import { paths } from "../lib/routes";
 import type { Track } from "../lib/types";
+import { nativeLibraryToolsEnabled } from "../native/host";
 import { usePlayer, type PlaybackSource } from "../player/player";
 import { useAppearance } from "../stores/appearance";
 import { useLibrary } from "../stores/library";
@@ -20,9 +23,9 @@ function Shortcut({ to, label, tracks, cover, source }: { to: string; label: str
   const playList = usePlayer((s) => s.playList);
   const t = useT();
   return (
-    <div className="group relative flex h-14 items-center gap-3 overflow-hidden rounded-[12px] bg-surface-2 pr-2 transition-colors hover:bg-surface-3 md:h-16">
+    <div className="home-shortcut group relative flex h-14 items-center gap-3 overflow-hidden rounded-[12px] bg-surface-2 pr-2 transition-colors hover:bg-surface-3 md:h-16">
       <Link to={to} className="absolute inset-0" aria-label={label} />
-      <span className="pointer-events-none size-14 shrink-0 overflow-hidden md:size-16">{cover}</span>
+      <span className="home-shortcut-art pointer-events-none size-14 shrink-0 overflow-hidden md:size-16">{cover}</span>
       <span className="pointer-events-none min-w-0 flex-1 truncate text-[13px] font-semibold md:text-sm">{label}</span>
       {tracks.length > 0 && (
         <button
@@ -48,8 +51,8 @@ function RecentCard({ track, onPlay }: { track: Track; onPlay: () => void }) {
           <PlayIcon size={20} weight="fill" />
         </span>
       </span>
-      <span className="flex w-full min-w-0 flex-col gap-1">
-        <span title={track.title} className="line-clamp-2 min-h-10 break-words text-sm leading-5 font-medium">{track.title}</span>
+      <span className="recent-track-caption flex w-full min-w-0 flex-col gap-1">
+        <span title={track.title} className="recent-track-title line-clamp-2 min-h-10 break-words text-sm leading-5 font-medium">{track.title}</span>
         <span title={track.artist} className="block truncate text-xs text-fg-2">{track.artist}</span>
       </span>
     </button>
@@ -62,13 +65,18 @@ export default function Home() {
   const navigate = useNavigate();
   const t = useT();
   const show = useAppearance();
+  const wide = useMediaQuery(MD);
+  // Reserve a fourth shortcut row for tall phone layouts, leaving room for
+  // the full-sized Recently Played caption and the mini-player.
+  const tall = useMediaQuery("(min-height: 900px)");
+  const compact = nativeLibraryToolsEnabled() && !wide;
   const empty = status === "ready" && !favorites.length && !playlists.length && !history.length;
 
   return (
-    <div className="pb-8">
+    <div className={cn("pb-8", compact && "native-mobile-home")}>
       <PageHeader />
 
-      <div className="px-4 pt-2 pb-6 md:px-6 md:pt-8">
+      <div className="home-greeting px-4 pt-2 pb-6 md:px-6 md:pt-8">
         <h1 className="text-[28px] leading-tight font-semibold tracking-tight md:text-4xl">{t.time.greeting(new Date().getHours())}</h1>
       </div>
 
@@ -94,8 +102,8 @@ export default function Home() {
       )}
 
       {!empty && status === "ready" && (
-        <div className="flex flex-col gap-10">
-          {show.homeShortcuts && <div className="grid grid-cols-2 gap-2 px-4 md:px-6 lg:grid-cols-3 2xl:grid-cols-4">
+        <div className="home-sections flex flex-col gap-10">
+          {show.homeShortcuts && <div className="home-shortcuts grid grid-cols-2 gap-2 px-4 md:px-6 lg:grid-cols-3 2xl:grid-cols-4">
             <Shortcut
               to={paths.favorites}
               label={t.nav.favorites}
@@ -118,20 +126,21 @@ export default function Home() {
                 </span>
               }
             />
-            {playlists.slice(0, 6).map((p) => (
+            {playlists.slice(0, compact && !tall ? 4 : 6).map((p) => (
               <Shortcut
                 key={p.id}
                 to={paths.playlist(p.id)}
                 label={p.name}
                 tracks={p.tracks}
                 source={{ kind: "playlist", id: p.id }}
-                cover={<Artwork src={p.cover || p.tracks[0]?.thumb} fallback={p.tracks[0]?.thumb} className="size-full" />}
+                cover={<Artwork src={p.cover || p.tracks[0]?.thumb} fallback={(p.cover && p.tracks[0]?.thumb) || p.tracks[0]?.art} className="size-full" />}
               />
             ))}
           </div>}
 
           {show.homeRecent && history.length > 0 && (
             <Section
+              className="home-recent"
               title={t.nav.recentlyPlayed}
               action={
                 <div className="flex shrink-0 items-center gap-3"><ViewModeToggle value={show.recentView} onChange={recentView=>show.set({recentView})} label={t.nav.recentlyPlayed}/><Link to={paths.history} className="text-sm font-medium text-fg-2 hover:text-fg">

@@ -74,7 +74,7 @@ def add_zip(archive, name, data, mode, link=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--directory', default='release/desktop-studio-source')
-    parser.add_argument('--record', choices=['macOS', 'Windows'])
+    parser.add_argument('--record', choices=['macOS', 'Windows', 'Linux'])
     parser.add_argument('--checks', default='')
     args = parser.parse_args()
     config = json.loads((ROOT / 'desktop/release-baseline.json').read_text())
@@ -134,8 +134,13 @@ def main():
         if json.loads(archive.read(f'{source_name}/SOURCE-INFO.json')) != identity:
             raise RuntimeError('Desktop source archive identity mismatch')
     output = directory / 'release'
-    expected = ([f'YT-Beatmaker-Cues-Desktop-{version}-macOS-{arch}.dmg' for arch in ['arm64', 'x64']]
-                if args.record == 'macOS' else [f'YT-Beatmaker-Cues-Desktop-{version}-Windows.exe'])
+    prefix = f'YT-Beatmaker-Cues-Desktop-{version}-{args.record}'
+    if args.record == 'macOS':
+        expected = [f'{prefix}-{arch}.dmg' for arch in ['arm64', 'x64']]
+    elif args.record == 'Linux':
+        expected = [f'{prefix}-{arch}.{suffix}' for arch in ['x64', 'arm64'] for suffix in ['AppImage', 'deb']]
+    else:
+        expected = [f'{prefix}.exe']
     files = {name: dict(sha256=sha_file(output / name), bytes=(output / name).stat().st_size) for name in expected}
     files[archive_path.name] = dict(sha256=sha_file(archive_path), bytes=archive_path.stat().st_size)
     info = {key: value for key, value in identity.items() if key != 'sourceFiles'}

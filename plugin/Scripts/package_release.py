@@ -84,7 +84,7 @@ target=output/(name+'.zip')
 with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as archive:
     for kind in formats:add_native(archive,kind,name+'/'+kind)
     archive.write(root/'README.md',name+'/README.md')
-    parity=root.parent/'docs/native-feature-parity-1.0.7.md'
+    parity=root.parent/f'docs/native-feature-parity-{version}.md'
     if parity.is_file():archive.write(parity,name+'/Feature-Parity.md')
     archive.write(root/'AGPL-3.0.txt',name+'/Licenses/AGPL-3.0.txt')
     archive.write(root.parent/'LICENSE',name+'/Licenses/MIT-Application.txt')

@@ -407,10 +407,10 @@ static void trackPlaybackTests(){
     processor.setWebState(staleSnapshot,false);verify(25,"pitch",3);
     check((double)processor.trackPlayback(tracks[0]["id"].toString())["speed"]==25,"A delayed native save overwrote newer per-song preferences");
     processor.backgroundPlayback.store(true);
-    check(processor.performRemoteAction(CueProcessor::RemoteAction::next)&&wait(1),"Background next did not select the second song");verify(0,"speed",0);
-    check(!processor.setTrackPlayback(tracks[0]["id"].toString(),juce::JSON::parse("{\"speed\":99}")),"A delayed old-song rate command changed the new song");verify(0,"speed",0);
+     check(processor.performRemoteAction(CueProcessor::RemoteAction::next)&&wait(1),"Background next did not select the second song");verify(0,"pitch",0);
+     check(!processor.setTrackPlayback(tracks[0]["id"].toString(),juce::JSON::parse("{\"speed\":99}")),"A delayed old-song rate command changed the new song");verify(0,"pitch",0);
     check(processor.performRemoteAction(CueProcessor::RemoteAction::next)&&wait(2),"Background next did not select the third song");verify(-50,"speed",-7);
-    check(processor.performRemoteAction(CueProcessor::RemoteAction::previous)&&wait(1),"Background previous did not return to the second song");verify(0,"speed",0);
+     check(processor.performRemoteAction(CueProcessor::RemoteAction::previous)&&wait(1),"Background previous did not return to the second song");verify(0,"pitch",0);
     check(processor.performRemoteAction(CueProcessor::RemoteAction::previous)&&wait(0),"Background previous did not return to the first song");verify(25,"pitch",3);
     processor.backgroundPlayback.store(false);
     processor.loadRemote("beatmaker-local://"+tracks[2]["id"].toString(),0,tracks[2]["id"].toString(),true);verify(25,"pitch",3);
@@ -419,8 +419,8 @@ static void trackPlaybackTests(){
     CueProcessor cold;cold.prepareToPlay(48000,128);cold.songPlaybackEnabled.store(true);cold.setWebState(saved);
     auto* coldQueue=new juce::DynamicObject;coldQueue->setProperty("tracks",tracks);coldQueue->setProperty("index",2);cold.setNativeQueue(juce::var(coldQueue));cold.loadRemote("beatmaker-local://"+tracks[2]["id"].toString(),0,tracks[2]["id"].toString());
     for(int i=0;i<1000&&!cold.ready.load();++i){block(cold,128);juce::Thread::sleep(2);}
-    check(cold.ready.load()&&(double)cold.nativeSnapshot()["playback"]["speed"]==-50&&cold.semitones.load()==-7,"Cold native restore lost a song's playback controls");
-    std::cout<<"PASS: per-song native playback settings, neutral unseen songs, screen-off next/previous, stale-rate rejection, no prefetch side effects and cold session restore; no callback allocation\n";
+     check(cold.ready.load()&&(double)cold.nativeSnapshot()["playback"]["speed"]==-50&&cold.preservePitch.load()&&cold.semitones.load()==-7,"Cold native restore lost a song's playback controls");
+     std::cout<<"PASS: per-song native playback settings, Pitch by default for unseen songs, screen-off next/previous, stale-rate rejection, no prefetch side effects and cold session restore; no callback allocation\n";
 }
 
 static void nativePadInputTests(){

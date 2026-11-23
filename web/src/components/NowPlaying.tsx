@@ -12,7 +12,7 @@ import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { cn } from "../lib/format";
 import { isLocalAudio, type Track } from "../lib/types";
-import { iosLibraryToolsEnabled } from "../native/host";
+import { nativeLibraryToolsEnabled } from "../native/host";
 import { selectCurrent, usePlayer, useStatusText } from "../player/player";
 import { useUi, type PanelTab } from "../stores/ui";
 import { Artwork } from "./Artwork";
@@ -76,7 +76,7 @@ function Stage({ track, slot, className }: { track: Track; slot: number; classNa
 function TrackHeading({ track, large = false }: { track: Track; large?: boolean }) {
   const statusText = useStatusText();
   const status = usePlayer((s) => s.status);
-  const libraryTools = iosLibraryToolsEnabled();
+  const libraryTools = nativeLibraryToolsEnabled();
   const artist = libraryTools && isLocalAudio(track.id) && track.artist === "Local audio" ? "" : track.artist;
   const details = statusText ?? [artist, track.album].filter(Boolean).join(" · ");
   return (
@@ -110,7 +110,7 @@ function PanelBody({ tab, slot }: { tab: PanelTab; slot: number }) {
       <Stage track={track} slot={slot} />
       <TrackHeading track={track} />
       <ModeSwitch />
-      {(!iosLibraryToolsEnabled() || !isLocalAudio(track.id)) && <button
+      {(!nativeLibraryToolsEnabled() || !isLocalAudio(track.id)) && <button
         type="button"
         onClick={() => void startRadio(track)}
         className="flex h-11 items-center justify-center gap-2 rounded-full bg-surface-1 text-sm font-medium ring-1 ring-line transition-colors hover:bg-surface-3 active:scale-[0.98]"
@@ -121,7 +121,7 @@ function PanelBody({ tab, slot }: { tab: PanelTab; slot: number }) {
         <div className="rounded-[14px] bg-surface-1 p-3 ring-1 ring-line">
           <p className="pb-2 text-xs font-medium text-fg-3">{t.nowPlaying.upNext}</p>
           <div className="flex items-center gap-3">
-            <Artwork src={nextUp.thumb} className="size-10 rounded-[8px]" />
+            <Artwork src={nextUp.thumb} fallback={nextUp.art} className="size-10 rounded-[8px]" />
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{nextUp.title}</p>
               <p className="truncate text-xs text-fg-2">{nextUp.artist}</p>
@@ -233,14 +233,14 @@ export function PanelDrawer() {
   );
 }
 
-/** Phone Now Playing; the iOS preview docks it above the tabs. Drag down (or Back) to close. */
+/** Phone Now Playing docks above the tabs in native builds. Drag down (or Back) to close. */
 export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const track = usePlayer(selectCurrent);
   const reduce = useReducedMotion();
   const drag = useDragControls();
   const [view, setView] = useState<"player" | "queue">("player");
   const t = useT();
-  const docked = iosLibraryToolsEnabled();
+  const docked = nativeLibraryToolsEnabled();
 
   return createPortal(
     <AnimatePresence onExitComplete={() => setView("player")}>
@@ -261,7 +261,7 @@ export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () 
           onDragEnd={(_, info) => {
             if (info.offset.y > 120 || info.velocity.y > 700) onClose();
           }}
-          className={cn("fixed inset-0 z-40 flex flex-col overflow-hidden bg-bg md:hidden", docked && "ios-now-playing-docked")}
+          className={cn("fixed inset-0 z-40 flex flex-col overflow-hidden bg-bg md:hidden", docked && "native-now-playing-docked")}
         >
           <img
             src={track.thumb}

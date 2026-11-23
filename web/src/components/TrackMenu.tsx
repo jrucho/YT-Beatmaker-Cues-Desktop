@@ -21,7 +21,7 @@ import { useLibrary } from "../stores/library";
 import { toast, useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { iosPadLayoutEnabled } from '../mobile/padLayout';
-import { iosLibraryToolsEnabled } from "../native/host";
+import { nativeLibraryToolsEnabled } from "../native/host";
 import { renameLocalAudio, shareLocalAudio } from '../mobile/mediaEditing';
 import { isLocalAudio, type Track } from '../lib/types';
 import { Modal } from './Modal';
@@ -63,7 +63,7 @@ export function TrackMenu() {
   const [renaming,setRenaming]=useState<Track|null>(null),[songName,setSongName]=useState(''),[savingName,setSavingName]=useState(false);
   const [erasing, setErasing] = useState<Track | null>(null);
   const [removingAudio, setRemovingAudio] = useState(false);
-  const confirmErase = iosLibraryToolsEnabled() && !!menu && isLocalAudio(menu.track.id);
+  const confirmErase = nativeLibraryToolsEnabled() && !!menu && isLocalAudio(menu.track.id);
 
   useLayoutEffect(() => {
     if (!menu || !isMd || !box.current) return;
@@ -178,7 +178,7 @@ export function TrackMenu() {
               <div className="island-core p-2">
                 <div className="mx-auto mt-1 mb-2 h-1 w-9 rounded-full bg-surface-4" />
                 <div className="flex items-center gap-3 px-3 pb-3">
-                  <Artwork src={menu.track.thumb} className="size-12 rounded-[10px]" />
+                  <Artwork src={menu.track.thumb} fallback={menu.track.art} className="size-12 rounded-[10px]" />
                   <div className="min-w-0">
                     <p className="truncate font-medium">{menu.track.title}</p>
                     <p className="truncate text-sm text-fg-2">{menu.track.artist}</p>

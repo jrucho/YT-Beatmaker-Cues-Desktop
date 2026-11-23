@@ -34,7 +34,7 @@ export function Cover({ kind, tracks, cover, className, iconSize = 40 }: { kind:
   return (
     <span className={cn("grid grid-cols-2 grid-rows-2 overflow-hidden", className)}>
       {arts.map((t) => (
-        <Artwork key={t.id} src={t.thumb} className="size-full" />
+        <Artwork key={t.id} src={t.thumb} fallback={t.art} className="size-full" />
       ))}
     </span>
   );

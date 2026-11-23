@@ -17,7 +17,7 @@ import { useT } from "../i18n";
 import { cuePosition, independentTuningAvailable, selectCurrent, usePlayer } from "../player/player";
 import { CUE_BANKS, useCueStore } from "../mobile/cueStore";
 import { midi, midiAvailable, type MidiDevice, type MidiMessage } from "../native/midi";
-import { iosLibraryToolsEnabled } from "../native/host";
+import { nativeLibraryToolsEnabled } from "../native/host";
 import { CONTROLLER_PRESETS, mapControllerMessage, readControllerPreset, saveControllerPreset } from "../native/controllerMapping";
 import { padFeedback, releasePointerPadHolds, usePadFeedback } from "../mobile/padFeedback";
 import { changePadSample, hasPadSample, padSamplesAvailable, playPadSample, refreshPadSamples, usePadSamples, type PadSample } from "../mobile/padSamples";
@@ -42,9 +42,17 @@ const formatSemitones = (st: number) => `${st > 0 ? "+" : ""}${st} st`;
 
 function CueSongs({onSelected}:{onSelected?:()=>void}) {
   const queue = usePlayer(s=>s.queue);
+  // Mounting/reopening the panel is the only automatic jump; don't chase playback while browsing.
+  const [reveal] = useState(() => {
+    const { index, queue } = usePlayer.getState();
+    return queue[index] ? { key: "cues-queue-open", index } : undefined;
+  });
   return <div className="cue-song-browser min-w-0 flex-1">
     <span className="cue-song-caption text-[10px] text-fg-3">Playlist songs · {queue.length}</span>
-    <div role="region" aria-label="Playlist songs" className="cue-song-list scroll-area w-full overflow-y-auto rounded-lg text-fg"><TrackList tracks={queue} header={false} showAlbum={false} onSelect={index=>{usePlayer.getState().jumpTo(index);onSelected?.();}}/></div>
+    <div role="region" aria-label="Playlist songs" className="cue-song-list scroll-area w-full overflow-y-auto rounded-lg text-fg">
+      <TrackList tracks={queue} reveal={reveal} isPlaybackQueue header={false} showAlbum={false}
+        onSelect={index=>{usePlayer.getState().jumpTo(index);onSelected?.();}}/>
+    </div>
   </div>;
 }
 
@@ -53,7 +61,7 @@ function CueTrackLabel({ track, padLayoutEnabled }: { track: Track | null; padLa
   const source = usePlaybackCollection();
   const index = usePlayer((s) => s.index);
   const linkState = track ? trackLinkState(track.id, index) : undefined;
-  const enabled = !!track && iosLibraryToolsEnabled();
+  const enabled = !!track && nativeLibraryToolsEnabled();
   const matching = useMatchingPlaylists(enabled && !source?.to ? track?.id : undefined);
   const matchingPlaylist = matching.length === 1 ? matching[0] : undefined;
   const destination = enabled ? source?.to ?? (matchingPlaylist ? paths.playlist(matchingPlaylist.id) : undefined) : undefined;
@@ -439,7 +447,7 @@ export default function Cues() {
         {track || sampleSupport ? (
           <>
             <div className="cue-transport mt-4 flex items-center gap-3 rounded-[16px] bg-surface-2 p-3">
-              <Artwork src={track?.thumb} className="cue-artwork size-12 rounded-[10px]" />
+              <Artwork src={track?.thumb} fallback={track?.art} className="cue-artwork size-12 rounded-[10px]" />
                <CueTrackLabel track={track} padLayoutEnabled={padLayoutEnabled} />
               <div className={padLayoutEnabled?'cue-mark-actions':undefined}>
               {padLayoutEnabled&&!rearranging&&fineButton}
@@ -645,6 +653,7 @@ export default function Cues() {
                   <button
                     type="button"
                     aria-label={t.cues.pitchMode}
+                    aria-pressed={speedMode === "pitch"}
                     onClick={() => usePlayer.getState().setSpeedMode("pitch")}
                     className={cn(
                       "h-8 rounded-full text-[11px] font-semibold transition-colors",
@@ -656,6 +665,7 @@ export default function Cues() {
                   <button
                     type="button"
                     aria-label={t.cues.speedMode}
+                    aria-pressed={speedMode === "speed"}
                     onClick={() => usePlayer.getState().setSpeedMode("speed")}
                     className={cn(
                       "h-8 rounded-full text-[11px] font-semibold transition-colors",

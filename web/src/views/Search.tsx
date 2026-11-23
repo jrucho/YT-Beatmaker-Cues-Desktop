@@ -24,7 +24,7 @@ import { useT } from "../i18n";
 import { cn } from "../lib/format";
 import { paths } from "../lib/routes";
 import type { Track } from "../lib/types";
-import { iosLibraryToolsEnabled } from "../native/host";
+import { nativeLibraryToolsEnabled } from "../native/host";
 import { usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { parseList } from "./BatchSearch";
@@ -80,7 +80,7 @@ export default function Search() {
   const playTrack = usePlayer((s) => s.playTrack);
   const playlists = useLibrary((s) => s.playlists);
   const playlistMatches = q.trim() ? playlists.filter(p => p.name.toLowerCase().includes(q.trim().toLowerCase())) : [];
-  const libraryTools = iosLibraryToolsEnabled();
+  const libraryTools = nativeLibraryToolsEnabled();
   const playlistsLabel = libraryTools ? t.libraryTools.savedPlaylists : t.common.playlist;
 
   const playlistLink = /[?&]list=/.test(text);
@@ -321,7 +321,7 @@ export default function Search() {
                 onClick={() => playTrack(linkTrack)}
                 className="flex w-full items-center gap-4 rounded-[16px] bg-surface-2 p-3 text-left ring-1 ring-line transition-colors hover:bg-surface-3"
               >
-                <Artwork src={linkTrack.thumb} className="aspect-video w-28 rounded-[10px] md:w-36" />
+                <Artwork src={linkTrack.thumb} fallback={linkTrack.art} className="aspect-video w-28 rounded-[10px] md:w-36" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5 text-xs font-medium text-accent-text">
                     <LinkIcon size={14} /> {t.search.youtubeLink}
