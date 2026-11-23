@@ -11,12 +11,14 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { cn } from "../lib/format";
-import type { Track } from "../lib/types";
+import { isLocalAudio, type Track } from "../lib/types";
+import { iosLibraryToolsEnabled } from "../native/host";
 import { selectCurrent, usePlayer, useStatusText } from "../player/player";
 import { useUi, type PanelTab } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { FavoriteButton, ModeSwitch, Scrubber, Transport } from "./Controls";
 import { IconButton } from "./IconButton";
+import { PlaybackContext } from "./PlaybackContext";
 import { QueueList } from "./Queue";
 import { SLOT, VideoSlot } from "./Video";
 
@@ -74,13 +76,17 @@ function Stage({ track, slot, className }: { track: Track; slot: number; classNa
 function TrackHeading({ track, large = false }: { track: Track; large?: boolean }) {
   const statusText = useStatusText();
   const status = usePlayer((s) => s.status);
+  const libraryTools = iosLibraryToolsEnabled();
+  const artist = libraryTools && isLocalAudio(track.id) && track.artist === "Local audio" ? "" : track.artist;
+  const details = statusText ?? [artist, track.album].filter(Boolean).join(" · ");
   return (
     <div className="flex items-center gap-3">
       <div className="min-w-0 flex-1">
         <h2 className={cn("truncate font-semibold tracking-tight", large ? "text-[22px] leading-tight" : "text-lg")}>{track.title}</h2>
-        <p className={cn("truncate", large ? "text-base" : "text-sm", status === "error" ? "text-danger" : "text-fg-2")}>
-          {statusText ?? [track.artist, track.album].filter(Boolean).join(" · ")}
-        </p>
+        {details && <p className={cn("truncate", large ? "text-base" : "text-sm", status === "error" ? "text-danger" : "text-fg-2")}>
+          {details}
+        </p>}
+        {libraryTools && <PlaybackContext track={track} />}
       </div>
       <FavoriteButton track={track} size={large ? "lg" : "md"} />
     </div>
@@ -104,13 +110,13 @@ function PanelBody({ tab, slot }: { tab: PanelTab; slot: number }) {
       <Stage track={track} slot={slot} />
       <TrackHeading track={track} />
       <ModeSwitch />
-      <button
+      {(!iosLibraryToolsEnabled() || !isLocalAudio(track.id)) && <button
         type="button"
         onClick={() => void startRadio(track)}
         className="flex h-11 items-center justify-center gap-2 rounded-full bg-surface-1 text-sm font-medium ring-1 ring-line transition-colors hover:bg-surface-3 active:scale-[0.98]"
       >
         <RadioIcon size={18} /> {t.nowPlaying.startRadio}
-      </button>
+      </button>}
       {nextUp && (
         <div className="rounded-[14px] bg-surface-1 p-3 ring-1 ring-line">
           <p className="pb-2 text-xs font-medium text-fg-3">{t.nowPlaying.upNext}</p>
@@ -227,20 +233,21 @@ export function PanelDrawer() {
   );
 }
 
-/** Full-screen Now Playing for phones. Drag down (or Back) to close. */
+/** Phone Now Playing; the iOS preview docks it above the tabs. Drag down (or Back) to close. */
 export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const track = usePlayer(selectCurrent);
   const reduce = useReducedMotion();
   const drag = useDragControls();
   const [view, setView] = useState<"player" | "queue">("player");
   const t = useT();
+  const docked = iosLibraryToolsEnabled();
 
   return createPortal(
     <AnimatePresence onExitComplete={() => setView("player")}>
       {open && track && (
         <motion.div
           role="dialog"
-          aria-modal="true"
+          aria-modal={docked ? undefined : true}
           aria-label={t.nowPlaying.title}
           initial={reduce ? { opacity: 0 } : { y: "100%" }}
           animate={{ y: 0, opacity: 1 }}
@@ -254,7 +261,7 @@ export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () 
           onDragEnd={(_, info) => {
             if (info.offset.y > 120 || info.velocity.y > 700) onClose();
           }}
-          className="fixed inset-0 z-40 flex flex-col overflow-hidden bg-bg md:hidden"
+          className={cn("fixed inset-0 z-40 flex flex-col overflow-hidden bg-bg md:hidden", docked && "ios-now-playing-docked")}
         >
           <img
             src={track.thumb}
@@ -264,7 +271,7 @@ export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () 
           />
           <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-transparent via-bg/70 to-bg" />
 
-          <div className="overlay-top relative flex flex-1 flex-col px-5">
+          <div className={cn("overlay-top relative flex flex-1 flex-col px-5", docked && "min-h-0")}>
             <div className="flex h-14 touch-none items-center justify-between" onPointerDown={(e) => drag.start(e)}>
               <IconButton label={t.common.close} onClick={onClose} className="-ml-2 text-fg">
                 <CaretDownIcon size={24} />
@@ -285,7 +292,8 @@ export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () 
                 <QueueList />
               </div>
             ) : (
-              <div className="flex flex-1 flex-col justify-evenly gap-4 pb-[calc(16px+env(safe-area-inset-bottom))]">
+              <div className={cn("flex flex-1 flex-col justify-evenly gap-4",
+                docked ? "scroll-area overflow-y-auto pb-4 [justify-content:safe_space-evenly]" : "pb-[calc(16px+env(safe-area-inset-bottom))]")}>
                 <div className="touch-none" onPointerDown={(e) => drag.start(e)}>
                   <Stage track={track} slot={SLOT.sheet} className="max-w-[min(100%,46dvh)]" />
                 </div>

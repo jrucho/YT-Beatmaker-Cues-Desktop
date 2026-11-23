@@ -21,6 +21,7 @@ import { getT } from "./i18n";
 import { capabilities } from "./lib/api";
 import { cn } from "./lib/format";
 import { legacyRedirect, NOW_PLAYING_HASH, paths } from "./lib/routes";
+import { iosLibraryToolsEnabled } from "./native/host";
 import { selectCurrent, usePlayer } from "./player/player";
 import { useLibrary } from "./stores/library";
 import { openSettings, useSystem } from "./stores/system";
@@ -32,6 +33,7 @@ import Collection from "./views/Collection";
 import Genre from "./views/Genre";
 import Home from "./views/Home";
 import Library from "./views/Library";
+import RadioPlaylist from "./views/RadioPlaylist";
 import Search from "./views/Search";
 
 const SHEET_HASH = `#${NOW_PLAYING_HASH}`;
@@ -131,6 +133,7 @@ function MusicApp({ onStudio, cues }: { onStudio?: () => void; cues?: boolean })
   }, [location.pathname]);
 
   const sheetOpen = !isMd && location.hash === SHEET_HASH;
+  const dockedSheet = iosLibraryToolsEnabled() && sheetOpen && hasTrack;
   const closeSheet = () => {
     // Pop the history entry the sheet pushed, so Back and the close button behave the same.
     const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
@@ -166,6 +169,7 @@ function MusicApp({ onStudio, cues }: { onStudio?: () => void; cues?: boolean })
               <Route path={paths.cues} element={<Cues />} />
               <Route path={paths.favorites} element={<Collection kind="favorites" />} />
               <Route path={paths.history} element={<Collection kind="history" />} />
+              {iosLibraryToolsEnabled() && <Route path={paths.radio} element={<RadioPlaylist />} />}
               <Route path="/playlist/:id" element={<Collection kind="playlist" />} />
               <Route path="*" element={<Home />} />
             </Routes>
@@ -178,7 +182,7 @@ function MusicApp({ onStudio, cues }: { onStudio?: () => void; cues?: boolean })
         !cueWorkspace && <PlayerBar />
       ) : (
         <>
-          {!cueWorkspace&&<><MiniPlayer /><TabBar onStudio={onStudio} cues={cues} /></>}
+          {!cueWorkspace&&<><MiniPlayer /><TabBar onStudio={onStudio} cues={cues} flush={dockedSheet} /></>}
         </>
       )}
 

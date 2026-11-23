@@ -116,7 +116,7 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
     : [...new Map([...library.favorites, ...library.playlists.flatMap(p => p.tracks)].map(t => [t.id, t])).values()]
   ).slice(0, 8);
   const playlistMatches = query.trim()
-    ? library.playlists.filter(p => p.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6)
+    ? library.playlists.filter(p => p.name.toLowerCase().includes(query.trim().toLowerCase()))
     : [];
   const libraryTitle = library.history.length ? "Recently played" : "Your tracks";
 

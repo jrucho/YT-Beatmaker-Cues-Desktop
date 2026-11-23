@@ -9,11 +9,14 @@ import { ViewModeToggle } from "../components/ViewModeToggle";
 import { useT } from "../i18n";
 import { paths } from "../lib/routes";
 import type { Track } from "../lib/types";
-import { usePlayer } from "../player/player";
+import { usePlayer, type PlaybackSource } from "../player/player";
 import { useAppearance } from "../stores/appearance";
 import { useLibrary } from "../stores/library";
 
-function Shortcut({ to, label, tracks, cover }: { to: string; label: string; tracks: Track[]; cover: ReactNode }) {
+const FAVORITES = { kind: "favorites" } as const;
+const HISTORY = { kind: "history" } as const;
+
+function Shortcut({ to, label, tracks, cover, source }: { to: string; label: string; tracks: Track[]; cover: ReactNode; source: PlaybackSource }) {
   const playList = usePlayer((s) => s.playList);
   const t = useT();
   return (
@@ -24,7 +27,7 @@ function Shortcut({ to, label, tracks, cover }: { to: string; label: string; tra
       {tracks.length > 0 && (
         <button
           type="button"
-          onClick={() => playList(tracks, 0)}
+          onClick={() => playList(tracks, 0, source)}
           aria-label={t.common.playX(label)}
           className="relative z-10 hidden size-10 shrink-0 place-items-center rounded-full bg-accent text-accent-ink opacity-0 shadow-[0_6px_18px_rgb(0_0_0/0.35)] transition-[opacity,transform] duration-200 ease-out-expo group-hover:opacity-100 hover:scale-105 active:scale-95 md:grid"
         >
@@ -97,6 +100,7 @@ export default function Home() {
               to={paths.favorites}
               label={t.nav.favorites}
               tracks={favorites}
+              source={FAVORITES}
               cover={
                 <span className="grid size-full place-items-center bg-accent-soft text-accent-text">
                   <HeartIcon size={24} weight="fill" />
@@ -107,6 +111,7 @@ export default function Home() {
               to={paths.history}
               label={t.nav.recentlyPlayed}
               tracks={history}
+              source={HISTORY}
               cover={
                 <span className="grid size-full place-items-center bg-surface-3 text-fg-2">
                   <ClockCounterClockwiseIcon size={24} />
@@ -119,7 +124,8 @@ export default function Home() {
                 to={paths.playlist(p.id)}
                 label={p.name}
                 tracks={p.tracks}
-                cover={<Artwork src={p.tracks[0]?.thumb} className="size-full" />}
+                source={{ kind: "playlist", id: p.id }}
+                cover={<Artwork src={p.cover || p.tracks[0]?.thumb} fallback={p.tracks[0]?.thumb} className="size-full" />}
               />
             ))}
           </div>}
@@ -133,9 +139,9 @@ export default function Home() {
                 </Link></div>
               }
             >
-              {show.recentView==='list'?<div className="recent-track-list px-2 md:px-3"><TrackList tracks={history.slice(0,16)} context={history} header={false} showAlbum={false}/></div>:<div className="no-scrollbar flex snap-x snap-mandatory scroll-px-4 gap-4 overflow-x-auto px-4 md:scroll-px-6 md:px-6">
+              {show.recentView==='list'?<div className="recent-track-list px-2 md:px-3"><TrackList tracks={history.slice(0,16)} context={history} playbackSource={HISTORY} header={false} showAlbum={false}/></div>:<div className="no-scrollbar flex snap-x snap-mandatory scroll-px-4 gap-4 overflow-x-auto px-4 md:scroll-px-6 md:px-6">
                 {history.slice(0, 16).map((t, i) => (
-                  <RecentCard key={t.id} track={t} onPlay={() => playList(history, i)} />
+                  <RecentCard key={t.id} track={t} onPlay={() => playList(history, i, HISTORY)} />
                 ))}
               </div>}
             </Section>
@@ -151,7 +157,7 @@ export default function Home() {
               }
             >
               <div className="px-2 md:px-3">
-                <TrackList tracks={favorites.slice(0, 5)} context={favorites} header={false} showAlbum={false} />
+                <TrackList tracks={favorites.slice(0, 5)} context={favorites} playbackSource={FAVORITES} header={false} showAlbum={false} />
               </div>
             </Section>
           )}

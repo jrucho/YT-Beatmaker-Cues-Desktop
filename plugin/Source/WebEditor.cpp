@@ -145,10 +145,59 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         .withNativeFunction("libraryRead",[this](const auto&,auto complete){storageTask([this]{return juce::var(engine.libraryStore.readLibrary());},std::move(complete));})
         .withNativeFunction("libraryVersion",[this](const auto&,auto complete){storageTask([this]{return juce::var(engine.libraryStore.version());},std::move(complete));})
         .withNativeFunction("librarySnapshot",[this](const auto&,auto complete){storageTask([this]{return engine.libraryStore.readSnapshot();},std::move(complete));})
-        .withNativeFunction("libraryCommit",[this](const auto& args,auto complete){const auto baseline=args[0]["base"].toString(), next=args[0]["next"].toString();storageTask([this,baseline,next]{return juce::var(engine.libraryStore.commitLibrary(baseline,next));},std::move(complete));})
+        .withNativeFunction("libraryCommit",[this](const auto& args,auto complete){
+            const auto baseline=args[0]["base"].toString(),next=args[0]["next"].toString();
+           #if JUCE_IOS && BEATMAKER_IOS_PREVIEW
+            if((bool)args[0]["captureUndo"]){
+                storageTask([this,baseline,next]{
+                    juce::String previous;
+                    const auto json=engine.libraryStore.commitLibrary(baseline,next,&previous);
+                    return object({{"previous",previous},{"json",json}});
+                },std::move(complete));return;
+            }
+           #endif
+            storageTask([this,baseline,next]{return juce::var(engine.libraryStore.commitLibrary(baseline,next));},std::move(complete));
+        })
+       #if JUCE_IOS && BEATMAKER_IOS_PREVIEW
+        .withNativeFunction("libraryReplayEdit",[this](const auto& args,auto complete){
+            const auto expected=args[0]["base"].toString(),desired=args[0]["next"].toString();
+            storageTask([this,expected,desired]{return juce::var(engine.libraryStore.commitLibrary(expected,desired,nullptr,true));},std::move(complete));
+        })
+         .withNativeFunction("localAudioStatus",[this](const auto&,auto complete){
+             storageTask([this]{return engine.libraryStore.localAudioStatus();},std::move(complete),true);
+         })
+         .withNativeFunction("pickPlaylistCover",[this](const auto& args,auto complete){
+             const auto source=args.isEmpty()?juce::String{}:args[0].toString();
+             if(galleryBusy||engine.wrapperType==juce::AudioProcessor::wrapperType_AudioUnitv3||(source!="photos"&&source!="files")){
+                 complete(object({{"image",juce::String{}},{"failed",true}}));return;
+             }
+             galleryBusy=true;
+             juce::Component::SafePointer<MobileWebEditor> safe(this);
+             auto finish=[safe,complete=std::move(complete)](const juce::var& result){
+                 if(safe){safe->galleryBusy=false;complete(result);}
+             };
+             auto result=[](const PlaylistCoverSelection& image){return object({{"image",image.image},{"failed",image.failed}});};
+             if(source=="photos"){
+                 gallery=pickGalleryImage(*this,[safe,finish,result](PlaylistCoverSelection image){
+                     if(safe)safe->storageTask([image,result]{return result(image);},finish,true);
+                 });
+             }else{
+                 exporter=std::make_unique<juce::FileChooser>("Choose a playlist cover",juce::File{},"*.jpg;*.jpeg;*.png;*.heic;*.heif;*.webp;*.gif;*.tiff;*.tif");
+                 exporter->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe,finish,result](const auto& chooser){
+                     if(!safe)return;
+                     const auto file=chooser.getURLResult();
+                     if(file.isEmpty()){finish(result({}));return;}
+                     safe->storageTask([file,result]{return result(playlistCoverFromFile(file));},finish,true);
+                 });
+             }
+         })
+        #endif
         .withNativeFunction("cachedTrack",[this](const auto& args,auto complete){const auto id=args[0].toString();storageTask([this,id]{return engine.cachedTrack(id);},std::move(complete));})
         .withNativeFunction("localMedia",[this](const auto&,auto complete){storageTask([this]{return engine.libraryStore.allMedia();},std::move(complete));})
-        .withNativeFunction("renameLocalAudio",[this](const auto& args,auto complete){const auto id=args[0]["id"].toString(),title=args[0]["title"].toString();storageTask([this,id,title]{return engine.libraryStore.renameLocalMedia(id,title);},std::move(complete),true);})
+        .withNativeFunction("renameLocalAudio",[this](const auto& args,auto complete){
+            const auto id=args[0]["id"].toString(),title=args[0]["title"].toString(),expected=args[0]["expectedTitle"].toString();
+            storageTask([this,id,title,expected]{return engine.libraryStore.renameLocalMedia(id,title,expected);},std::move(complete),true);
+        })
         .withNativeFunction("mixer",[this](const auto& args,auto complete){try{if(!args.isEmpty())engine.setMixer(args[0]);complete(engine.mixerState());}catch(const std::exception& error){complete(failure(error.what()));}})
         .withNativeFunction("transitions",[this](const auto& args,auto complete){try{if(!args.isEmpty())engine.setTransitions(args[0]);complete(engine.transitions());}catch(const std::exception& error){complete(failure(error.what()));}})
         .withNativeFunction("looperState",[this](const auto& args,auto complete){try{complete(engine.looperState(!args.isEmpty()&&(bool)args[0]["events"]));}catch(const std::exception& error){complete(failure(error.what()));}})
@@ -202,7 +251,9 @@ juce::WebBrowserComponent::Options MobileWebEditor::options() {
         })
         .withNativeFunction("importAudio",[this](const auto& args,auto complete){
             const bool multiple=!args.isEmpty()&&(bool)args[0]["multiple"];
-            exporter=std::make_unique<juce::FileChooser>("Import audio",juce::File{},"*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.aac;*.ogg;*.mp4;*.mov");
+            const bool audioOnly=!args.isEmpty()&&(bool)args[0]["audioOnly"];
+            const juce::String audioFormats="*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.aac;*.ogg";
+            exporter=std::make_unique<juce::FileChooser>("Import audio",juce::File{},audioOnly?audioFormats:audioFormats+";*.mp4;*.mov");
             juce::Component::SafePointer<MobileWebEditor> safe(this);
             exporter->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles|(multiple?juce::FileBrowserComponent::canSelectMultipleItems:0),
                 [safe,multiple,complete=std::move(complete)](const auto& chooser){

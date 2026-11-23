@@ -27,6 +27,6 @@ try{
   const warm=await getPlaylist(value,undefined,{signal:deadline});
   const selectedId=/^https?:/.test(value)?new URL(value).searchParams.get('v'):undefined;
   const selected=playlist.tracks.find(track=>track.id===selectedId)||playlist.tracks[0];
-  console.log(JSON.stringify({conditions:'Live server provider on this Mac/network; excludes audio download/decode, WebView rendering and device output latency',playlist:{id:playlist.id,title:metadata[0]?.title,tracks:playlist.tracks.length,truncated:playlist.truncated,selectedTrack:selected&&{id:selected.id,title:selected.title,duration:selected.duration}},metadataMs,completeMs,progress,coldRequestCount,warm:{elapsedMs:Math.round(performance.now()-warmStarted),tracks:warm.tracks.length,requests:requests.length-coldRequestCount},requests},null,2));
+  console.log(JSON.stringify({conditions:'Live server provider on this Mac/network; excludes audio download/decode, WebView rendering and device output latency',playlist:{id:playlist.id,title:metadata.playlists[0]?.title,tracks:playlist.tracks.length,truncated:playlist.truncated,selectedTrack:selected&&{id:selected.id,title:selected.title,duration:selected.duration}},metadataMs,completeMs,progress,coldRequestCount,warm:{elapsedMs:Math.round(performance.now()-warmStarted),tracks:warm.tracks.length,requests:requests.length-coldRequestCount},requests},null,2));
 }catch(error){console.error(JSON.stringify({error:error.message,elapsedMs:elapsed(),requests},null,2));process.exitCode=1;}
 finally{clearTimeout(timer);}

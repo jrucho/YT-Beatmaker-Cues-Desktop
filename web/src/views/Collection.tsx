@@ -1,17 +1,22 @@
-import { DotsThreeIcon, MagnifyingGlassIcon, PauseIcon, PencilSimpleIcon, PlayIcon, ShuffleIcon, TrashIcon } from "@phosphor-icons/react";
+import { DotsThreeIcon, ListPlusIcon, MagnifyingGlassIcon, PauseIcon, PencilSimpleIcon, PlayIcon, ShuffleIcon, TrashIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Cover, type CoverKind } from "../components/Cover";
 import { NamePlaylistDialog } from "../components/Dialogs";
+import { EditHistoryControls } from "../components/EditHistoryControls";
 import { IconButton, PlayDisc } from "../components/IconButton";
 import { Modal } from "../components/Modal";
 import { BackButton, EmptyState, PageHeader } from "../components/Page";
+import { PlaylistAddTracks } from "../components/PlaylistAddTracks";
+import { PlaylistCover } from "../components/PlaylistCover";
 import { TrackList } from "../components/TrackList";
+import { useTrackReveal } from "../hooks/useTrackReveal";
 import { useT } from "../i18n";
-import { shuffled } from "../lib/format";
-import { paths } from "../lib/routes";
+import { cn, shuffled } from "../lib/format";
+import { paths, type LibraryReturnState } from "../lib/routes";
 import type { Track } from "../lib/types";
-import { usePlayer } from "../player/player";
+import { iosLibraryToolsEnabled } from "../native/host";
+import { selectPlaybackSource, selectPlayingPlaylistId, usePlayer, type PlaybackSource } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { useUi } from "../stores/ui";
 
@@ -27,16 +32,23 @@ export default function Collection({ kind }: Props) {
   const playList = usePlayer((s) => s.playList);
   const toggle = usePlayer((s) => s.toggle);
   const queue = usePlayer((s) => s.queue);
+  const currentSource = usePlayer(selectPlaybackSource);
   const status = usePlayer((s) => s.status);
   const [renaming, setRenaming] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [addTo, setAddTo] = useState<string | null>(null);
   const t = useT();
+  const libraryTools = iosLibraryToolsEnabled();
+  const playingPlaylistId = usePlayer((s) => libraryTools && kind === "playlist" ? selectPlayingPlaylistId(s) : null);
+  const backToPlaylist: LibraryReturnState | undefined = id && playingPlaylistId === id ? { revealPlaylistId: id } : undefined;
 
   const playlist = kind === "playlist" ? lib.playlists.find((p) => p.id === id) : undefined;
   const tracks: Track[] = kind === "favorites" ? lib.favorites : kind === "history" ? lib.history : playlist?.tracks ?? [];
+  const reveal = useTrackReveal(tracks, { playlistId: libraryTools && kind === "playlist" ? id : undefined });
   const name = kind === "favorites" ? t.nav.favorites : kind === "history" ? t.nav.recentlyPlayed : playlist?.name ?? "";
   const trackIds=useMemo(()=>new Set(tracks.map(track=>track.id)),[tracks]);
+  const source = useMemo<PlaybackSource>(() => kind === "playlist" ? { kind, id: id ?? "" } : { kind }, [kind, id]);
   const label =
     kind === "playlist" ? t.collection.labelPlaylist : kind === "favorites" ? t.collection.labelFavorites : t.collection.labelHistory;
 
@@ -65,27 +77,26 @@ export default function Collection({ kind }: Props) {
   }
 
   const total = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
-  // The queue holds exactly these tracks, so this collection is the current playback context.
-  const isThisPlaying = tracks.length > 0 && queue.length === tracks.length && queue.every((t) => trackIds.has(t.id));
+  const isThisPlaying = libraryTools
+    ? currentSource?.kind === kind && (currentSource.kind !== "playlist" || currentSource.id === id)
+    : tracks.length > 0 && queue.length === tracks.length && queue.every((t) => trackIds.has(t.id));
   const playing = isThisPlaying && (status === "playing" || status === "loading");
+  const coverClass = "collection-cover size-44 shrink-0 rounded-[18px] shadow-[0_24px_60px_rgb(0_0_0/0.4)] md:size-52";
 
   return (
     <div className="collection-page pb-8">
       <PageHeader
         title={name}
         mobileOnly
-        actions={kind === "playlist" ? <BackButton fallback={paths.library} force /> : undefined}
+        actions={kind === "playlist" ? <BackButton fallback={paths.library} fallbackState={backToPlaylist} force /> : undefined}
       />
 
       <div className="relative">
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-20 h-72 bg-linear-to-b from-accent-soft to-transparent" />
         <div className="collection-hero relative flex min-w-0 flex-col items-center gap-5 px-4 pt-2 pb-6 md:flex-row md:items-end md:gap-6 md:px-6 md:pt-10">
-          <Cover
-            kind={kind}
-            tracks={tracks}
-            iconSize={64}
-            className="collection-cover size-44 shrink-0 rounded-[18px] shadow-[0_24px_60px_rgb(0_0_0/0.4)] md:size-52"
-          />
+          {libraryTools && playlist
+            ? <PlaylistCover key={playlist.id} playlist={playlist} className={coverClass} />
+            : <Cover kind={kind} tracks={tracks} cover={playlist?.cover} iconSize={64} className={coverClass} />}
           <div className="collection-heading flex w-full min-w-0 flex-1 flex-col items-center gap-2 text-center md:items-start md:text-left">
             <span className="hidden text-xs font-medium text-fg-2 md:block">{label}</span>
             <h1 className="max-w-full text-[28px] leading-[1.1] font-bold tracking-tight break-words md:text-5xl lg:text-6xl">{name}</h1>
@@ -97,12 +108,12 @@ export default function Collection({ kind }: Props) {
         </div>
       </div>
 
-      <div className="collection-actions flex items-center gap-2 px-4 pb-4 md:px-6">
+      <div className={cn("collection-actions flex items-center gap-2 px-4 pb-4 md:px-6", libraryTools && "flex-wrap")}>
         <PlayDisc
           label={playing ? t.common.pause : t.common.playX(name)}
           px={56}
           disabled={!tracks.length}
-          onClick={() => (isThisPlaying ? toggle() : playList(tracks, 0))}
+          onClick={() => (isThisPlaying ? toggle() : playList(tracks, 0, source))}
         >
           {playing ? <PauseIcon size={24} weight="fill" /> : <PlayIcon size={24} weight="fill" />}
         </PlayDisc>
@@ -112,7 +123,7 @@ export default function Collection({ kind }: Props) {
           disabled={!tracks.length}
           onClick={() => {
             const order = shuffled(tracks);
-            playList(order, 0);
+            playList(order, 0, source);
           }}
         >
           <ShuffleIcon size={24} />
@@ -122,11 +133,18 @@ export default function Collection({ kind }: Props) {
             <DotsThreeIcon size={26} weight="bold" />
           </IconButton>
         )}
+        {libraryTools && playlist && (
+          <button type="button" onClick={() => setAddTo(playlist.id)}
+            className="collection-add-tracks flex h-11 shrink-0 items-center gap-2 rounded-full bg-surface-3 px-3 text-sm font-semibold hover:bg-surface-4">
+            <ListPlusIcon size={19} weight="bold" /> {t.libraryTools.add.title}
+          </button>
+        )}
+        {libraryTools && <div className="hidden md:block"><EditHistoryControls /></div>}
       </div>
 
       <div className="px-2 md:px-3">
         {tracks.length > 0 ? (
-          <TrackList tracks={tracks} playlistId={playlist?.id} showAlbum />
+          <TrackList tracks={tracks} playlistId={playlist?.id} playbackSource={source} reveal={reveal} showAlbum />
         ) : (
           <EmptyState
             icon={<MagnifyingGlassIcon size={28} />}
@@ -136,7 +154,7 @@ export default function Collection({ kind }: Props) {
                 ? t.collection.emptyFavoritesBody
                 : kind === "history"
                   ? t.collection.emptyHistoryBody
-                  : t.collection.emptyPlaylistBody
+                  : libraryTools ? t.libraryTools.add.empty : t.collection.emptyPlaylistBody
             }
             action={
               <Link to={paths.search} className="mt-2 h-11 rounded-full bg-accent px-6 text-sm leading-[44px] font-semibold text-accent-ink">
@@ -149,6 +167,7 @@ export default function Collection({ kind }: Props) {
 
       {playlist && (
         <>
+          {libraryTools && addTo === playlist.id && <PlaylistAddTracks playlist={playlist} onClose={() => setAddTo(null)} />}
           <Modal open={moreOpen} onClose={() => setMoreOpen(false)} title={playlist.name}>
             <div className="flex flex-col">
               <button
@@ -188,7 +207,7 @@ export default function Collection({ kind }: Props) {
 
           <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title={t.collection.deleteTitle}>
             <p className="text-sm text-fg-2">
-              {t.collection.deleteBody(playlist.name, playlist.tracks.length)}
+              {libraryTools ? t.libraryTools.deletePlaylist(playlist.name) : t.collection.deleteBody(playlist.name, playlist.tracks.length)}
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" onClick={() => setConfirmDelete(false)} className="h-11 rounded-full px-5 text-sm font-medium text-fg-2 hover:text-fg">

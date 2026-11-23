@@ -20,6 +20,8 @@ export interface TrackMenuState {
   x: number;
   y: number;
   playlistId?: string;
+  /** Play this row from its collection rather than as a standalone queue entry. */
+  playFrom?: () => void;
 }
 
 type Theme = "dark" | "light";

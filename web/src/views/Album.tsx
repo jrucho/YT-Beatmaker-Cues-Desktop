@@ -25,6 +25,7 @@ export default function Album() {
   const playList = usePlayer((s) => s.playList);
   const toggle = usePlayer((s) => s.toggle);
   const queue = usePlayer((s) => s.queue);
+  const hasCollectionSource = usePlayer((s) => s.source !== null);
   const status = usePlayer((s) => s.status);
   const createPlaylist = useLibrary((s) => s.createPlaylist);
   const [saved, setSaved] = useState<string | null>(null);
@@ -34,7 +35,7 @@ export default function Album() {
   const tracks = album?.tracks ?? [];
   const title = album?.title || (location.state as { name?: string } | null)?.name || t.album.fallbackName;
   // The queue holds exactly this album: the big button pauses and resumes instead of starting over.
-  const isThisPlaying = tracks.length > 0 && queue.length === tracks.length && queue.every((q, i) => q.id === tracks[i]?.id);
+  const isThisPlaying = !hasCollectionSource && tracks.length > 0 && queue.length === tracks.length && queue.every((q, i) => q.id === tracks[i]?.id);
   const playing = isThisPlaying && (status === "playing" || status === "loading");
 
   const save = async () => {

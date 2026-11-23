@@ -9,8 +9,9 @@ import {
   type SystemInfo,
   type SystemJob,
   type SystemMedia,
-  type CatalogPlaylist,
+  type CatalogPlaylistSearch,
   type CatalogPlaylistPage,
+  type CatalogSearchPage,
 } from "./apiTypes";
 import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, Library, Playlist, Track } from "./types";
 
@@ -38,7 +39,11 @@ async function request<T>(path: string, init?: RequestInit & { json?: unknown })
 }
 
 export const api: MusikeApi = {
-  searchPlaylists: (q, signal) => request<{ playlists: CatalogPlaylist[] }>(`/api/search/playlists?q=${encodeURIComponent(q)}`, { signal }).then(r => r.playlists),
+  searchPlaylists: (q, signal, cursor) =>
+    request<CatalogPlaylistSearch>(
+      `/api/search/playlists?q=${encodeURIComponent(q)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      { signal },
+    ),
   youtubePlaylist: async (id, signal, onProgress) => {
     if(!onProgress)return request<CatalogPlaylistPage>(`/api/youtube/playlists/${encodeURIComponent(id)}`,{signal});
     const response=await fetch(`/api/youtube/playlists/${encodeURIComponent(id)}?progress=1`,{signal,headers:{[LANG_HEADER]:getLang()}});
@@ -63,6 +68,8 @@ export const api: MusikeApi = {
   removeLibraryTrack: (id, scope = "all") => request<Library>(`/api/library/tracks/${id}?scope=${scope}`, { method: "DELETE" }),
   search: (q: string, type: "song" | "video", signal?: AbortSignal) =>
     request<{ tracks: Track[] }>(`/api/search?q=${encodeURIComponent(q)}&type=${type}`, { signal }).then((r) => r.tracks),
+  searchTracksPage: (q, type, signal, cursor) =>
+    request<CatalogSearchPage<Track>>(`/api/search?${new URLSearchParams({ q, type, paged: "1", ...(cursor ? { cursor } : {}) })}`, { signal }),
   suggest: (q: string, signal?: AbortSignal) =>
     request<{ suggestions: string[] }>(`/api/suggest?q=${encodeURIComponent(q)}`, { signal }).then((r) => r.suggestions),
   radio: (id: string) => request<{ tracks: Track[] }>(`/api/radio/${id}`).then((r) => r.tracks),
@@ -74,6 +81,8 @@ export const api: MusikeApi = {
   album: (id: string, signal?: AbortSignal) => request<AlbumPage>(`/api/albums/${encodeURIComponent(id)}`, { signal }),
   searchAlbums: (q: string, signal?: AbortSignal) =>
     request<{ albums: AlbumCard[] }>(`/api/search/albums?q=${encodeURIComponent(q)}`, { signal }).then((r) => r.albums),
+  searchAlbumsPage: (q, signal, cursor) =>
+    request<CatalogSearchPage<AlbumCard>>(`/api/search/albums?${new URLSearchParams({ q, paged: "1", ...(cursor ? { cursor } : {}) })}`, { signal }),
   /** The music video matching a song, or null when YouTube has none. */
   videoFor: (t: Track) =>
     request<{ track: Track | null }>(

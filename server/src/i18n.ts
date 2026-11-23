@@ -9,6 +9,7 @@ type Params = Record<string, string | number>;
 const en = {
   invalidVideoId: "Invalid video ID.",
   emptyQuery: "Type something to search.",
+  searchExpired: "This search expired. Search again to load more results.",
   missingTitle: "Give the song's title.",
   notBackup: "This file isn't a Musike backup.",
   newerBackup: "This backup was made by a newer Musike. Update the app to import it.",
@@ -22,6 +23,7 @@ const en = {
   invalidTrack: "Invalid track.",
   playlistNotFound: "Playlist not found.",
   playlistNameRequired: "Give the playlist a name.",
+  invalidPlaylistCover: "This image can't be used as a cover. Try a different one.",
   genresUnavailable: "Couldn't load the genres right now. Try again.",
   genreUnavailable: "Couldn't open this genre right now. Try again.",
   genreEmpty: "Nothing found for this genre.",
@@ -59,6 +61,7 @@ export type MsgKey = keyof typeof en;
 const fr: Record<MsgKey, string> = {
   invalidVideoId: "ID de vidéo invalide.",
   emptyQuery: "Saisissez quelque chose à rechercher.",
+  searchExpired: "Cette recherche a expiré. Relancez-la pour afficher plus de résultats.",
   missingTitle: "Indiquez le titre de la chanson.",
   notBackup: "Ce fichier n'est pas une sauvegarde Musike.",
   newerBackup: "Cette sauvegarde vient d'une version plus récente de Musike. Mettez l'app à jour pour l'importer.",
@@ -72,6 +75,7 @@ const fr: Record<MsgKey, string> = {
   invalidTrack: "Piste invalide.",
   playlistNotFound: "Playlist introuvable.",
   playlistNameRequired: "Donnez un nom à la playlist.",
+  invalidPlaylistCover: "Impossible d’utiliser cette image comme pochette. Essayez-en une autre.",
   genresUnavailable: "Impossible de charger les genres pour le moment. Réessayez.",
   genreUnavailable: "Impossible d'ouvrir ce genre pour le moment. Réessayez.",
   genreEmpty: "Rien trouvé pour ce genre.",
@@ -107,6 +111,7 @@ const fr: Record<MsgKey, string> = {
 const es: Record<MsgKey, string> = {
   invalidVideoId: "ID de vídeo no válido.",
   emptyQuery: "Escribe algo para buscar.",
+  searchExpired: "Esta búsqueda ha caducado. Vuelve a buscar para ver más resultados.",
   missingTitle: "Indica el título de la canción.",
   notBackup: "Este archivo no es una copia de Musike.",
   newerBackup: "Esta copia se creó con una versión más reciente de Musike. Actualiza la app para importarla.",
@@ -120,6 +125,7 @@ const es: Record<MsgKey, string> = {
   invalidTrack: "Pista no válida.",
   playlistNotFound: "Lista no encontrada.",
   playlistNameRequired: "Ponle un nombre a la lista.",
+  invalidPlaylistCover: "No se puede usar esta imagen como portada. Prueba con otra.",
   genresUnavailable: "No se pudieron cargar los géneros ahora. Inténtalo de nuevo.",
   genreUnavailable: "No se pudo abrir este género ahora. Inténtalo de nuevo.",
   genreEmpty: "No se encontró nada para este género.",

@@ -1,6 +1,8 @@
 import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, Library, Playlist, Track } from "./types";
-export type { CatalogPlaylist, CatalogPlaylistPage } from "../../../server/src/playlists";
-import type { CatalogPlaylist, CatalogPlaylistPage } from "../../../server/src/playlists";
+export type { CatalogPlaylist, CatalogPlaylistPage, CatalogPlaylistSearch } from "../../../server/src/playlists";
+import type { CatalogPlaylistPage, CatalogPlaylistSearch } from "../../../server/src/playlists";
+import type { CatalogSearchPage } from "../../../server/src/search";
+export type { CatalogSearchPage } from "../../../server/src/search";
 
 /**
  * What the app needs from a backend. The web app and the desktop app talk to the Musike server over HTTP
@@ -68,10 +70,11 @@ export interface SystemMedia {
 }
 
 export interface MusikeApi {
-  searchPlaylists(q: string, signal?: AbortSignal): Promise<CatalogPlaylist[]>;
+  searchPlaylists(q: string, signal?: AbortSignal, cursor?: string): Promise<CatalogPlaylistSearch>;
   youtubePlaylist(id: string, signal?: AbortSignal, onProgress?:(page:CatalogPlaylistPage)=>void): Promise<CatalogPlaylistPage>;
   removeLibraryTrack(id: string, scope?: "all" | "history"): Promise<Library>;
   search(q: string, type: "song" | "video", signal?: AbortSignal): Promise<Track[]>;
+  searchTracksPage(q: string, type: "song" | "video", signal?: AbortSignal, cursor?: string): Promise<CatalogSearchPage<Track>>;
   suggest(q: string, signal?: AbortSignal): Promise<string[]>;
   radio(id: string): Promise<Track[]>;
   genres(): Promise<Genre[]>;
@@ -80,6 +83,7 @@ export interface MusikeApi {
   artist(id: string, signal?: AbortSignal): Promise<ArtistPage>;
   album(id: string, signal?: AbortSignal): Promise<AlbumPage>;
   searchAlbums(q: string, signal?: AbortSignal): Promise<AlbumCard[]>;
+  searchAlbumsPage(q: string, signal?: AbortSignal, cursor?: string): Promise<CatalogSearchPage<AlbumCard>>;
   /** The music video matching a song, or null when YouTube has none. */
   videoFor(t: Track): Promise<Track | null>;
   prepare(id: string, signal?: AbortSignal): Promise<Prepared>;
@@ -91,6 +95,7 @@ export interface MusikeApi {
   pushHistory(t: Track): Promise<{ history: Track[] }>;
   createPlaylist(name: string, tracks?: Track[]): Promise<Playlist>;
   renamePlaylist(id: string, name: string): Promise<Playlist>;
+  setPlaylistCover?(id: string, image: string | null): Promise<Playlist>;
   deletePlaylist(id: string): Promise<void>;
   addToPlaylist(id: string, t: Track | Track[]): Promise<Playlist>;
   removeFromPlaylist(id: string, trackId: string): Promise<Playlist>;

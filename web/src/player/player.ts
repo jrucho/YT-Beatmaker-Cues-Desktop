@@ -3,7 +3,8 @@ import { getT, useT } from "../i18n";
 import { api, capabilities, explainStreamError, streamSource, systemMedia, type ApiError, type ErrorCode } from "../lib/api";
 import { createAudio, cueAudio, navigateAudio, readAudioPosition, readDisplayAudioPosition, setAudioLoop, setAudioPlaylist, setAudioStart, setAudioTuning, supportsIndependentPitch, unloadAudio } from "../lib/audio";
 import { shuffled } from "../lib/format";
-import type { Track } from "../lib/types";
+import { isLocalAudio, type Track } from "../lib/types";
+import { iosLibraryToolsEnabled } from "../native/host";
 import { useLibrary } from "../stores/library";
 import { openSettings } from "../stores/system";
 import { toast } from "../stores/ui";
@@ -13,6 +14,10 @@ export type Repeat = "off" | "all" | "one";
 export type StatusNote = "findingClip" | "preparingHd" | "loadingVideo" | "fetchingRadio" | { error: string };
 export type Status = "idle" | "loading" | "playing" | "paused" | "error";
 export type SpeedMode = "pitch" | "speed";
+/** Identifies the collection that started playback, independently of the audio provider. */
+export type PlaybackSource = { kind: "playlist"; id: string } | { kind: "favorites" | "history" | "radio" };
+/** Manually inserted and auto-radio tracks don't inherit the original collection. */
+type QueuedTrack = Track & { queueOrigin?: "queue" | "radio" };
 export interface CueLoop {
   from: number | null;
   to: number | null;
@@ -22,15 +27,17 @@ type Kind = "audio" | "video";
 type Quality = "sd" | "hd";
 
 interface PlayerState {
-  queue: Track[];
+  queue: QueuedTrack[];
   /** Queue order before shuffle was turned on, restored when it is turned off. */
-  original: Track[] | null;
+  original: QueuedTrack[] | null;
   index: number;
   status: Status;
   /** What playback is busy with (or why it failed), shown instead of the artist. See `useStatusText`. */
   statusText: StatusNote | null;
   /** Which media element is driving playback right now. */
   mediaKind: Kind;
+  /** Where this queue came from (playlist, favorites, radio…), kept while it plays. */
+  source: PlaybackSource | null;
   /** Set when Video mode is on but the current song has no music video on YouTube. */
   videoNote: "noClip" | null;
   /** Intrinsic width/height of the current video, so vertical videos get a vertical stage. */
@@ -53,7 +60,7 @@ interface PlayerState {
   /** Independent key shift in semitones, used only in pitch-kept mode. */
   tuning: number;
 
-  playList: (tracks: Track[], start?: number) => void;
+  playList: (tracks: Track[], start?: number, source?: PlaybackSource | null) => void;
   newEmptyTrack: () => Promise<void>;
   playTrack: (track: Track) => void;
   playNext: (track: Track) => void;
@@ -113,8 +120,8 @@ const STORAGE_KEY = "musike:player";
 const LOOPS_KEY = "musike:loops";
 
 interface Saved {
-  queue: Track[];
-  original: Track[] | null;
+  queue: QueuedTrack[];
+  original: QueuedTrack[] | null;
   index: number;
   position: number;
   volume: number;
@@ -124,6 +131,7 @@ interface Saved {
   preferVideo: boolean;
   quality: Quality;
   autoRadio: boolean;
+  source?: PlaybackSource;
   speed: number;
   speedMode: SpeedMode;
   tuning: number;
@@ -321,11 +329,15 @@ export const usePlayer = create<PlayerState>((set, get) => {
   async function continueWithRadio() {
     const s = get();
     const last = s.queue[s.index];
-    if (!last) return;
+    if (!last || (iosLibraryToolsEnabled() && isLocalAudio(last.id))) return;
+    const playingToken = token;
     set({ status: "loading", statusText: "fetchingRadio" });
     try {
+      const related = await api.radio(last.id);
+      if (playingToken !== token || get().queue[get().index]?.id !== last.id) return;
       const known = new Set(get().queue.map((t) => t.id));
-      const more = (await api.radio(last.id)).filter((t) => !known.has(t.id)).slice(0, 25);
+      const more = related.filter((t) => !known.has(t.id)).slice(0, 25)
+        .map((track) => iosLibraryToolsEnabled() ? { ...track, queueOrigin: "radio" as const } : track);
       if (!more.length) throw new Error("empty");
       set((st) => ({
         queue: [...st.queue, ...more],
@@ -334,7 +346,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       toast(getT().player.radioContinuing(last.title));
       load(get().index + 1);
     } catch {
-      set({ status: "paused", statusText: null, position: 0 });
+      if (playingToken === token) set({ status: "paused", statusText: null, position: 0 });
     }
   }
 
@@ -372,7 +384,9 @@ export const usePlayer = create<PlayerState>((set, get) => {
     }
     if (s.index < s.queue.length - 1) return load(s.index + 1);
     if (s.repeat === "all" && s.queue.length) return load(0);
-    if (s.autoRadio) return void continueWithRadio();
+    if (s.autoRadio && !(iosLibraryToolsEnabled() && isLocalAudio(s.queue[s.index]?.id ?? ""))) {
+      return void continueWithRadio();
+    }
     set({ status: "paused", position: 0 });
   }
 
@@ -510,6 +524,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     status: saved.queue?.length ? "paused" : "idle",
     statusText: null,
     mediaKind: "audio",
+    source: iosLibraryToolsEnabled() && saved.queue?.length ? saved.source ?? null : null,
     videoNote: null,
     videoAspect: 16 / 9,
     position: saved.position ?? 0,
@@ -533,22 +548,30 @@ export const usePlayer = create<PlayerState>((set, get) => {
       videoEl.pause();videoEl.removeAttribute('src');videoEl.load();
       await unloadAudio(audio);
       if(mine!==token)return;
-      set({queue:[],original:null,index:0,status:'idle',statusText:null,mediaKind:'audio',videoNote:null,
+      set({queue:[],original:null,index:0,status:'idle',statusText:null,mediaKind:'audio',source:null,videoNote:null,
         position:0,duration:0,buffered:0,loop:{from:null,to:null,on:false},speed:0,speedMode:'speed',tuning:0});
       applyPlaybackRate(audio);
       if('mediaSession' in navigator){navigator.mediaSession.metadata=null;navigator.mediaSession.playbackState='none';}
       syncSystemMedia();
     },
 
-    playList: (tracks, start = 0) => {
-      if (!tracks.length) return;
-      const first = tracks[start] ?? tracks[0];
+    playList: (items, start = 0, source = null) => {
+      if (!items.length) return;
+      const preview = iosLibraryToolsEnabled();
+      const tracks = preview ? (items as QueuedTrack[]).map((track) => {
+        if (!track.queueOrigin) return track;
+        const { queueOrigin: _origin, ...clean } = track;
+        return clean;
+      }) : items;
+      if (!tracks[start]) start = 0;
+      const origin = preview ? source : null;
       if (get().shuffle) {
         const rest = tracks.filter((_, i) => i !== start);
-        set({ queue: [first, ...shuffled(rest)], original: tracks.slice() });
+        set({ queue: [tracks[start], ...shuffled(rest)], original: tracks.slice(), source: origin,
+          ...(preview ? { index: 0 } : {}) });
         load(0);
       } else {
-        set({ queue: tracks.slice(), original: null });
+        set({ queue: tracks.slice(), original: null, source: origin, ...(preview ? { index: start } : {}) });
         load(start);
       }
     },
@@ -556,12 +579,20 @@ export const usePlayer = create<PlayerState>((set, get) => {
     playTrack: (track) => {
       const s = get();
       const at = s.queue.findIndex((t) => t.id === track.id);
+      if (iosLibraryToolsEnabled() && at >= 0 && s.queue[at].queueOrigin !== "queue" && (s.source || s.queue[at].queueOrigin)) {
+        // "Play now" outside the collection is explicit, even if the same song is in its queue.
+        const fromQueue: QueuedTrack = { ...track, queueOrigin: "queue" };
+        const original = s.queue[at];
+        set({ queue: s.queue.map((item, i) => i === at ? fromQueue : item),
+          original: s.original?.map((item) => item === original ? fromQueue : item) ?? null });
+      }
       if (at >= 0) return load(at);
       if (!s.queue.length) return get().playList([track]);
       const insert = s.index + 1;
+      const queued: QueuedTrack = iosLibraryToolsEnabled() ? { ...track, queueOrigin: "queue" } : track;
       set({
-        queue: [...s.queue.slice(0, insert), track, ...s.queue.slice(insert)],
-        original: s.original ? [...s.original, track] : null,
+        queue: [...s.queue.slice(0, insert), queued, ...s.queue.slice(insert)],
+        original: s.original ? [...s.original, queued] : null,
       });
       load(insert);
     },
@@ -570,9 +601,10 @@ export const usePlayer = create<PlayerState>((set, get) => {
       const s = get();
       if (!s.queue.length) return get().playList([track]);
       const insert = s.index + 1;
+      const queued: QueuedTrack = iosLibraryToolsEnabled() ? { ...track, queueOrigin: "queue" } : track;
       set({
-        queue: [...s.queue.slice(0, insert), track, ...s.queue.slice(insert)],
-        original: s.original ? [...s.original, track] : null,
+        queue: [...s.queue.slice(0, insert), queued, ...s.queue.slice(insert)],
+        original: s.original ? [...s.original, queued] : null,
       });
       toast(getT().player.playsNext(track.title));
     },
@@ -580,7 +612,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
     addToQueue: (track) => {
       const s = get();
       if (!s.queue.length) return get().playList([track]);
-      set({ queue: [...s.queue, track], original: s.original ? [...s.original, track] : null });
+      const queued: QueuedTrack = iosLibraryToolsEnabled() ? { ...track, queueOrigin: "queue" } : track;
+      set({ queue: [...s.queue, queued], original: s.original ? [...s.original, queued] : null });
       toast(getT().player.addedToQueue(track.title));
     },
 
@@ -598,7 +631,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
       else {
         activeMedia()?.pause();
         loaded = null;
-        set({ index: Math.max(0, queue.length - 1), status: queue.length ? "paused" : "idle", position: 0 });
+        set({ index: Math.max(0, queue.length - 1), status: queue.length ? "paused" : "idle", position: 0,
+          ...(queue.length ? {} : { source: null }) });
       }
     },
 
@@ -611,10 +645,11 @@ export const usePlayer = create<PlayerState>((set, get) => {
     },
 
     startRadio: async (track) => {
+      if (iosLibraryToolsEnabled() && isLocalAudio(track.id)) return;
       toast(getT().player.startingRadio(track.title));
       try {
         const related = await api.radio(track.id);
-        get().playList([track, ...related.filter((t) => t.id !== track.id)], 0);
+        get().playList([track, ...related.filter((t) => t.id !== track.id)], 0, { kind: "radio" });
       } catch (e) {
         toast((e as Error).message, "error");
       }
@@ -811,6 +846,17 @@ audio.muted = videoEl.muted = usePlayer.getState().muted;
 
 export const selectCurrent = (s: PlayerState): Track | null => s.queue[s.index] ?? null;
 
+const RADIO_SOURCE = { kind: "radio" } as const;
+export const selectPlaybackSource = (s: PlayerState): PlaybackSource | null =>
+  !s.queue[s.index] || s.queue[s.index].queueOrigin === "queue" ? null :
+    s.queue[s.index].queueOrigin === "radio" ? RADIO_SOURCE : s.source;
+
+export function selectPlayingPlaylistId(s: PlayerState): string | null {
+  if (s.status !== "playing" && !(s.status === "loading" && s.statusText !== "fetchingRadio")) return null;
+  const source = selectPlaybackSource(s);
+  return source?.kind === "playlist" ? source.id : null;
+}
+
 function syncNativePlaylist() {
   if (!independentTuningAvailable) return;
   const s = usePlayer.getState();
@@ -818,6 +864,7 @@ function syncNativePlaylist() {
   setAudioPlaylist(audio, { index: s.index, repeat: s.repeat, tracks: s.queue.map((track, index) => ({
     id: track.id, title: track.title, artist: track.artist, album: track.album,
     artwork: track.art || track.thumb, duration: track.duration,
+    ...(track.queueOrigin ? { queueOrigin: track.queueOrigin } : {}),
     loop: index === s.index ? s.loop : loops[track.id] ?? { from: null, to: null, on: false },
   })) });
 }
@@ -844,6 +891,7 @@ function persist() {
     preferVideo: s.preferVideo,
     quality: s.quality,
     autoRadio: s.autoRadio,
+    ...(s.source ? { source: s.source } : {}),
     speed: s.speed,
     speedMode: s.speedMode,
     tuning: s.tuning,
@@ -856,7 +904,7 @@ function persist() {
 }
 setInterval(persist, 1000);
 usePlayer.subscribe((state, previous) => {
-  if (state.status !== previous.status || state.index !== previous.index || state.queue !== previous.queue) persist();
+  if (state.status !== previous.status || state.index !== previous.index || state.queue !== previous.queue || state.source !== previous.source) persist();
 });
 addEventListener("pagehide", persist);
 document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && persist());

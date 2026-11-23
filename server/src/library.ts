@@ -65,6 +65,15 @@ function persist(): Promise<void> {
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
 
+// iOS supplies a small re-encoded JPEG, not an original photo or a path to it.
+// Keep it portable in library backups and never accept remote URLs or SVG.
+const COVER_PREFIX = "data:image/jpeg;base64,";
+function cleanPlaylistCover(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > COVER_PREFIX.length + 174_764 || !value.startsWith(COVER_PREFIX + "/9j/")) return;
+  const bytes = value.slice(COVER_PREFIX.length);
+  if (bytes.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(bytes)) return value;
+}
+
 export function sanitizeTrack(input: unknown): Track {
   const t = (input ?? {}) as Record<string, unknown>;
   const id = str(t.id, 11);
@@ -152,15 +161,16 @@ export async function createPlaylist(name: string, tracks: Track[] = []): Promis
   return mutate(async lib=>{
   const clean = name.trim().slice(0, 80);
   if (!clean) throw new HttpError(400, msg("playlistNameRequired"));
+  const limited = tracks.slice(0, MAX_TRACKS);
   // Importing the same playlist twice (a double tap, a retry) should open the one already there, not add another.
-  const existing = tracks.length
+  const existing = limited.length
     ? lib.playlists.find(
-        (p) => p.name === clean && p.tracks.length === tracks.length && p.tracks.every((t, i) => t.id === tracks[i]!.id),
+        (p) => p.name === clean && p.tracks.length === limited.length && p.tracks.every((t, i) => t.id === limited[i]!.id),
       )
     : undefined;
   if (existing) return existing;
   const now = Date.now();
-  const playlist: Playlist = { id: randomUUID(), name: clean, createdAt: now, updatedAt: now, tracks };
+  const playlist: Playlist = { id: randomUUID(), name: clean, createdAt: now, updatedAt: now, tracks: limited };
   lib.playlists.unshift(playlist);
   await persist();
   return findPlaylist(lib,playlist.id);
@@ -179,6 +189,20 @@ export async function renamePlaylist(pid: string, name: string): Promise<Playlis
   });
 }
 
+export function setPlaylistCover(pid: string, image: string | null): Promise<Playlist> {
+  return mutate(async (lib) => {
+    const p = findPlaylist(lib, pid);
+    const cover = cleanPlaylistCover(image);
+    if (image !== null && !cover) throw new HttpError(400, msg("invalidPlaylistCover"));
+    if (p.cover === cover) return p;
+    if (cover) p.cover = cover;
+    else delete p.cover;
+    p.updatedAt = Date.now();
+    await persist();
+    return findPlaylist(lib, pid);
+  });
+}
+
 export async function deletePlaylist(pid: string): Promise<void> {
   return mutate(async lib=>{
   findPlaylist(lib, pid);
@@ -191,6 +215,7 @@ export async function addToPlaylist(pid: string, tracks: Track | Track[]): Promi
   return mutate(async lib=>{
   const p = findPlaylist(lib, pid);
   for (const track of Array.isArray(tracks) ? tracks : [tracks]) {
+    if (p.tracks.length >= MAX_TRACKS) break;
     if (!p.tracks.some((t) => t.id === track.id)) p.tracks.push(track);
   }
   p.updatedAt = Date.now();
@@ -212,7 +237,8 @@ export async function removeFromPlaylist(pid: string, trackId: string): Promise<
 // Backup import: a library exported from any Musike instance (web, desktop, another computer).
 
 const MAX_PLAYLISTS = 1000;
-const MAX_TRACKS = 5000;
+/** Safety ceiling for backups and very large playlists; YouTube itself stops at 5,000 videos. */
+export const MAX_TRACKS = 10_000;
 
 /** Keeps the valid tracks of an untrusted list, without duplicates. */
 function cleanTracks(input: unknown, limit = MAX_TRACKS): Track[] {
@@ -242,7 +268,8 @@ function cleanLibrary(input: unknown): Library {
     const now = Date.now();
     const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : now);
     const id = str(p.id, 64);
-    return [{ id: /^[\w-]{8,64}$/.test(id) ? id : randomUUID(), name, createdAt: num(p.createdAt), updatedAt: num(p.updatedAt), tracks: cleanTracks(p.tracks) }];
+    const cover = cleanPlaylistCover(p.cover);
+    return [{ id: /^[\w-]{8,64}$/.test(id) ? id : randomUUID(), name, ...(cover ? { cover } : {}), createdAt: num(p.createdAt), updatedAt: num(p.updatedAt), tracks: cleanTracks(p.tracks) }];
   });
   return { favorites: cleanTracks(lib.favorites), playlists, history: cleanTracks(lib.history, HISTORY_LIMIT) };
 }
@@ -288,7 +315,9 @@ export async function importLibrary(input: unknown, mode: "merge" | "replace"): 
       lib.playlists.find((x) => x.name.toLocaleLowerCase("pt-BR") === p.name.toLocaleLowerCase("pt-BR"));
     if (match) {
       const merged = union(match.tracks, p.tracks);
-      if (!merged.added) continue; // already had every track: nothing changed
+      const cover = !match.cover ? p.cover : undefined;
+      if (!merged.added && !cover) continue;
+      if (cover) match.cover = cover;
       match.tracks = merged.list.slice(0, MAX_TRACKS);
       match.updatedAt = Date.now();
       result.tracksAdded += merged.added;

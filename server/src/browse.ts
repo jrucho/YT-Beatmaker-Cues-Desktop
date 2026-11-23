@@ -1,6 +1,6 @@
 import type { Innertube } from "youtubei.js";
 import { isLang, msg, type Lang } from "./i18n.js";
-import { sized, text, toTrack, withClient } from "./search.js";
+import { searchMusicPage, sized, text, toTrack, withClient, type CatalogSearchPage } from "./search.js";
 import type { Track } from "./types.js";
 import { HttpError, VIDEO_ID } from "./types.js";
 
@@ -398,4 +398,9 @@ export const album = (id: string, lang: Lang) => albumPage(keyOf(lang, id));
 export async function searchAlbums(query: string, lang: Lang): Promise<AlbumCard[]> {
   const result: any = await withClient((yt) => yt.music.search(query, { type: "album" }), lang);
   return albumCards(itemsOf(result.contents?.[0]));
+}
+
+export async function searchAlbumsPage(query: string, lang: Lang, cursor?: string): Promise<CatalogSearchPage<AlbumCard>> {
+  const page = await searchMusicPage(query, "album", lang, cursor);
+  return { items: albumCards(page.items), cursor: page.cursor };
 }

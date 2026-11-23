@@ -37,6 +37,7 @@
   window.__pluginHosted=window.__JUCE__.initialisationData.hostedPlugin?.[0]===true;
   window.__pluginDesktopBeta=window.__JUCE__.initialisationData.desktopBeta?.[0]===true;
   window.__pluginIOSPreview=window.__JUCE__.initialisationData.iosPreviewFeatures?.[0]===true;
+  const libraryTools=window.__pluginPlatform==='ios'&&window.__pluginIOSPreview&&!window.__pluginHosted;
   const songPlaybackKey='musike:track-playback';
   let reconcilingPlayback=false;
   const cleanSongPlayback=value=>({
@@ -225,6 +226,17 @@
   let libraryBase='';
   let libraryVersion=null;
   let libraryWrite=Promise.resolve();
+  const libraryEdits=value=>JSON.stringify({favorites:value.favorites,playlists:value.playlists});
+  const recordLibraryEdit=(undo,redo)=>window.dispatchEvent(new CustomEvent('plugin-record-edit',{detail:{label:'library edit',key:'library',undo,redo}}));
+  const replayLibraryEdit=async(base,next)=>{
+    const work=libraryWrite.catch(()=>{}).then(async()=>{
+      libraryBase=await invoke('libraryReplayEdit',{base,next});
+      libraryVersion=null;
+    });
+    libraryWrite=work;
+    await work;
+    await window.__pluginStores?.library.getState().load(true);
+  };
   const listeners = new Map();
   const methods = (names) => names.map(name => ({name,rtype:'promise'}));
   window.Capacitor = {
@@ -265,21 +277,26 @@
           if(args.to==='library.json'){
             const base=libraryBase;
             const work=libraryWrite.catch(()=>{}).then(async()=>{
-              libraryBase=await invoke('libraryCommit',{base,next:data});libraryVersion=null;localStorage.removeItem(from);
-              if(features&&base){
-                const before=JSON.parse(base),after=JSON.parse(libraryBase),select=value=>JSON.stringify({favorites:value.favorites,playlists:value.playlists});
-                if(select(before)!==select(after)){
+              const result=await invoke('libraryCommit',{base,next:data,...(libraryTools?{captureUndo:true}:{})});
+              libraryBase=libraryTools?result.json:result;libraryVersion=null;localStorage.removeItem(from);
+              if(libraryTools){
+                const {previous,json}=result;
+                if(previous){
+                  recordLibraryEdit(()=>replayLibraryEdit(json,previous),()=>replayLibraryEdit(previous,json));
+                }
+              }else if(features&&base){
+                if(libraryEdits(JSON.parse(base))!==libraryEdits(JSON.parse(libraryBase))){
                   const committed=libraryBase;
                   const apply=async(base,next)=>{
                     const current=JSON.parse((await invoke('librarySnapshot')).json),old=JSON.parse(base),desired=JSON.parse(next);
                     libraryBase=await invoke('libraryCommit',{base:JSON.stringify({...current,favorites:old.favorites,playlists:old.playlists}),next:JSON.stringify({...current,favorites:desired.favorites,playlists:desired.playlists})});
                     libraryVersion=null;await window.__pluginStores?.library.getState().load();
                   };
-                  window.dispatchEvent(new CustomEvent('plugin-record-edit',{detail:{label:'library edit',key:'library',undo:()=>apply(committed,base),redo:()=>apply(base,committed)}}));
+                  recordLibraryEdit(()=>apply(committed,base),()=>apply(base,committed));
                 }
               }
             });
-            libraryWrite=work;await work;return {};
+            libraryWrite=work;await work;return libraryTools?{json:libraryBase}:{};
           }
           localStorage.setItem('plugin-file:'+args.to,data);localStorage.removeItem(from);return {};
         }
@@ -389,7 +406,7 @@
       });
     }
     stores.cues.subscribe(()=>{if(!reconciling)queueMicrotask(persist);});
-    stores.player.subscribe((current,previous)=>{if(current.queue!==previous.queue||current.index!==previous.index||current.status!==previous.status)queueMicrotask(persist);});
+    stores.player.subscribe((current,previous)=>{if(current.queue!==previous.queue||current.index!==previous.index||current.status!==previous.status||current.source!==previous.source)queueMicrotask(persist);});
   });
   addEventListener('pagehide',persist);
   addEventListener('plugin-preferences-changed',persist);

@@ -1132,6 +1132,7 @@ juce::String CueProcessor::sessionUiState() const {
             if(same)for(int i=0;i<saved.size();++i)if(saved[i]["id"].toString()!=nativeTracks[i]["id"].toString()){same=false;break;}
             if(!same){juce::Array<juce::var> retainedTracks;for(const auto& track:*nativeTracks.getArray()){
                 auto* item=new juce::DynamicObject;for(const auto* key:{"id","title","artist","album","duration"})item->setProperty(key,track[key]);
+                if(track.hasProperty("queueOrigin"))item->setProperty("queueOrigin",track["queueOrigin"]);
                 auto art=track["artwork"].toString();if(art.isEmpty())art=track["art"].toString();if(art.isEmpty())art=track["thumb"].toString();item->setProperty("art",art);item->setProperty("thumb",art);item->setProperty("kind",track["kind"].isString()?track["kind"]:juce::var("song"));retainedTracks.add(juce::var(item));
             }fields->setProperty("queue",retainedTracks);}
         }

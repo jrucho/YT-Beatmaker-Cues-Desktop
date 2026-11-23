@@ -1,6 +1,7 @@
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {defaultRangeExtractor} from '@tanstack/virtual-core';
-import {Fragment, useCallback, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefCallback} from 'react';
+import {Fragment, useCallback, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefCallback, type RefObject} from 'react';
+import {centerInScrollArea, scrollParent} from '../lib/scroll';
 
 export interface VirtualRowProps {
   style?: CSSProperties;
@@ -9,31 +10,57 @@ export interface VirtualRowProps {
   'aria-posinset': number;
   'aria-setsize': number;
 }
+export type ListReveal = { key: string; index: number };
+
 interface Props<T> {
   items: T[];
   itemKey(item: T,index: number): string;
   renderItem(item: T,index: number,props: VirtualRowProps): ReactNode;
   className?: string;
   label?: string;
+  reveal?: ListReveal;
 }
 
 export function VirtualList<T>(props: Props<T>) {
-  if(props.items.length>60)return <WindowedList {...props}/>;
-  return <ul className={props.className} aria-label={props.label}>{props.items.map((item,index)=><Fragment key={props.itemKey(item,index)}>{props.renderItem(item,index,{'data-index':index,'aria-posinset':index+1,'aria-setsize':props.items.length})}</Fragment>)}</ul>;
+  const list = useRef<HTMLUListElement>(null);
+  const [handled, setHandled] = useState<string>();
+  const target = props.reveal?.key !== handled ? props.reveal : undefined;
+  const { key, index } = target ?? {};
+  useLayoutEffect(() => {
+    if (!key || index === undefined) return;
+    let frame = 0, attempts = 0, centered = 0;
+    const reveal = () => {
+      const row = list.current?.querySelector<HTMLElement>(`[data-index="${index}"]`);
+      if (row) {
+        centered = centerInScrollArea(row) ? centered + 1 : 0;
+        // Allow measured row heights to settle, then leave the scroll position to the user.
+        if (centered >= 2) return setHandled(key);
+      }
+      if (++attempts < 8) frame = requestAnimationFrame(reveal);
+      else setHandled(key);
+    };
+    // Start after the route's top reset and the virtualizer's layout pass.
+    frame = requestAnimationFrame(reveal);
+    return () => cancelAnimationFrame(frame);
+  }, [key, index]);
+  if(props.items.length>60)return <WindowedList {...props} list={list} reveal={target}/>;
+  return <ul ref={list} className={props.className} aria-label={props.label}>{props.items.map((item,index)=><Fragment key={props.itemKey(item,index)}>{props.renderItem(item,index,{'data-index':index,'aria-posinset':index+1,'aria-setsize':props.items.length})}</Fragment>)}</ul>;
 }
 
-function WindowedList<T>({items,itemKey,renderItem,className,label}:Props<T>){
-  const list=useRef<HTMLUListElement>(null);
+function WindowedList<T>({items,itemKey,renderItem,className,label,reveal,list}:Props<T>&{list:RefObject<HTMLUListElement|null>}){
   const [parent,setParent]=useState<HTMLElement|null>(null);
   const [margin,setMargin]=useState(0);
   const [paddingEnd,setPaddingEnd]=useState(0);
   const [focused,setFocused]=useState<number|null>(null);
+  const revealIndex = reveal?.index;
   const getKey=useCallback((index:number)=>itemKey(items[index]!,index),[items,itemKey]);
   const rangeExtractor=useCallback((range:Parameters<typeof defaultRangeExtractor>[0])=>{
     const result=defaultRangeExtractor(range);
+    // Materialize the destination even when it is far outside the visible window.
+    if(revealIndex!==undefined&&revealIndex>=0&&revealIndex<items.length&&!result.includes(revealIndex))result.push(revealIndex);
     if(focused!==null&&focused<items.length&&!result.includes(focused))result.push(focused);
     return result.sort((a,b)=>a-b);
-  },[focused,items.length]);
+  },[focused,items.length,revealIndex]);
   const virtual=useVirtualizer<HTMLElement,HTMLLIElement>({
     count:items.length,getScrollElement:()=>parent,estimateSize:()=>56,overscan:7,
     // The parent supplies the bottom space; include it in scroll limits without duplicating it in the DOM height.
@@ -41,10 +68,8 @@ function WindowedList<T>({items,itemKey,renderItem,className,label}:Props<T>){
     initialRect:{width:400,height:600},
   });
   useLayoutEffect(()=>{
-    let element=list.current?.parentElement??null;
-    while(element&&!/(auto|scroll)/.test(getComputedStyle(element).overflowY))element=element.parentElement;
-    setParent(element??document.scrollingElement as HTMLElement);
-  },[]);
+    setParent(scrollParent(list.current));
+  },[list]);
   useLayoutEffect(()=>{
     if(list.current&&parent){setMargin(list.current.getBoundingClientRect().top-parent.getBoundingClientRect().top+parent.scrollTop-parent.clientTop);setPaddingEnd(parseFloat(getComputedStyle(parent).paddingBottom)||0);}
   });

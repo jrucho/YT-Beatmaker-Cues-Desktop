@@ -3,13 +3,14 @@ import { memo, useCallback, type MouseEvent } from "react";
 import { useT } from "../i18n";
 import { cn, formatTime } from "../lib/format";
 import type { Track } from "../lib/types";
-import { selectCurrent, usePlayer } from "../player/player";
+import { iosLibraryToolsEnabled } from "../native/host";
+import { selectCurrent, usePlayer, type PlaybackSource } from "../player/player";
 import { useAppearance } from "../stores/appearance";
 import { useLibrary, favoriteIds } from "../stores/library";
 import { useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { Equalizer } from "./Brand";
-import {VirtualList,type VirtualRowProps} from './VirtualList';
+import {VirtualList,type ListReveal,type VirtualRowProps} from './VirtualList';
 
 interface RowProps {
   track: Track;
@@ -17,10 +18,11 @@ interface RowProps {
   onPlay: (index:number) => void;
   virtual: VirtualRowProps;
   playlistId?: string;
+  playFromCollection: boolean;
   showAlbum: boolean;
 }
 
-const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, showAlbum,virtual }: RowProps) {
+const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, playFromCollection, showAlbum, virtual }: RowProps) {
   const isCurrent = usePlayer((s) => selectCurrent(s)?.id === track.id);
   const isPlaying = usePlayer((s) => selectCurrent(s)?.id===track.id&&(s.status === "playing" || s.status === "loading"));
   const isFavorite = useLibrary((s) => favoriteIds(s.favorites).has(track.id));
@@ -33,7 +35,8 @@ const TrackRow = memo(function TrackRow({ track, position, onPlay, playlistId, s
     e.stopPropagation();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const fromButton = e.type === "click";
-    openMenu({ track, playlistId, x: fromButton ? r.right - 256 : e.clientX, y: fromButton ? r.bottom + 6 : e.clientY });
+    openMenu({ track, playlistId, x: fromButton ? r.right - 256 : e.clientX, y: fromButton ? r.bottom + 6 : e.clientY,
+      playFrom: playFromCollection ? () => onPlay(position) : undefined });
   };
 
   return (
@@ -115,17 +118,21 @@ interface ListProps {
   /** Full list to queue when a row is played, if `tracks` is only a preview of it. */
   context?: Track[];
   playlistId?: string;
+  playbackSource?: PlaybackSource;
   showAlbum?: boolean;
   header?: boolean;
   onSelect?: (index:number)=>void;
+  reveal?: ListReveal;
 }
 
-export function TrackList({ tracks, context, playlistId, showAlbum: albumWanted = true, header = true, onSelect }: ListProps) {
+export function TrackList({ tracks, context, playlistId, playbackSource, showAlbum: albumWanted = true, header = true, onSelect, reveal }: ListProps) {
   const playList = usePlayer((s) => s.playList);
   const t = useT();
   // Pages ask for the album column where it makes sense; Settings can turn it off everywhere.
   const showAlbum = useAppearance((s) => s.albumColumn) && albumWanted;
-  const onPlay=useCallback((index:number)=>onSelect?onSelect(index):playList(context??tracks,index),[playList,context,tracks,onSelect]);
+  const playFromCollection = iosLibraryToolsEnabled() && !!playbackSource;
+  const onPlay = useCallback((index: number) => onSelect ? onSelect(index) : playList(context ?? tracks, index, playbackSource),
+    [playList, context, tracks, onSelect, playbackSource]);
   return (
     <div>
       {header && (
@@ -147,12 +154,13 @@ export function TrackList({ tracks, context, playlistId, showAlbum: albumWanted 
           <span className="w-9" />
         </div>
       )}
-      <VirtualList items={tracks} itemKey={(track,index)=>`${track.id}-${index}`} className="flex flex-col" renderItem={(t,i,virtual)=>(
+      <VirtualList items={tracks} itemKey={(track,index)=>`${track.id}-${index}`} className="flex flex-col" reveal={reveal} renderItem={(t,i,virtual)=>(
           <TrackRow
             key={`${t.id}-${i}`}
             track={t}
             position={i}
             playlistId={playlistId}
+            playFromCollection={playFromCollection}
             showAlbum={showAlbum}
             onPlay={onPlay}
             virtual={virtual}

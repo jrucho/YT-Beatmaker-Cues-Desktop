@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { getT } from "../i18n";
 import { api } from "../lib/api";
 import type { Library, Playlist, Track } from "../lib/types";
+import { iosLibraryToolsEnabled } from "../native/host";
 import { toast } from "./ui";
 
 interface LibraryState extends Library {
@@ -13,8 +14,9 @@ interface LibraryState extends Library {
   recordPlay: (t: Track) => void;
   createPlaylist: (name: string, tracks?: Track[]) => Promise<Playlist | null>;
   renamePlaylist: (id: string, name: string) => Promise<void>;
+  setPlaylistCover: (id: string, image: string | null) => Promise<void>;
   deletePlaylist: (id: string) => Promise<void>;
-  addToPlaylist: (id: string, t: Track | Track[]) => Promise<void>;
+  addToPlaylist: (id: string, t: Track | Track[]) => Promise<Playlist | null>;
   removeFromPlaylist: (id: string, trackId: string) => Promise<void>;
   removeTrack: (id: string, scope?: "all" | "history") => Promise<void>;
 }
@@ -108,6 +110,12 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     }
   },
 
+  setPlaylistCover: async (id, image) => {
+    if (!api.setPlaylistCover) throw new Error(getT().libraryTools.cover.unavailable);
+    const p = await api.setPlaylistCover(id, image);
+    set((s) => ({ playlists: replacePlaylist(s.playlists, p) }));
+  },
+
   deletePlaylist: async (id) => {
     const prev = get().playlists;
     set({ playlists: prev.filter((p) => p.id !== id) });
@@ -128,9 +136,14 @@ export const useLibrary = create<LibraryState>((set, get) => ({
       const added = p.tracks.length - before;
       const t = getT();
       if (!Array.isArray(tracks) || added === 1) toast(t.toasts.addedTo(p.name));
-      else toast(added ? t.toasts.addedManyTo(added, p.name) : t.toasts.allAlreadyIn(p.name));
+      else if (added > 0) toast(t.toasts.addedManyTo(added, p.name));
+      else if (!iosLibraryToolsEnabled() || tracks.every((track) => p.tracks.some((item) => item.id === track.id))) {
+        toast(t.toasts.allAlreadyIn(p.name));
+      }
+      return p;
     } catch (e) {
       toast((e as Error).message, "error");
+      return null;
     }
   },
 
@@ -142,6 +155,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     try {
       const p = await api.removeFromPlaylist(id, trackId);
       set((s) => ({ playlists: replacePlaylist(s.playlists, p) }));
+      if (iosLibraryToolsEnabled()) toast(getT().libraryTools.trackRemoved);
     } catch (e) {
       set({ playlists: prev });
       toast((e as Error).message, "error");

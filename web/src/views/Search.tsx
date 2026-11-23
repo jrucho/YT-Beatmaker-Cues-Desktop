@@ -17,12 +17,14 @@ import { GenrePanel } from "../components/GenrePanel";
 import { EmptyState, PageHeader } from "../components/Page";
 import { TrackList, TrackListSkeleton } from "../components/TrackList";
 import { YouTubePlaylists } from "../components/YouTubePlaylists";
+import { useCatalogSearch } from "../hooks/useCatalogSearch";
 import { MD, useMediaQuery } from "../hooks/useMediaQuery";
 import { api } from "../lib/api";
 import { useT } from "../i18n";
 import { cn } from "../lib/format";
 import { paths } from "../lib/routes";
-import type { AlbumCard, Track } from "../lib/types";
+import type { Track } from "../lib/types";
+import { iosLibraryToolsEnabled } from "../native/host";
 import { usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { parseList } from "./BatchSearch";
@@ -69,23 +71,23 @@ export default function Search() {
   const kind: Kind = params.get("type") === "playlists" ? "playlist" : params.get("type") === "videos" ? "video" : params.get("type") === "albums" ? "album" : "song";
   const t = useT();
   const [text, setText] = useState(q);
-  const [results, setResults] = useState<Track[] | null>(null);
-  const [albums, setAlbums] = useState<AlbumCard[] | null>(null);
-  const [state, setState] = useState<"idle" | "loading" | "ok" | "error">("idle");
-  const [error, setError] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [recent, setRecent] = useState(readRecent);
   const [linkTrack, setLinkTrack] = useState<Track | "loading" | "error" | null>(null);
-  const [retry, setRetry] = useState(0);
   const [genresOpen, setGenresOpenState] = useState(() => genresOpenMemo);
   const input = useRef<HTMLInputElement>(null);
   const isMd = useMediaQuery(MD);
   const playTrack = usePlayer((s) => s.playTrack);
   const playlists = useLibrary((s) => s.playlists);
   const playlistMatches = q.trim() ? playlists.filter(p => p.name.toLowerCase().includes(q.trim().toLowerCase())) : [];
+  const libraryTools = iosLibraryToolsEnabled();
+  const playlistsLabel = libraryTools ? t.libraryTools.savedPlaylists : t.common.playlist;
 
   const playlistLink = /[?&]list=/.test(text);
   const linkId = playlistLink ? null : videoIdFromUrl(text);
+  const catalog = useCatalogSearch(kind === "playlist" || linkId ? "" : q, kind === "playlist" ? "song" : kind, libraryTools);
+  const result = catalog.state;
+  const page = result.status === "ok" ? result.page : null;
   // "a, b, c" probably means three songs; offer to search each one (titles can have commas, so only offer).
   const listTerms = linkId || !text.includes(",") ? [] : parseList(text);
 
@@ -113,32 +115,11 @@ export default function Search() {
   }, [text]);
 
   useEffect(() => {
-    if (!q) {
-      setResults(null);
-      setAlbums(null);
-      setState("idle");
-      return;
-    }
-    const ctrl = new AbortController();
-    setState("loading");
-    const found: Promise<number> =
-      kind === "playlist" ? Promise.resolve(0) : kind === "album"
-        ? api.searchAlbums(q, ctrl.signal).then((list) => (setAlbums(list), setResults(null), list.length))
-        : api.search(q, kind, ctrl.signal).then((list) => (setResults(list), setAlbums(null), list.length));
-    found
-      .then(() => {
-        setState("ok");
-        const next = [q, ...readRecent().filter((r) => r.toLowerCase() !== q.toLowerCase())].slice(0, 8);
-        saveRecent(next);
-        setRecent(next);
-      })
-      .catch((e: Error) => {
-        if (e.name === "AbortError") return;
-        setError(e.message);
-        setState("error");
-      });
-    return () => ctrl.abort();
-  }, [q, kind, retry]);
+    if (!q || (kind !== "playlist" && result.status !== "ok")) return;
+    const next = [q, ...readRecent().filter((r) => r.toLowerCase() !== q.toLowerCase())].slice(0, 8);
+    saveRecent(next);
+    setRecent(next);
+  }, [q, kind, result.status]);
 
   useEffect(() => {
     const term = text.trim();
@@ -223,8 +204,15 @@ export default function Search() {
             autoComplete="off"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={t.search.placeholder}
-            className="h-12 w-full rounded-full border border-line-strong bg-surface-2 pr-24 pl-12 text-[16px] placeholder:text-fg-3 focus:border-accent focus:bg-surface-1 focus:outline-none md:h-13 [&::-webkit-search-cancel-button]:hidden"
+            placeholder={libraryTools ? t.search.shortPlaceholder : t.search.placeholder}
+            className={cn(
+              "h-12 w-full rounded-full border border-line-strong bg-surface-2 text-[16px] focus:border-accent focus:bg-surface-1 focus:outline-none md:h-13 [&::-webkit-search-cancel-button]:hidden",
+              // On iPhone the empty field has no trailing control. Only reserve space
+              // for the clear button (or the shortcut hint on wide screens).
+              libraryTools
+                ? cn("appearance-none pl-11 placeholder:text-fg-2 placeholder:opacity-100", text ? "pr-14" : "pr-4 md:pr-12")
+                : "pr-24 pl-12 placeholder:text-fg-3",
+            )}
           />
           <div className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-2">
             {!text && <kbd className="kbd hidden md:inline">/</kbd>}
@@ -316,14 +304,14 @@ export default function Search() {
       </div>
 
       <div className="mt-4 px-2 md:px-3">
-        {!linkId && kind === "playlist" && <YouTubePlaylists query={q} />}
-        {!linkId && kind !== "playlist" && playlistMatches.length > 0 && <section aria-label={t.common.playlist} className="mb-5 px-2 md:px-3">
-          <h2 className="mb-3 text-sm font-semibold">{t.common.playlist}</h2>
+        {!linkId && (kind !== "playlist" || libraryTools) && playlistMatches.length > 0 && <section aria-label={playlistsLabel} className="mb-5 px-2 md:px-3">
+          <h2 className="mb-3 text-sm font-semibold">{playlistsLabel}</h2>
           <div className="grid gap-2 sm:grid-cols-2">{playlistMatches.map(p => <Link key={p.id} to={paths.playlist(p.id)} className="flex min-w-0 items-center gap-3 rounded-xl bg-surface-2 p-3 hover:bg-surface-3">
-            <Artwork src={p.tracks[0]?.thumb} className="size-11 shrink-0 rounded-lg" />
+            <Artwork src={p.cover || p.tracks[0]?.thumb} fallback={p.tracks[0]?.thumb} className="size-11 shrink-0 rounded-lg" />
             <span className="min-w-0 flex-1"><strong className="block truncate text-sm">{p.name}</strong><span className="text-xs text-fg-2">{t.common.tracks(p.tracks.length)}</span></span><ArrowRightIcon size={16} />
           </Link>)}</div>
         </section>}
+        {!linkId && kind === "playlist" && <YouTubePlaylists query={q} />}
         {linkId && (
           <div className="px-2 md:px-3">
             {linkTrack === "loading" && <TrackListSkeleton rows={1} />}
@@ -351,17 +339,17 @@ export default function Search() {
           </div>
         )}
 
-        {!linkId && kind !== "playlist" && state === "loading" && <TrackListSkeleton />}
+        {result.status === "loading" && <TrackListSkeleton />}
 
-        {!linkId && kind !== "playlist" && state === "error" && (
+        {result.status === "error" && (
           <EmptyState
             icon={<WarningCircleIcon size={28} />}
             title={t.search.failed}
-            body={error}
+            body={result.message}
             action={
               <button
                 type="button"
-                onClick={() => setRetry((n) => n + 1)}
+                onClick={catalog.retry}
                 className="mt-2 h-11 rounded-full bg-surface-3 px-6 text-sm font-medium hover:bg-surface-4"
               >
                 {t.common.retry}
@@ -370,13 +358,10 @@ export default function Search() {
           />
         )}
 
-        {!linkId && kind !== "playlist" && state === "ok" && albums && (albums.length ? (
-          <AlbumGrid albums={albums} />
-        ) : (
-          <EmptyState icon={<MagnifyingGlassIcon size={28} />} title={t.search.nothingFound} body={t.search.nothingFoundBody(q, t.search.songs)} />
-        ))}
-
-        {!linkId && kind !== "playlist" && state === "ok" && results && results.length === 0 && (
+        {page && page.items.length > 0 && (page.kind === "album"
+          ? <AlbumGrid albums={page.items} />
+          : <TrackList tracks={page.items} showAlbum={page.kind === "song"} />)}
+        {page && !page.items.length && !page.cursor && (
           <EmptyState
             icon={<MagnifyingGlassIcon size={28} />}
             title={t.search.nothingFound}
@@ -384,9 +369,18 @@ export default function Search() {
           />
         )}
 
-        {!linkId && kind !== "playlist" && state === "ok" && results && results.length > 0 && <TrackList tracks={results} showAlbum={kind === "song"} />}
+        {result.status === "ok" && result.page.cursor && (
+          <div className="mt-3 flex flex-col items-center gap-2 px-2 text-center [overflow-anchor:none]" aria-busy={result.loadingMore}>
+            {result.moreError && <p role="alert" className="text-sm text-fg-2">{result.moreError}</p>}
+            <button type="button" disabled={result.loadingMore}
+              onClick={result.expired ? catalog.retry : () => void catalog.loadMore()}
+              className="min-h-11 rounded-full bg-surface-3 px-4 py-2 text-sm font-medium text-fg-2 hover:text-fg disabled:opacity-40">
+              {result.loadingMore ? t.search.loadingMore : result.expired ? t.search.searchAgain : result.moreError ? t.common.retry : t.search.showMore}
+            </button>
+          </div>
+        )}
 
-        {!linkId && state === "idle" && (
+        {!linkId && !q && (
           <div className="px-2 md:px-3">
             {recent.length > 0 ? (
               <div className="flex flex-col gap-3">

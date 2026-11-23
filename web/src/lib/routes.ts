@@ -10,11 +10,23 @@ export const paths = {
   cues: "/cues",
   favorites: "/favorites",
   history: "/history",
+  radio: "/radio",
   playlist: (id: string) => `/playlist/${id}`,
 };
 
 /** Hash that opens the full-screen Now Playing sheet on phones (so Back closes it). */
 export const NOW_PLAYING_HASH = "now-playing";
+
+export interface TrackLinkState {
+  revealTrack: { id: string; queueIndex: number };
+}
+
+export interface LibraryReturnState {
+  revealPlaylistId: string;
+}
+
+/** The track selected at the moment the user follows a playback-source link. */
+export const trackLinkState = (id: string, queueIndex: number): TrackLinkState => ({ revealTrack: { id, queueIndex } });
 
 // Musike 1.1 and earlier used Portuguese addresses; bookmarks and installed shortcuts may still point there.
 const LEGACY_PATHS: [string, string][] = [

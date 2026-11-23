@@ -34,6 +34,14 @@
 :root[data-plugin-editor] .music-app>.min-h-0 {padding-left:var(--plugin-safe-left,env(safe-area-inset-left));padding-right:var(--plugin-safe-right,env(safe-area-inset-right));}
 :root[data-plugin-editor] .music-app .safe-top {padding-left:0;padding-right:0;}
 :root[data-plugin-editor] [role="dialog"] {width:calc(100% - var(--plugin-safe-left,env(safe-area-inset-left)) - var(--plugin-safe-right,env(safe-area-inset-right)));max-height:calc(var(--plugin-viewport-height,100dvh) - var(--plugin-safe-top,env(safe-area-inset-top)) - var(--plugin-safe-bottom,env(safe-area-inset-bottom)) - 12px);overflow-y:auto;}
+/* Now Playing fills the area up to the opaque tab bar, not the inset used for ordinary dialogs. */
+:root[data-plugin-editor] .ios-now-playing-docked[role="dialog"] {bottom:calc(64px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));width:auto;max-height:none;overflow:hidden;}
+:root[data-plugin-editor] .ios-now-playing-docked .overlay-top {
+  padding-top:var(--plugin-safe-top,env(safe-area-inset-top));
+  padding-left:calc(20px + var(--plugin-safe-left,env(safe-area-inset-left)));
+  padding-right:calc(20px + var(--plugin-safe-right,env(safe-area-inset-right)));
+}
+:root[data-plugin-editor] .playback-tabbar {z-index:41;}
 :root[data-plugin-editor] .cue-workspace-main {overflow:hidden;padding-bottom:calc(64px + var(--plugin-safe-bottom,env(safe-area-inset-bottom)));}
 :root[data-plugin-editor] .cue-workspace {height:100%;min-height:0;display:flex;flex-direction:column;padding-bottom:0;}
 :root[data-plugin-editor] .cue-workspace>header {flex:none;}
@@ -51,8 +59,8 @@
 :root[data-plugin-editor] .cue-scrubber {min-width:0;}
 :root[data-plugin-editor] .cue-scrubber .w-10 {width:32px;font-size:9px;}
 :root[data-plugin-editor] .cue-artwork {width:32px;height:32px;flex-shrink:0;}
-:root[data-plugin-editor] .cue-track-label p:first-child {font-size:12px;}
-:root[data-plugin-editor] .cue-track-label p:last-child {font-size:10px;}
+:root[data-plugin-editor] .cue-track-label > :first-child {font-size:12px;}
+:root[data-plugin-editor] .cue-track-label > :last-child {font-size:10px;}
 :root[data-plugin-editor] .cue-transport .font-mono {font-size:10px;}
 :root[data-plugin-editor] .cue-transport-buttons {flex:none;gap:0;}
 :root[data-plugin-editor] .cue-transport-buttons button {display:grid;place-items:center;width:28px;height:32px;border-radius:50%;touch-action:manipulation;}
@@ -137,7 +145,7 @@
 :root[data-plugin-dense="true"] .cue-song-list {height:28px;}
 :root[data-plugin-dense="true"] .cue-playback-transport button {width:28px!important;height:28px!important;}
 :root[data-plugin-dense="true"] .cue-artwork {width:24px;height:24px;}
-:root[data-plugin-dense="true"] .cue-track-label p {line-height:1.1;}
+:root[data-plugin-dense="true"] .cue-track-label > * {line-height:1.1;}
 :root[data-plugin-dense="true"] .cue-transport-buttons button,
 :root[data-plugin-dense="true"] .cue-mark {height:28px;}
 
@@ -253,7 +261,7 @@
 :root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-heading {align-items:flex-start;text-align:left;gap:5px;}
 :root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-heading h1 {font-size:22px;line-height:1.15;}
 :root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-actions {padding-bottom:8px;}
-:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-actions>button {max-width:44px;max-height:44px;}
+:root[data-plugin-layout="landscape"][data-plugin-compact="true"] .collection-actions>button:not(.collection-add-tracks) {max-width:44px;max-height:44px;}
 :root[data-plugin-layout="landscape"][data-plugin-compact="true"] .music-app:not(.cue-workspace-active) header.safe-top>div {height:40px;}
 
 /* iPhone preview: icon-only buttons have symmetric content boxes. The toolbar's

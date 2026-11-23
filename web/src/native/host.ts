@@ -7,3 +7,8 @@ declare global {
 
 /** Letter/transport shortcuts belong to the DAW; number-pad shortcuts stay active. */
 export const playerShortcutsEnabled = () => window.__pluginHosted !== true;
+
+/** Private iPhone standalone preview; widen this gate only after iOS acceptance. */
+export const iosLibraryToolsEnabled = () =>
+  typeof window !== "undefined" && window.__pluginPlatform === "ios" &&
+  window.__pluginIOSPreview === true && window.__pluginHosted !== true;

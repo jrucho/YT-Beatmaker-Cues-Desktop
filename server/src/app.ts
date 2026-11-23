@@ -2,13 +2,13 @@ import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
-import { ALBUM_ID, album, ARTIST_ID, artist, GENRE_ID, genre, genreArtists, genres, searchAlbums } from "./browse.js";
+import { ALBUM_ID, album, ARTIST_ID, artist, GENRE_ID, genre, genreArtists, genres, searchAlbums, searchAlbumsPage } from "./browse.js";
 import { config } from "./config.js";
 import { localAudio } from "./localAudio.js";
 import * as library from "./library.js";
 import { fileStorage } from "./libraryFile.js";
 import {sharedFileStorage} from './sharedLibrary.js';
-import { findVideoFor, radio, search, suggestions } from "./search.js";
+import { findVideoFor, radio, search, searchTracksPage, suggestions } from "./search.js";
 import { getPlaylist, searchPlaylists } from "./playlists.js";
 import { proxyStream, serveFile } from "./stream.js";
 import { langOf, msg, tr } from "./i18n.js";
@@ -73,8 +73,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   // Discovery
 
   app.get("/api/search/playlists", async req => {
-    const { q } = req.query as { q?: string };
-    return { playlists: await searchPlaylists(query(q), langOf(req)) };
+    const { q, cursor } = req.query as { q?: string; cursor?: string };
+    return searchPlaylists(query(q), langOf(req), cursor);
   });
 
   app.get("/api/youtube/playlists/:id", async (req,reply) => {
@@ -101,8 +101,10 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   });
 
   app.get("/api/search", async (req) => {
-    const { q, type } = req.query as { q?: string; type?: string };
-    return { tracks: await search(query(q), type === "video" ? "video" : "song", langOf(req)) };
+    const { q, type, paged, cursor } = req.query as { q?: string; type?: string; paged?: string; cursor?: string };
+    const term = query(q), kind = type === "video" ? "video" : "song";
+    if (paged === "1" || cursor) return searchTracksPage(term, kind, langOf(req), cursor);
+    return { tracks: await search(term, kind, langOf(req)) };
   });
 
   app.get("/api/suggest", async (req) => {
@@ -145,7 +147,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   });
 
   app.get("/api/search/albums", async (req) => {
-    const { q } = req.query as { q?: string };
+    const { q, paged, cursor } = req.query as { q?: string; paged?: string; cursor?: string };
+    if (paged === "1" || cursor) return searchAlbumsPage(query(q), langOf(req), cursor);
     return { albums: await searchAlbums(query(q), langOf(req)) };
   });
 
@@ -213,9 +216,9 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
 
   app.post("/api/history", async (req) => ({ history: await library.pushHistory(library.sanitizeTrack(req.body)) }));
 
-  app.post("/api/playlists", async (req) => {
+  app.post("/api/playlists", { bodyLimit: 32 * 1024 * 1024 }, async (req) => {
     const body = (req.body ?? {}) as { name?: unknown; tracks?: unknown };
-    const tracks = Array.isArray(body.tracks) ? body.tracks.slice(0, 500).map(library.sanitizeTrack) : [];
+    const tracks = Array.isArray(body.tracks) ? body.tracks.slice(0, library.MAX_TRACKS).map(library.sanitizeTrack) : [];
     return library.createPlaylist(typeof body.name === "string" ? body.name : "", tracks);
   });
 
@@ -231,9 +234,9 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   });
 
   /** One track, or `{ tracks: [...] }` to add many at once. */
-  app.post("/api/playlists/:pid/tracks", async (req) => {
+  app.post("/api/playlists/:pid/tracks", { bodyLimit: 32 * 1024 * 1024 }, async (req) => {
     const body = (req.body ?? {}) as { tracks?: unknown };
-    const tracks = Array.isArray(body.tracks) ? body.tracks.slice(0, 500).map(library.sanitizeTrack) : library.sanitizeTrack(req.body);
+    const tracks = Array.isArray(body.tracks) ? body.tracks.slice(0, library.MAX_TRACKS).map(library.sanitizeTrack) : library.sanitizeTrack(req.body);
     return library.addToPlaylist((req.params as { pid: string }).pid, tracks);
   });
 

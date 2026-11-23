@@ -21,8 +21,9 @@ import { useLibrary } from "../stores/library";
 import { toast, useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { iosPadLayoutEnabled } from '../mobile/padLayout';
+import { iosLibraryToolsEnabled } from "../native/host";
 import { renameLocalAudio, shareLocalAudio } from '../mobile/mediaEditing';
-import type { Track } from '../lib/types';
+import { isLocalAudio, type Track } from '../lib/types';
 import { Modal } from './Modal';
 
 function Item({ icon, children, onClick, danger }: { icon: ReactNode; children: ReactNode; onClick: () => void; danger?: boolean }) {
@@ -60,6 +61,9 @@ export function TrackMenu() {
   const t = useT();
   const [pos, setPos] = useState({ left: 0, top: 0 });
   const [renaming,setRenaming]=useState<Track|null>(null),[songName,setSongName]=useState(''),[savingName,setSavingName]=useState(false);
+  const [erasing, setErasing] = useState<Track | null>(null);
+  const [removingAudio, setRemovingAudio] = useState(false);
+  const confirmErase = iosLibraryToolsEnabled() && !!menu && isLocalAudio(menu.track.id);
 
   useLayoutEffect(() => {
     if (!menu || !isMd || !box.current) return;
@@ -89,7 +93,7 @@ export function TrackMenu() {
 
   const content = menu && (
     <div role="menu" aria-label={t.trackMenu.actionsFor(menu.track.title)} data-escape-closes className="flex flex-col">
-      <Item icon={<PlayIcon size={18} />} onClick={run(() => usePlayer.getState().playTrack(menu.track))}>
+      <Item icon={<PlayIcon size={18} />} onClick={run(menu.playFrom ?? (() => usePlayer.getState().playTrack(menu.track)))}>
         {t.trackMenu.playNow}
       </Item>
       <Item icon={<QueueIcon size={18} />} onClick={run(() => usePlayer.getState().playNext(menu.track))}>
@@ -98,9 +102,9 @@ export function TrackMenu() {
       <Item icon={<ListPlusIcon size={18} />} onClick={run(() => usePlayer.getState().addToQueue(menu.track))}>
         {t.trackMenu.addToQueue}
       </Item>
-      <Item icon={<RadioIcon size={18} />} onClick={run(() => void usePlayer.getState().startRadio(menu.track))}>
+      {!confirmErase && <Item icon={<RadioIcon size={18} />} onClick={run(() => void usePlayer.getState().startRadio(menu.track))}>
         {t.trackMenu.startRadio}
-      </Item>
+      </Item>}
       <div className="mx-3 my-1 h-px bg-line" />
       <Item
         icon={<HeartIcon size={18} weight={isFavorite ? "fill" : "regular"} className={isFavorite ? "text-accent-text" : ""} />}
@@ -123,8 +127,11 @@ export function TrackMenu() {
         </Item>
       )}
       {inLibrary && (
-        <Item danger icon={<TrashIcon size={18} />} onClick={run(() => void useLibrary.getState().removeTrack(menu.track.id))}>
-          {iosPadLayoutEnabled()&&menu.track.id.startsWith('loc')?'Delete audio from library':t.trackMenu.removeFromLibrary}
+        <Item danger icon={<TrashIcon size={18} />} onClick={run(() => {
+          if (confirmErase) setErasing(menu.track);
+          else void useLibrary.getState().removeTrack(menu.track.id);
+        })}>
+          {confirmErase ? t.libraryTools.erase.action : iosPadLayoutEnabled()&&menu.track.id.startsWith('loc')?'Delete audio from library':t.trackMenu.removeFromLibrary}
         </Item>
       )}
       {youtubeTrack&&<><div className="mx-3 my-1 h-px bg-line" />
@@ -192,5 +199,18 @@ export function TrackMenu() {
       <input id="song-name" autoFocus value={songName} maxLength={200} disabled={savingName} onChange={event=>setSongName(event.target.value)} className="h-12 rounded-full border border-line-strong bg-surface-1 px-5 text-[15px] focus:border-accent focus:outline-none"/>
       <div className="flex justify-end gap-2"><button type="button" disabled={savingName} onClick={()=>setRenaming(null)} className="h-11 rounded-full px-5 text-sm text-fg-2">{t.common.cancel}</button><button type="submit" disabled={savingName||!songName.trim()} className="h-11 rounded-full bg-accent px-6 text-sm font-semibold text-accent-ink disabled:opacity-40">{savingName?'Saving…':t.collection.save}</button></div>
     </form>
-  </Modal></>;
+  </Modal>
+  {erasing && <Modal open onClose={() => { if (!removingAudio) setErasing(null); }} title={t.libraryTools.erase.title}>
+    <p className="break-words text-sm text-fg-2">{t.libraryTools.erase.body(erasing.title)}</p>
+    <div className="mt-5 flex justify-end gap-2">
+      <button type="button" disabled={removingAudio} onClick={() => setErasing(null)} className="h-11 rounded-full px-4 text-sm text-fg-2">{t.common.cancel}</button>
+      <button type="button" disabled={removingAudio} className="h-11 rounded-full bg-danger px-4 text-sm font-semibold text-white disabled:opacity-50"
+        onClick={async () => {
+          setRemovingAudio(true);
+          try { await useLibrary.getState().removeTrack(erasing.id); }
+          finally { setRemovingAudio(false); setErasing(null); }
+        }}>{t.libraryTools.erase.confirm}</button>
+    </div>
+  </Modal>}
+  </>;
 }

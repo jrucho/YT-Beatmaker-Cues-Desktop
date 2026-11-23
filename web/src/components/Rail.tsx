@@ -164,7 +164,7 @@ export function Rail({ onStudio, cues }: { onStudio?: () => void; cues?: boolean
           </RailLink>
           {sidebarPlaylists && playlists.map((p) => (
             <RailLink key={p.id} to={paths.playlist(p.id)} label={p.name} sub={t.common.tracks(p.tracks.length)}>
-              <Artwork src={p.tracks[0]?.thumb} className="size-full" iconSize={18} />
+              <Artwork src={p.cover || p.tracks[0]?.thumb} fallback={p.tracks[0]?.thumb} className="size-full" iconSize={18} />
             </RailLink>
           ))}
         </div>

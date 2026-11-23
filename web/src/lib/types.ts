@@ -9,9 +9,13 @@ export interface Track {
   kind: "song" | "video";
 }
 
+/** Managed imports and recordings use a separate id namespace from the catalog. */
+export const isLocalAudio = (id: string) => /^loc[0-9a-f]{8}$/i.test(id);
+
 export interface Playlist {
   id: string;
   name: string;
+  cover?: string;
   createdAt: number;
   updatedAt: number;
   tracks: Track[];

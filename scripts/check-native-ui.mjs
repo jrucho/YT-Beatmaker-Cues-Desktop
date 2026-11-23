@@ -5,6 +5,7 @@ import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {chromium} from 'playwright';
 import {inflateSync} from 'node:zlib';
+import {catalogFixture} from '../plugin/Tests/fixtures/catalog-search.mjs';
 
 function pngPixels(data){
   let width,height,channels;const chunks=[];
@@ -56,8 +57,9 @@ async function checkKeyboardLoopers(page,edition){
   console.log('PASS: '+edition+' keyboard looper recordings exceed one second; changed modifiers, repeat, real hold-clear, blur/dialog/route cleanup and empty-track use.');
 }
 
-const root=process.cwd(),web=path.join(root,'plugin/build-web');
-const legacyIosPreview=process.argv.includes('--ios-preview');
+const root=process.cwd(),web=path.resolve(process.env.NATIVE_UI_WEB_DIR||'plugin/build-web');
+const libraryOnly=process.argv.includes('--ios-library');
+const legacyIosPreview=libraryOnly||process.argv.includes('--ios-preview');
 const iosPreview=legacyIosPreview||process.argv.includes('--features');
 const fixturePlatform=process.argv.find(value=>value.startsWith('--platform='))?.slice(11)||(legacyIosPreview?'ios':'desktop');
 const microphoneName=fixturePlatform==='ios'?'iPhone microphone':'Built-in microphone',speakerName=fixturePlatform==='ios'?'iPhone speaker':'Device speaker';
@@ -69,6 +71,7 @@ const server=createServer(async(req,res)=>{
   if(url.pathname==='/fixture.js'){
     res.setHeader('content-type','text/javascript');return res.end(`
       const realStorage=window.localStorage;
+      const catalogFixture=${catalogFixture.toString()};
       const art='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="teal"/></svg>');
       const tracks=Array.from({length:500},(_,i)=>({id:'ui'+String(i).padStart(9,'0'),title:(i%2?'A very long track title that must wrap safely without cutting the playlist ':'Short song ')+i,artist:'Artist '+i,duration:60,kind:'song',thumb:i%3===0?art:i%3===1?'':'/missing-art.png',art:i%3===0?art:i%3===1?'':'/missing-art.png'}));
       const library=JSON.parse(realStorage.getItem('ui-fixture-library')||'null')||{favorites:[],history:tracks.slice(0,16),playlists:[{id:'fixture-playlist',name:'A long playlist name '+('with words '.repeat(12)),tracks}]};
@@ -91,8 +94,21 @@ const server=createServer(async(req,res)=>{
           else if(name==='libraryVersion')result=String(f.libraryVersion);
           else if(name==='librarySnapshot')result={json:JSON.stringify(library),version:String(f.libraryVersion)};
           else if(name==='libraryRead')result=JSON.stringify(library);
-          else if(name==='libraryCommit'){Object.assign(library,JSON.parse(request.next));f.libraryVersion++;realStorage.setItem('ui-fixture-library',JSON.stringify(library));result=JSON.stringify(library);}
-          else if(name==='localMedia')result=f.localMedia;
+           else if(name==='libraryCommit'||name==='libraryReplayEdit'){
+             const before=JSON.stringify(library),next=JSON.parse(request.next);
+             if(name==='libraryReplayEdit')next.history=library.history; // Native fixture tests actual conflict detection/merging.
+             Object.assign(library,next);f.libraryVersion++;realStorage.setItem('ui-fixture-library',JSON.stringify(library));
+             const json=JSON.stringify(library);
+             result=request.captureUndo?{json,previous:before}:json;
+           }
+           else if(name==='localMedia')result=f.localMedia;
+           else if(name==='localAudioStatus')result={tracks:f.localMedia.map(track=>({...track,available:track.available!==false}))};
+           else if(name==='pickPlaylistCover'){
+             f.coverRequest=request;
+             const canvas=document.createElement('canvas');canvas.width=canvas.height=24;
+             const context=canvas.getContext('2d');context.fillStyle=request==='files'?'tomato':'royalblue';context.fillRect(0,0,24,24);
+             result={image:f.cancelCover||f.rejectCover?'':canvas.toDataURL('image/jpeg'),failed:!!f.rejectCover};
+           }
           else if(name==='renameLocalAudio'){const track=f.localMedia.find(track=>track.id===request.id),previousTitle=track.title;track.title=request.title.trim();const update=items=>items.forEach(item=>{if(item.id===track.id)item.title=track.title;});update(library.favorites);update(library.history);library.playlists.forEach(playlist=>update(playlist.tracks));f.libraryVersion++;realStorage.setItem('ui-fixture-media',JSON.stringify(f.localMedia));realStorage.setItem('ui-fixture-library',JSON.stringify(library));result={track:structuredClone(track),previousTitle,library:JSON.stringify(library)};}
           else if(name==='mixer'){if(request)Object.assign(f.mixer,request);result=structuredClone(f.mixer);}
           else if(name==='transitions'){if(request)f.transitions=request;result=f.transitions||{mode:'crossfade',enabled:true,seconds:3};}
@@ -117,9 +133,14 @@ const server=createServer(async(req,res)=>{
             else if(request.cmd==='stop'){const track={id:'locrecord01',title:'Recorded take',artist:'Recorded audio input',duration:2,kind:'song',thumb:'',art:''};f.recording={...f.recording,hasTake:false,recording:false};f.localMedia.push(track);realStorage.setItem('ui-fixture-media',JSON.stringify(f.localMedia));result={track};}
             else {if(f.recording.recording)f.recording.seconds=(Date.now()-f.recordingStarted)/1000;result=structuredClone(f.recording);}
           }
-          else if(name==='importAudio'){
-            const imported=[{id:'locimport01',title:'Imported kick',artist:'Local audio',duration:12,kind:'song',thumb:'',art:''},{id:'locimport02',title:'Imported phrase',artist:'Local audio',duration:8,kind:'song',thumb:'',art:''}];
-            f.localMedia=[...new Map([...f.localMedia,...imported].map(track=>[track.id,track])).values()];realStorage.setItem('ui-fixture-media',JSON.stringify(f.localMedia));result={tracks:imported,errors:[]};
+           else if(name==='importAudio'){
+             f.fileRequest=request;
+             const imported=f.cancelFiles?[]:request.audioOnly?[
+               {id:'loc00000071',title:'Playlist kick',artist:'Local audio',duration:12,kind:'song',thumb:'',art:''},
+               {id:'loc00000072',title:'Playlist phrase',artist:'Local audio',duration:8,kind:'song',thumb:'',art:''}
+             ]:[{id:'locimport01',title:'Imported kick',artist:'Local audio',duration:12,kind:'song',thumb:'',art:''},{id:'locimport02',title:'Imported phrase',artist:'Local audio',duration:8,kind:'song',thumb:'',art:''}];
+             f.localMedia=[...new Map([...f.localMedia,...imported].map(track=>[track.id,track])).values()];realStorage.setItem('ui-fixture-media',JSON.stringify(f.localMedia));
+             result={tracks:imported,errors:f.rejectFile?[{file:'bad.wav',message:'Cannot decode audio from this file'}]:[]};
           }
           else if(name==='importGallery'){f.galleryOpens=(f.galleryOpens||0)+1;if(f.cancelGallery)result={tracks:[],errors:[]};else{const track={id:'locgallery1',title:'Gallery video',artist:'Video audio',duration:12,kind:'song',thumb:'',art:''};f.localMedia=[...new Map([...f.localMedia,track].map(track=>[track.id,track])).values()];realStorage.setItem('ui-fixture-media',JSON.stringify(f.localMedia));result={tracks:[track],errors:[]};}}
           else if(name==='samplerSource'){const track=f.localMedia.find(track=>track.id===request.id)||request;result={...track,peaks:Array.from({length:2048},(_,i)=>.15+(i%29)/40)};f.samplerSource=result;}
@@ -162,7 +183,7 @@ const server=createServer(async(req,res)=>{
             if(request.cmd==='load'&&request.url)setTimeout(()=>emit('pluginAudio',{event:'ready',payload:{sourceId:f.sourceId,duration:60}}),0);
             if(request.cmd==='play'||request.cmd==='pause')setTimeout(()=>emit('pluginAudio',{event:request.cmd==='play'?'playing':'pause',payload:{sourceId:f.sourceId}}),0);
           }
-          else if(name==='http')result={status:200,headers:{},data:'{}'};
+           else if(name==='http')result={status:200,headers:{},data:JSON.stringify(${libraryOnly}?catalogFixture({url:request.url,body:request.data}):{})};
           if(name==='waveformRegion'&&f.waveformDelay)setTimeout(()=>emit('__juce__complete',{promiseId:resultId,result}),f.waveformDelay);else emit('__juce__complete',{promiseId:resultId,result});
         },0);}
       }};
@@ -179,6 +200,512 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 let browser;
 try{
   browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{})});
+  if(libraryOnly){
+    const origin=`http://127.0.0.1:${server.address().port}`;
+    const page=await browser.newPage({viewport:{width:393,height:852},hasTouch:true});
+    const errors=[];page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(origin+'/library');
+    const main=page.locator('main');
+    const libraryHeading=main.getByRole('heading',{name:'Library',exact:true});
+    const dialog=page.getByRole('dialog',{name:'Now playing',exact:true});
+    const openNowPlaying=async(title)=>{
+      await page.getByRole('button',{name:`Open Now playing: ${title}`,exact:true}).click();
+      await dialog.waitFor();
+    };
+    const closeNowPlaying=async()=>{
+      await dialog.getByRole('button',{name:'Close',exact:true}).click();
+      await dialog.waitFor({state:'detached'});
+    };
+    const cleanLibrary=async()=>{
+      await libraryHeading.waitFor();
+      assert.equal(await main.getByRole('button',{name:'Library health',exact:true}).count(),0);
+      assert.equal(await main.getByText(/Playing from:|Current playlist/).count(),0);
+    };
+    const playingLabel=(id)=>main.locator(`a[href="/playlist/${id}"] .playlist-playing-label`);
+    const coloredLink=async(name)=>{
+      const link=dialog.getByRole('link',{name,exact:true});
+      await link.waitFor();
+      assert.equal(await link.evaluate(node=>getComputedStyle(node).textDecorationLine),'none');
+      return link;
+    };
+    await cleanLibrary();
+    const [sourceId,otherId]=await page.evaluate(async()=>{
+      const {api,library}=window.__pluginStores;
+      const track=window.__uiFixture.tracks[0];
+      const source=await api.createPlaylist('Set A',[track]),other=await api.createPlaylist('Set B',[track]);
+      await library.getState().load(true);
+      return [source.id,other.id];
+    });
+    await main.locator(`a[href="/playlist/${sourceId}"]`).click();
+    await main.getByRole('button',{name:'Play Short song 0',exact:true}).click();
+    const stateWait=(condition,arg)=>page.waitForFunction(condition,arg);
+    await stateWait(()=>window.__pluginStores.player.getState().status==='playing');
+    await openNowPlaying('Short song 0');
+    await coloredLink('Playing from: Set A');
+    await dialog.getByText('YouTube',{exact:true}).waitFor();
+    for(const {width,height,top,bottom,left,right} of [
+      {width:393,height:852,top:44,bottom:34,left:0,right:0},
+      {width:568,height:320,top:0,bottom:21,left:25,right:25},
+    ]){
+      await page.setViewportSize({width,height});
+      await page.evaluate(insets=>{
+        for(const [edge,value] of Object.entries(insets))document.documentElement.style.setProperty('--plugin-safe-'+edge,value+'px');
+      },{top,bottom,left,right});
+      await stateWait(()=>{
+        const nav=document.querySelector('nav.playback-tabbar'),sheet=document.querySelector('.ios-now-playing-docked');
+        if(!nav||!sheet)return false;
+        const a=sheet.getBoundingClientRect(),b=nav.getBoundingClientRect();
+        return Math.abs(a.bottom-b.top)<=1&&a.top<=1&&a.left<=1&&a.right>=innerWidth-1
+          &&document.elementFromPoint(4,b.top-2)?.closest('.ios-now-playing-docked')
+          &&document.elementFromPoint(4,b.top+2)?.closest('nav')===nav
+          &&getComputedStyle(nav).backgroundColor===getComputedStyle(sheet).backgroundColor
+          &&nav.querySelectorAll('li').length===4;
+      });
+    }
+    await page.evaluate(()=>{
+      for(const edge of ['top','bottom','left','right'])document.documentElement.style.removeProperty('--plugin-safe-'+edge);
+    });
+    await page.setViewportSize({width:393,height:852});
+    await closeNowPlaying();
+    await main.getByRole('button',{name:'Back',exact:true}).click();
+    await cleanLibrary();
+    await playingLabel(sourceId).waitFor();
+    const checkPlayingStyle=async()=>{
+      const row=await playingLabel(sourceId).evaluate(label=>{
+        const count=label.previousElementSibling,title=label.parentElement.previousElementSibling;
+        const probe=document.createElement('span');
+        probe.style.color='var(--accent-text)';
+        label.append(probe);
+        const accent=getComputedStyle(probe).color;
+        probe.remove();
+        const c=count.getBoundingClientRect(),l=label.getBoundingClientRect(),n=title.getBoundingClientRect();
+        const {color,backgroundColor}=getComputedStyle(label);
+        return {color,accent,title:getComputedStyle(title).color,backgroundColor,
+          count:count.textContent,countFits:count.scrollWidth<=count.clientWidth+1,
+          byCount:l.left>=c.right&&l.left-c.right<12&&Math.abs(l.bottom-c.bottom)<=4,belowTitle:l.top>=n.bottom-1};
+      });
+      assert.equal(row.color,row.accent,'Playing text should use the app’s existing text accent');
+      assert.equal(row.title,row.accent,'The active playlist title should also use the theme accent');
+      assert.equal(row.backgroundColor,'rgba(0, 0, 0, 0)','Playing must not have a pill background');
+      assert(row.count==='1 track'&&row.countFits&&row.byCount&&row.belowTitle,'Place the Playing label beside the full track count, below the title');
+      return row.color;
+    };
+    for(const theme of ['dark','light']){
+      await page.evaluate(theme=>{document.documentElement.dataset.theme=theme;},theme);
+      await checkPlayingStyle();
+    }
+    await page.evaluate(()=>{document.documentElement.dataset.theme='dark';});
+    const defaultAccent=await checkPlayingStyle();
+    const accentSettings=page.getByRole('dialog');
+    const chooseAccent=async(name)=>{
+      await main.getByRole('button',{name:'Settings',exact:true}).click();
+      await accentSettings.getByRole('radiogroup',{name:'Accent color',exact:true}).getByRole('radio',{name,exact:true}).click();
+      await accentSettings.getByRole('button',{name:'Close',exact:true}).click();
+      await accentSettings.waitFor({state:'detached'});
+    };
+    await chooseAccent('Pink');
+    await page.setViewportSize({width:320,height:568});
+    assert.notEqual(await checkPlayingStyle(),defaultAccent,'The label did not follow a changed accent');
+    await page.setViewportSize({width:393,height:852});
+    await chooseAccent('Volt');
+    assert.equal(await playingLabel(otherId).count(),0,'An identical track list was incorrectly marked Playing');
+    assert.equal(await main.getByRole('button',{name:'Playing',exact:true}).count(),0,'Playing must be a label, not a button');
+    await page.locator('.mini-player').getByRole('button',{name:'Pause',exact:true}).click();
+    await playingLabel(sourceId).waitFor({state:'detached'});
+    await page.locator('.mini-player').getByRole('button',{name:'Play',exact:true}).click();
+    await playingLabel(sourceId).waitFor();
+
+    await page.getByRole('link',{name:'Cues',exact:true}).click();
+    await main.getByRole('link',{name:'Short song 0 · Playing from: Set A',exact:true}).click();
+    await page.waitForURL(url=>url.pathname===`/playlist/${sourceId}`);
+    assert.equal(await page.evaluate(()=>window.__pluginStores.player.getState().status),'playing','The Cues title link interrupted playback');
+    await main.getByRole('button',{name:'Back',exact:true}).click();
+    await cleanLibrary();
+    await playingLabel(sourceId).waitFor();
+
+    await main.locator(`ul a[href="/playlist/${otherId}"]`).click();
+    const add=main.getByRole('button',{name:'Add tracks',exact:true});
+    await add.waitFor();
+    assert.equal(await main.getByText(/Playing from:|Current playlist/).count(),0);
+    for(const viewport of [{width:320,height:568},{width:568,height:320},{width:820,height:1180}]){
+      await page.setViewportSize(viewport);
+      const box=await add.boundingBox();
+      assert(box.width>90&&box.x+box.width<=viewport.width,'Add tracks is clipped at '+JSON.stringify(viewport));
+    }
+    await page.setViewportSize({width:393,height:852});
+    const addDialog=page.getByRole('dialog',{name:'Add tracks',exact:true});
+    await add.click();
+    await page.evaluate(()=>{window.__uiFixture.cancelFiles=true;});
+    const files=addDialog.getByRole('button',{name:'Import audio files…',exact:true});
+    await files.click();
+    await stateWait(()=>!!window.__uiFixture.fileRequest);
+    assert.deepEqual(await page.evaluate(()=>window.__uiFixture.fileRequest),{multiple:true,audioOnly:true});
+    assert.equal(await page.evaluate(()=>window.__uiFixture.localMedia.length),0);
+    await page.evaluate(()=>{const f=window.__uiFixture;f.cancelFiles=false;f.rejectFile=true;});
+    await files.click();
+    await addDialog.getByText(/bad\.wav: Cannot decode/).waitFor();
+    await addDialog.getByRole('button',{name:'Close',exact:true}).click();
+    await addDialog.waitFor({state:'detached'});
+    await main.getByRole('button',{name:'Play Playlist kick',exact:true}).waitFor();
+    await main.getByRole('button',{name:'Play Playlist phrase',exact:true}).waitFor();
+    assert.equal(await page.evaluate(()=>window.__pluginStores.player.getState().source.id),sourceId,'Import changed the playing queue');
+    assert.equal(await page.evaluate(()=>window.__uiFixture.library.playlists.some(p=>p.name==='Imports')),false,'Direct import also created Imports');
+    await main.getByRole('button',{name:'Undo edit',exact:true}).click();
+    await main.getByRole('button',{name:'Play Playlist kick',exact:true}).waitFor({state:'detached'});
+    assert.equal(await page.evaluate(()=>window.__uiFixture.localMedia.length),2,'Undo deleted the retained files');
+    await page.getByRole('link',{name:'Cues',exact:true}).click();
+    await page.locator('.cue-pad-grid').waitFor();
+    assert.equal(await page.evaluate(()=>window.__uiFixture.library.playlists.some(p=>p.name==='Imports')),false,'Entering Cues refiled removed tracks');
+    await page.getByRole('link',{name:'Library',exact:true}).click();
+    await page.evaluate(()=>{window.__uiFixture.localMedia.find(t=>t.id==='loc00000072').available=false;});
+    await add.click();
+    await addDialog.getByRole('button',{name:'From library',exact:true}).click();
+    await addDialog.getByRole('tab',{name:'Playlists',exact:true,selected:true}).waitFor();
+    assert.equal(await addDialog.getByRole('checkbox').count(),0,'The library picker should open on playlists, not individual songs');
+    await addDialog.getByRole('searchbox',{name:'Find a playlist',exact:true}).fill('Set A');
+    await addDialog.getByRole('button',{name:'Set A 0 tracks',exact:true}).click();
+    await addDialog.getByText('No tracks to add match this search.').waitFor();
+    await addDialog.getByRole('button',{name:'Back',exact:true}).click();
+    await addDialog.getByRole('searchbox',{name:'Find a playlist',exact:true}).fill('A long playlist');
+    await addDialog.getByRole('button',{name:/A long playlist name/}).click();
+    await addDialog.getByRole('checkbox',{name:'Short song 2 Artist 2',exact:true}).click();
+    assert.equal(await addDialog.getByRole('checkbox',{name:'Short song 0 Artist 0',exact:true}).count(),0,'Tracks already in the destination must be excluded');
+    await addDialog.getByRole('tab',{name:'All tracks',exact:true}).click();
+    const findTracks=addDialog.getByRole('searchbox',{name:'Find tracks in library',exact:true});
+    await findTracks.fill('playlist phrase');
+    await addDialog.getByText('No tracks to add match this search.',{exact:true}).waitFor();
+    await findTracks.fill('playlist kick');
+    await addDialog.getByRole('checkbox',{name:'Playlist kick Local audio',exact:true}).click();
+    await addDialog.getByRole('button',{name:'Add 2 tracks',exact:true}).click();
+    await addDialog.waitFor({state:'detached'});
+    await main.getByRole('button',{name:'Play Short song 2',exact:true}).waitFor();
+    assert.equal(await page.evaluate(()=>window.__pluginStores.player.getState().source.id),sourceId,'Browsing and adding tracks should not change playback');
+    await main.getByRole('button',{name:'Play Playlist kick',exact:true}).click();
+    await openNowPlaying('Playlist kick');
+    await dialog.getByRole('link',{name:'Playing from: Set B',exact:true}).waitFor();
+    await dialog.getByText('Local audio',{exact:true}).waitFor();
+    await closeNowPlaying();
+    await stateWait((id)=>JSON.parse(JSON.parse(window.__uiFixture.savedSession||'{}')['musike:player']||'{}').source?.id===id,otherId);
+
+    const editCover=main.getByRole('button',{name:'Edit playlist cover',exact:true});
+    const coverDialog=page.getByRole('dialog',{name:'Edit playlist cover',exact:true});
+    const customCover=editCover.locator('img[src^="data:image/jpeg"]');
+    await editCover.click();
+    await page.evaluate(()=>{window.__uiFixture.rejectCover=true;});
+    await coverDialog.getByRole('button',{name:'Choose from Files',exact:true}).click();
+    await coverDialog.getByRole('alert').filter({hasText:"Couldn't use this image"}).waitFor();
+    await page.evaluate(()=>{window.__uiFixture.rejectCover=false;});
+    await coverDialog.getByRole('button',{name:'Choose from Files',exact:true}).click();
+    await coverDialog.waitFor({state:'detached'});
+    await customCover.waitFor();
+    const filesCover=await customCover.getAttribute('src');
+    assert.equal(await page.evaluate(()=>window.__uiFixture.coverRequest),'files');
+
+    await editCover.click();
+    await page.evaluate(()=>{window.__uiFixture.cancelCover=true;});
+    await coverDialog.getByRole('button',{name:'Choose from Photos',exact:true}).click();
+    await coverDialog.waitFor({state:'detached'});
+    assert.equal(await customCover.getAttribute('src'),filesCover,'Cancelling a photo import changed the cover');
+    await page.evaluate(()=>{window.__uiFixture.cancelCover=false;});
+    await editCover.click();
+    await coverDialog.getByRole('button',{name:'Choose from Photos',exact:true}).click();
+    await coverDialog.waitFor({state:'detached'});
+    const photosCover=await customCover.getAttribute('src');
+    assert.notEqual(photosCover,filesCover);
+    await page.goto(origin+'/library');
+    await main.locator(`a[href="/playlist/${otherId}"] img[src^="data:image/jpeg"]`).waitFor();
+    await main.locator(`a[href="/playlist/${otherId}"]`).click();
+    await customCover.waitFor();
+    assert.equal(await customCover.getAttribute('src'),photosCover,'The chosen artwork did not survive a restart');
+    await editCover.click();
+    await coverDialog.getByRole('button',{name:'Use automatic cover',exact:true}).click();
+    await coverDialog.waitFor({state:'detached'});
+    await customCover.waitFor({state:'detached'});
+    await main.getByRole('button',{name:'Undo edit',exact:true}).click();
+    await customCover.waitFor();
+    await main.getByRole('button',{name:'Redo edit',exact:true}).click();
+    await customCover.waitFor({state:'detached'});
+
+    await main.getByRole('button',{name:'More options for Playlist kick',exact:true}).click();
+    await page.getByRole('menuitem',{name:'Delete audio from library',exact:true}).click();
+    const confirmation=page.getByRole('dialog',{name:'Permanently delete audio?',exact:true});
+    await confirmation.getByRole('button',{name:'Cancel',exact:true}).click();
+    await confirmation.waitFor({state:'detached'});
+    assert.equal(await page.evaluate(()=>window.__uiFixture.erasedAudio?.length??0),0);
+
+    await main.getByRole('button',{name:'Back',exact:true}).click();
+    await cleanLibrary();
+    await stateWait((id)=>JSON.parse(JSON.parse(window.__uiFixture.savedSession||'{}')['musike:player']||'{}').source?.id===id,otherId);
+    await page.getByRole('link',{name:'Cues',exact:true}).click();
+    await page.reload();
+    await main.getByRole('link',{name:'Playlist kick · Playing from: Set B',exact:true}).click();
+    await page.waitForURL(url=>url.pathname===`/playlist/${otherId}`);
+    await main.getByRole('button',{name:'Back',exact:true}).click();
+    await cleanLibrary();
+    await openNowPlaying('Playlist kick');
+    await dialog.getByRole('link',{name:'Playing from: Set B',exact:true}).waitFor();
+    await closeNowPlaying();
+    await page.evaluate(()=>{
+      const {player}=window.__pluginStores;
+      player.getState().playNext({...window.__uiFixture.tracks[1],title:'Queued separately'});
+      player.getState().next();
+    });
+    await openNowPlaying('Queued separately');
+    assert.equal(await dialog.getByRole('link',{name:'Playing from: Set B',exact:true}).count(),0);
+    await closeNowPlaying();
+    assert.equal(await main.locator('.playlist-playing-label').count(),0,'A manually queued track was marked as playlist playback');
+    await page.evaluate(()=>{
+      const player=window.__pluginStores.player.getState();
+      player.jumpTo(player.queue.findIndex(track=>track.id==='loc00000071'));
+    });
+    await openNowPlaying('Playlist kick');
+    await dialog.getByRole('link',{name:'Playing from: Set B',exact:true}).waitFor();
+    await closeNowPlaying();
+    await main.getByRole('button',{name:'Delete playlist: Set B',exact:true}).click();
+    const deletion=page.getByRole('dialog',{name:'Delete playlist?',exact:true});
+    await deletion.getByRole('button',{name:'Delete',exact:true}).click();
+    await deletion.waitFor({state:'detached'});
+    const savedList=main.locator(`ul a[href="/playlist/${otherId}"]`);
+    await savedList.waitFor({state:'detached'});
+    await main.getByRole('button',{name:'Undo edit',exact:true}).click();
+    await savedList.waitFor();
+
+    // Reopen an older session without source metadata. A matching playlist is
+    // still navigable, but ambiguous duplicate playlists aren't guessed.
+    await page.evaluate(()=>window.__pluginStores.player.setState({source:null}));
+    await stateWait(()=>{
+      const saved=JSON.parse(JSON.parse(window.__uiFixture.savedSession||'{}')['musike:player']||'{}');
+      return !saved.source&&saved.queue?.[saved.index]?.id==='loc00000071';
+    });
+    await page.getByRole('link',{name:'Cues',exact:true}).click();
+    await page.reload();
+    await main.getByRole('link',{name:'Playlist kick · Open playlist: Set B',exact:true}).click();
+    await page.waitForURL(url=>url.pathname===`/playlist/${otherId}`);
+    await page.evaluate(()=>{
+      const {player}=window.__pluginStores;
+      player.getState().playList([window.__uiFixture.tracks[0],window.__uiFixture.tracks[300]]);
+    });
+    await page.getByRole('link',{name:'Cues',exact:true}).click();
+    await main.getByRole('button',{name:'Short song 0 · Open playlist',exact:true}).click();
+    const choosePlaylist=page.getByRole('dialog',{name:'Open playlist',exact:true});
+    await choosePlaylist.getByRole('link',{name:/Set B/}).waitFor();
+    await choosePlaylist.getByRole('link',{name:/Set A/}).click();
+    await page.waitForURL(url=>url.pathname===`/playlist/${sourceId}`);
+
+    const savedBeforeRadio=await page.evaluate(async()=>{
+      const {api,player}=window.__pluginStores;
+      const count=(await api.library()).playlists.length;
+      const [seed,related,queued]=['Radio seed','Radio follow-up','Manually queued'].map((title,i)=>({...window.__uiFixture.tracks[i],title}));
+      const radio=api.radio;api.radio=async()=>[related];
+      try{await player.getState().startRadio(seed);}finally{api.radio=radio;}
+      player.getState().playNext(queued);
+      return count;
+    });
+    await openNowPlaying('Radio seed');
+    await (await coloredLink('Playing from: Radio')).click();
+    await dialog.waitFor({state:'detached'});
+    await main.getByRole('heading',{name:'Radio playlist',exact:true}).waitFor();
+    await main.getByRole('button',{name:'Play Radio seed',exact:true}).waitFor();
+    assert.equal(await main.getByRole('button',{name:'Play Manually queued',exact:true}).count(),0);
+    await main.getByRole('button',{name:'Play Radio follow-up',exact:true}).click();
+    await openNowPlaying('Radio follow-up');
+    await dialog.getByRole('link',{name:'Playing from: Radio',exact:true}).waitFor();
+    await closeNowPlaying();
+    assert.equal(await page.evaluate(async()=>(await window.__pluginStores.api.library()).playlists.length),savedBeforeRadio);
+    await main.getByRole('button',{name:'Save as playlist',exact:true}).click();
+    const saveRadio=page.getByRole('dialog',{name:'Save as playlist',exact:true});
+    await saveRadio.getByRole('textbox',{name:'Name',exact:true}).fill('Saved late-night radio');
+    await saveRadio.getByRole('button',{name:'Save',exact:true}).click();
+    await page.waitForURL(url=>url.pathname.startsWith('/playlist/'));
+    assert.deepEqual(await page.evaluate(async()=>{
+      const {api}=window.__pluginStores;
+      return (await api.library()).playlists.find(list=>list.name==='Saved late-night radio').tracks.map(track=>track.title);
+    }),['Radio seed','Radio follow-up']);
+    assert.equal(await page.evaluate(()=>window.__pluginStores.player.getState().source.kind),'radio','Saving the radio changed the playing queue');
+
+    await stateWait(()=>{
+      const saved=JSON.parse(JSON.parse(window.__uiFixture.savedSession||'{}')['musike:player']||'{}');
+      return saved.source?.kind==='radio'&&saved.queue?.[saved.index]?.title==='Radio follow-up';
+    });
+    await page.getByRole('link',{name:'Cues',exact:true}).click();
+    await page.reload();
+    await main.getByRole('link',{name:'Radio follow-up · Playing from: Radio',exact:true}).click();
+    await page.waitForURL(url=>url.pathname==='/radio');
+    await main.getByRole('button',{name:'Play Radio follow-up',exact:true}).waitFor();
+
+    const expectTrackInView=async(index,title)=>{
+      await stateWait(({index,title})=>{
+        const main=document.querySelector('main'),row=main.querySelector(`.track-row[data-index="${index}"]`);
+        if(row?.querySelector('.track-title')?.textContent!==title||!main.scrollTop)return false;
+        const {top,bottom}=row.getBoundingClientRect(),bounds=main.getBoundingClientRect();
+        const header=main.querySelector('header.sticky')?.offsetHeight??0;
+        const overlay=document.querySelector('.mini-player')?.getBoundingClientRect().top??bounds.bottom;
+        return top>=bounds.top+header-1&&bottom<=Math.min(bounds.bottom,overlay)+1;
+      },{index,title});
+    };
+    await page.goto(origin+'/library');
+    await libraryHeading.waitFor();
+    await page.evaluate(async()=>{
+      const {api,library}=window.__pluginStores;
+      for(let i=0;i<14;i++)await api.createPlaylist('Other list '+i);
+      await library.getState().load(true);
+    });
+    const deepPlaylist=main.locator('a[href="/playlist/fixture-playlist"]');
+    await deepPlaylist.waitFor();
+    const lateSong=await page.evaluate(()=>{
+      const {tracks}=window.__uiFixture,{player}=window.__pluginStores;
+      // Shuffle starts at queue index zero, not at the track's saved rank.
+      player.setState({shuffle:true});
+      player.getState().playList(tracks,438,{kind:'playlist',id:'fixture-playlist'});
+      return tracks[438].title;
+    });
+    await playingLabel('fixture-playlist').waitFor();
+    assert.equal(await deepPlaylist.locator('.playlist-playing-label').evaluate(label=>{
+      const count=label.previousElementSibling;
+      return count.textContent==='500 tracks'&&count.scrollWidth<=count.clientWidth+1;
+    }),true,'The active card must show the full track count beside Playing');
+    await deepPlaylist.click();
+    await expectTrackInView(438,lateSong);
+
+    const expectCardInView=()=>stateWait(()=>{
+      const main=document.querySelector('main'),card=main.querySelector('a[href="/playlist/fixture-playlist"]');
+      if(location.pathname!=='/library'||!card||main.scrollTop<=100)return false;
+      const {top,bottom}=card.getBoundingClientRect(),header=main.querySelector('header.sticky').getBoundingClientRect();
+      return top>=header.bottom-1&&bottom<=document.querySelector('.mini-player').getBoundingClientRect().top+1;
+    });
+    await main.getByRole('button',{name:'Back',exact:true}).click();
+    await expectCardInView();
+    await main.locator(`a[href="/playlist/${sourceId}"]`).click();
+    await page.waitForURL(url=>url.pathname===`/playlist/${sourceId}`);
+    await stateWait(()=>document.querySelector('main').scrollTop===0);
+    await page.waitForFunction(()=>document.querySelector('main .collection-hero').getBoundingClientRect().bottom>100);
+    await main.getByRole('button',{name:'Back',exact:true}).click();
+    await cleanLibrary();
+    await stateWait(()=>document.querySelector('main').scrollTop===0);
+
+    const query=main.getByRole('searchbox');
+    await page.getByRole('link',{name:'Search',exact:true}).click();
+    await query.fill('A long playlist name');
+    await main.getByRole('tab',{name:'Playlists',exact:true}).click();
+    await main.getByRole('region',{name:'Saved playlists',exact:true}).locator('a[href="/playlist/fixture-playlist"]').click();
+    await expectTrackInView(438,lateSong);
+    await main.getByRole('button',{name:'Back',exact:true}).click();
+    await expectCardInView(); // Even when the playing playlist was entered from Search.
+    await deepPlaylist.click();
+    await expectTrackInView(438,lateSong);
+    await openNowPlaying(lateSong); // Link to the same playlist, not just from a different page.
+    await (await coloredLink(/Playing from: A long playlist name/)).click();
+    await dialog.waitFor({state:'detached'});
+    await expectTrackInView(438,lateSong);
+    const onSong=await main.evaluate(el=>el.scrollTop);
+    await main.evaluate(el=>{el.scrollTop-=300;});
+    await stateWait(top=>document.querySelector('main').scrollTop<top-200,onSong);
+    await openNowPlaying(lateSong);
+    await (await coloredLink(/Playing from: A long playlist name/)).click();
+    await dialog.waitFor({state:'detached'});
+    await expectTrackInView(438,lateSong);
+
+    await stateWait(()=>{
+      const saved=JSON.parse(JSON.parse(window.__uiFixture.savedSession||'{}')['musike:player']||'{}');
+      return saved.source?.id==='fixture-playlist'&&saved.queue?.[saved.index]?.id===window.__uiFixture.tracks[438].id;
+    });
+    await page.getByRole('link',{name:'Cues',exact:true}).click();
+    await page.reload();
+    await main.locator('a.cue-track-label[href="/playlist/fixture-playlist"]').click();
+    await expectTrackInView(438,lateSong);
+    assert.equal(await page.evaluate(()=>window.__pluginStores.player.getState().status),'paused','Revealing a saved song after restart should not start it');
+
+    const lateRadio=await page.evaluate(()=>{
+      const {tracks}=window.__uiFixture,{player}=window.__pluginStores;
+      player.setState({shuffle:false});
+      player.getState().playList(tracks.slice(0,150),0,{kind:'radio'});
+      return tracks[122].title;
+    });
+    await stateWait(()=>window.__pluginStores.player.getState().status==='playing');
+    await page.evaluate(()=>{
+      const {player}=window.__pluginStores,{tracks}=window.__uiFixture;
+      player.getState().playNext({...tracks[155],title:'Not on the radio'});
+      player.getState().jumpTo(123);
+    });
+    await openNowPlaying(lateRadio);
+    await (await coloredLink('Playing from: Radio')).click();
+    await dialog.waitFor({state:'detached'});
+    await expectTrackInView(122,lateRadio);
+    await page.getByRole('link',{name:'Cues',exact:true}).click();
+    await main.locator('a.cue-track-label[href="/radio"]').click();
+    await expectTrackInView(122,lateRadio);
+    assert.equal(await page.evaluate(()=>window.__pluginStores.player.getState().index),123,'The source links must not change the queue index');
+
+    await page.evaluate(async()=>{
+      const {api,library}=window.__pluginStores;
+      for(let i=0;i<6;i++)await api.createPlaylist('Set match '+i);
+      await library.getState().load(true);
+    });
+    await page.goto(origin+'/search?type=playlists&q=Set');
+    const savedMatches=main.getByRole('region',{name:'Saved playlists',exact:true});
+    await savedMatches.getByRole('link',{name:/Set match 5/}).waitFor();
+    assert.equal(await savedMatches.getByRole('link').count(),8);
+
+    // Exercise the bundled YouTube Music parser over the native HTTP bridge.
+    // The iOS custom WebView origin may not expose crypto.randomUUID.
+    await page.addInitScript(()=>{Object.defineProperty(window.crypto,'randomUUID',{value:undefined});});
+    await page.goto(origin+'/search?q=fixture');
+    const showMore=main.getByRole('button',{name:'Show more',exact:true});
+    for(const [label,kind] of [['Songs','song'],['Videos','video'],['Albums','album']]){
+      await main.getByRole('tab',{name:label,exact:true}).click();
+      const item=n=>kind==='album'
+        ? main.getByRole('link',{name:new RegExp(`^Fixture album ${n}\\b`)})
+        : main.getByRole('button',{name:`Play Fixture ${kind} ${n}`,exact:true});
+      await item(1).waitFor();
+      assert.equal(await item(3).count(),0);
+      await showMore.click();
+      await item(3).waitFor();
+      assert.equal(await item(2).count(),1,'Do not show a duplicate from the next page');
+      await item(1).waitFor();
+      await showMore.click();
+      await item(4).waitFor();
+      await showMore.waitFor({state:'detached'});
+    }
+    await main.getByRole('searchbox').fill('no more');
+    await main.getByRole('searchbox').press('Enter');
+    await main.getByRole('link',{name:/^Fixture album 5\b/}).waitFor();
+    assert.equal(await main.getByRole('link',{name:/^Fixture album 4\b/}).count(),0,'A new query inherited the previous query’s results');
+    assert.equal(await showMore.count(),0);
+
+    await page.goto(origin+'/search');
+    await main.getByRole('button',{name:'Settings',exact:true}).click();
+    const settings=page.getByRole('dialog');
+    await settings.getByRole('radio',{name:'Français',exact:true}).click();
+    await settings.getByRole('button',{name:'Fermer',exact:true}).click();
+    await settings.waitFor({state:'detached'});
+    const search=main.getByRole('searchbox');
+    assert.equal(await search.getAttribute('placeholder'),'Titre, artiste ou lien YouTube');
+    for(const width of [320,375,393]){
+      await page.setViewportSize({width,height:700});
+      const metrics=await search.evaluate(async(input)=>{
+        await document.fonts.ready;
+        const style=getComputedStyle(input),placeholder=getComputedStyle(input,'::placeholder');
+        const ctx=document.createElement('canvas').getContext('2d');
+        ctx.font=`${placeholder.fontWeight} ${placeholder.fontSize} ${placeholder.fontFamily}`;
+        // Search inputs can report the inner text box as clientWidth.
+        const field=input.getBoundingClientRect().width;
+        const usable=field-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)
+          -parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth);
+        return {usable,hint:ctx.measureText(input.placeholder).width,field,font:ctx.font};
+      });
+      assert(metrics.usable-metrics.hint>=3,`French search hint clips at ${width}px: ${JSON.stringify(metrics)}`);
+    }
+    assert.deepEqual(errors,[]);
+
+    const hosted=await browser.newPage({viewport:{width:393,height:852}});
+    await hosted.goto(origin+'/library?hosted=1');
+    await hosted.locator('main').getByRole('heading',{name:'Library',exact:true}).waitFor();
+    assert.equal(await hosted.getByRole('button',{name:'Library health',exact:true}).count(),0);
+    await hosted.locator('main a[href="/playlist/fixture-playlist"]').first().click();
+    await hosted.locator('.collection-hero').waitFor();
+    assert.equal(await hosted.getByRole('button',{name:'Add tracks',exact:true}).count(),0);
+    console.log('PASS: iPhone flush Now Playing, theme accent/count, active playlist navigation, playlist-first Add tracks, custom covers including cancel/restart/undo, search pagination and radio.');
+  }else{
   const page=await browser.newPage({viewport:{width:1024,height:768},hasTouch:true});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/?hosted=1`);
@@ -811,4 +1338,5 @@ try{
   await page.keyboard.press('Space');await page.waitForFunction(()=>window.__pluginStores.player.getState().status==='playing');
   assert.deepEqual(errors,[]);
   console.log('PASS: native default linear16, minimal pads, themed logo/fader, 12 responsive shapes, 500-song queue, titles/artwork/recent list, and standalone Space after pad/fader focus.');
+  }
 }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}

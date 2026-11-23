@@ -10,10 +10,11 @@ import {
   genreArtists,
   genres,
   searchAlbums,
+  searchAlbumsPage,
 } from "../../../server/src/browse";
 import { msg, tr, type MsgKey } from "../../../server/src/i18n";
 import * as library from "../../../server/src/library";
-import { findVideoFor, radio, search, suggestions } from "../../../server/src/search";
+import { findVideoFor, radio, search, searchTracksPage, suggestions } from "../../../server/src/search";
 import { getPlaylist, searchPlaylists } from "../../../server/src/playlists";
 import { HttpError, VIDEO_ID } from "../../../server/src/types";
 import { getLang, getT } from "../i18n";
@@ -46,7 +47,7 @@ async function call<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   }
 }
 
-const tracks = (list: unknown[]) => list.slice(0, 500).map(library.sanitizeTrack);
+const tracks = (list: unknown[]) => list.slice(0, library.MAX_TRACKS).map(library.sanitizeTrack);
 
 const SYSTEM: SystemInfo = {
   ytdlp: { path: "built-in", version: null, channel: "stable", latest: { stable: null, nightly: null }, updateAvailable: false },
@@ -57,7 +58,7 @@ const SYSTEM: SystemInfo = {
 };
 
 export const api: MusikeApi = {
-  searchPlaylists: (q, signal) => call(() => searchPlaylists(q.trim().slice(0, 200), getLang()), signal),
+  searchPlaylists: (q, signal, cursor) => call(() => searchPlaylists(q.trim().slice(0, 200), getLang(), cursor), signal),
   youtubePlaylist: (id, signal, onProgress) => call(() => getPlaylist(id, getLang(),{signal,onProgress}), signal),
   removeLibraryTrack: (id, scope) => call(async()=>{
     if(scope!=='history'&&id.startsWith('loc')&&((globalThis as any).__pluginFeatures||(globalThis as any).__pluginIOSPreview)){await (globalThis as any).__pluginDeleteLocalAudio(id);return library.getLibrary();}
@@ -68,6 +69,10 @@ export const api: MusikeApi = {
       if (!q.trim()) throw fail(400, "emptyQuery");
       return search(q.trim().slice(0, 200), type, getLang());
     }, signal),
+  searchTracksPage: (q, type, signal, cursor) => call(() => {
+    if (!q.trim()) throw fail(400, "emptyQuery");
+    return searchTracksPage(q.trim().slice(0, 200), type, getLang(), cursor);
+  }, signal),
   suggest: (q, signal) => call(() => suggestions(q.trim().slice(0, 100), getLang()).catch(() => []), signal),
   radio: (id) => call(() => radio(id)),
   genres: () => call(() => genres(getLang())),
@@ -88,6 +93,10 @@ export const api: MusikeApi = {
       return albumPage(id, getLang());
     }, signal),
   searchAlbums: (q, signal) => call(() => searchAlbums(q.trim().slice(0, 200), getLang()), signal),
+  searchAlbumsPage: (q, signal, cursor) => call(() => {
+    if (!q.trim()) throw fail(400, "emptyQuery");
+    return searchAlbumsPage(q.trim().slice(0, 200), getLang(), cursor);
+  }, signal),
   videoFor: (t) => call(() => findVideoFor(t.id, t.title, t.artist, t.duration)),
   prepare: (id, signal) =>
     call(async () => {
@@ -103,6 +112,7 @@ export const api: MusikeApi = {
   pushHistory: (t) => call(async () => ({ history: await library.pushHistory(library.sanitizeTrack(t)) })),
   createPlaylist: (name, list = []) => call(() => library.createPlaylist(name, tracks(list))),
   renamePlaylist: (id, name) => call(() => library.renamePlaylist(id, name)),
+  setPlaylistCover: (id, image) => call(() => library.setPlaylistCover(id, image)),
   deletePlaylist: (id) => call(() => library.deletePlaylist(id)),
   addToPlaylist: (id, t) => call(() => library.addToPlaylist(id, Array.isArray(t) ? tracks(t) : library.sanitizeTrack(t))),
   removeFromPlaylist: (id, trackId) => call(() => library.removeFromPlaylist(id, trackId)),

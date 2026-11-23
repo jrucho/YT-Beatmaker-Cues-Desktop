@@ -6,7 +6,7 @@ import { Artwork } from "./Artwork";
 export type CoverKind = "playlist" | "favorites" | "history";
 
 /** Playlist cover: a 2x2 mosaic from the first distinct covers, or a single cover / icon tile. */
-export function Cover({ kind, tracks, className, iconSize = 40 }: { kind: CoverKind; tracks: Track[]; className?: string; iconSize?: number }) {
+export function Cover({ kind, tracks, cover, className, iconSize = 40 }: { kind: CoverKind; tracks: Track[]; cover?: string; className?: string; iconSize?: number }) {
   if (kind === "favorites") {
     return (
       <span className={cn("grid place-items-center bg-accent text-accent-ink", className)}>
@@ -21,7 +21,13 @@ export function Cover({ kind, tracks, className, iconSize = 40 }: { kind: CoverK
       </span>
     );
   }
-  const arts = [...new Map(tracks.map((t) => [t.thumb, t])).values()].slice(0, 4);
+  if (cover) return <Artwork src={cover} fallback={tracks[0]?.thumb} className={className} iconSize={iconSize} />;
+  const arts: Track[] = [];
+  for (const track of tracks) {
+    if (arts.some((item) => item.thumb === track.thumb)) continue;
+    arts.push(track);
+    if (arts.length === 4) break;
+  }
   if (arts.length < 4) {
     return <Artwork src={arts[0]?.art} fallback={arts[0]?.thumb} className={className} iconSize={iconSize} />;
   }

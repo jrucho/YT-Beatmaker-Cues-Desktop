@@ -20,18 +20,25 @@ export function YouTubePlaylists({ query, onImported, onPreview, layout = "grid"
   const [page, setPage] = useState<CatalogPlaylistPage | null>(null);
   const [pageError, setPageError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [cursor, setCursor] = useState<string>();
+  const [moreBusy, setMoreBusy] = useState(false);
+  const [moreError, setMoreError] = useState("");
   const savingRef = useRef(false);
   const mounted = useRef(true);
+  const queryRef = useRef(query);
+  queryRef.current = query;
   const playlists = useLibrary(s => s.playlists);
   const navigate = useNavigate();
   const openSaved = (playlist: Playlist) => onImported ? onImported(playlist) : navigate(paths.playlist(playlist.id));
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     const controller = new AbortController();
-    setResults([]); setError("");
+    setResults([]); setCursor(undefined); setError(""); setMoreError(""); setMoreBusy(false);
     if (!query.trim()) { setBusy(false); return; }
     setBusy(true);
-    api.searchPlaylists(query, controller.signal).then(value => { if (!controller.signal.aborted) setResults(value); }).catch(e => {
+    api.searchPlaylists(query, controller.signal).then(value => {
+      if (!controller.signal.aborted) { setResults(value.playlists); setCursor(value.cursor); }
+    }).catch(e => {
       if (!controller.signal.aborted) setError(e.message);
     }).finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
@@ -64,8 +71,26 @@ export function YouTubePlaylists({ query, onImported, onPreview, layout = "grid"
       if (saved) { setSelected(null); openSaved(saved); }
     }
   }
+  async function loadMore() {
+    if (!cursor || moreBusy) return;
+    const asked = query;
+    setMoreBusy(true); setMoreError("");
+    try {
+      const value = await api.searchPlaylists(asked, undefined, cursor);
+      if (asked !== queryRef.current) return;
+      setResults(prev => {
+        const seen = new Set(prev.map(p => p.id));
+        return [...prev, ...value.playlists.filter(p => !seen.has(p.id))];
+      });
+      setCursor(value.cursor);
+    } catch (e) {
+      if (asked === queryRef.current) setMoreError((e as Error).message);
+    } finally {
+      if (asked === queryRef.current) setMoreBusy(false);
+    }
+  }
 
-  return <div className={`yt-playlists ${layout === "row" ? "yt-playlists-row" : ""}`} aria-label="YouTube playlist results" aria-busy={busy}>
+  return <div className={`yt-playlists ${layout === "row" ? "yt-playlists-row" : ""}`} aria-label="YouTube playlist results" aria-busy={busy || moreBusy}>
     {busy && <p role="status">Searching playlists…</p>}
     {error && <div role="alert"><p>{error}</p><button type="button" onClick={() => setRetry(n => n + 1)}>Retry playlist search</button></div>}
     {!busy && !error && !results.length && <p>{query.trim() ? "No playlists found." : "Search YouTube playlists or paste a playlist link."}</p>}
@@ -73,11 +98,17 @@ export function YouTubePlaylists({ query, onImported, onPreview, layout = "grid"
       {p.thumb ? <img src={p.thumb} alt="" loading="lazy" /> : <PlaylistIcon size={28} />}
       <span><strong>{p.title}</strong><small>{p.author || "YouTube playlist"}</small></span><ArrowRightIcon size={15} />
     </button>)}</div>
+    {cursor && <div className="mt-3 flex justify-center">
+      <button type="button" disabled={moreBusy} onClick={() => void loadMore()} className="rounded-full bg-surface-3 px-4 py-2 text-sm font-medium text-fg-2 hover:text-fg disabled:opacity-40">
+        {moreBusy ? "Loading more playlists…" : "Show more playlists"}
+      </button>
+    </div>}
+    {moreError && <div role="alert" className="mt-2 flex flex-wrap items-center justify-center gap-2 text-sm"><p>{moreError}</p><button type="button" onClick={() => void loadMore()}>Retry</button></div>}
     <Modal open={!!selected} title={selected?.title || "YouTube playlist"} onClose={() => { if (!saving) setSelected(null); }}>
       {!page && !pageError && <p role="status">Loading tracks…</p>}
       {pageError && <div role="alert"><p>{pageError}</p><button type="button" onClick={() => setRetry(n => n + 1)}>Retry loading playlist</button></div>}
       {page && <>
-        <div className="mb-3 flex items-center justify-between gap-3"><span className="text-sm text-fg-2">{page.tracks.length} tracks{page.complete===false?' · loading more…':page.truncated ? " · first 500 playable tracks" : ""}</span><button type="button" disabled={saving||page.complete===false} onClick={() => void save()} className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-40">{saving ? "Adding…" : existing ? "Open in library" : "Add playlist to library"}</button></div>
+        <div className="mb-3 flex items-center justify-between gap-3"><span className="text-sm text-fg-2">{page.tracks.length} tracks{page.complete===false?' · loading more…':page.truncated ? ` · first ${page.tracks.length.toLocaleString()} playable tracks` : ""}</span><button type="button" disabled={saving||page.complete===false} onClick={() => void save()} className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-40">{saving ? "Adding…" : existing ? "Open in library" : "Add playlist to library"}</button></div>
         <div className="scroll-area max-h-[45dvh] overflow-y-auto"><VirtualList items={page.tracks} itemKey={track=>track.id} renderItem={(t,_index,virtual)=><li {...virtual}><button type="button" aria-label={`Preview playlist track ${t.title}`} onClick={() => preview(t)} className="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-surface-3">
           <Artwork src={t.thumb} className="size-10 shrink-0 rounded-md" /><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{t.title}</strong><small className="text-fg-2">{t.artist}</small></span><PlayIcon size={16} />
         </button></li>}/></div>

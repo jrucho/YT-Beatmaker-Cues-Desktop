@@ -26,6 +26,75 @@ bool equal(const juce::var& a,const juce::var& b){
 }
 juce::var member(const juce::var& list,const juce::String& id){if(const auto* items=list.getArray())for(const auto& item:*items)if(item["id"].toString()==id)return item;return {};}
 juce::var copy(const juce::var& value){return value.clone();}
+
+[[noreturn]] void editConflict() {
+    throw std::runtime_error("The library changed since this edit. Undo or redo was not applied.");
+}
+
+// Undo/redo only the playlists and favorites touched by this actual commit.
+// Compare and apply under the same lock; never replace newer unrelated edits or play history.
+juce::var replayLibraryEdit(const juce::var& expected,const juce::var& desired,const juce::var& latest) {
+    auto result=latest.clone();
+    if(!equal(expected["favorites"],desired["favorites"])){
+        if(!equal(expected["favorites"],latest["favorites"]))editConflict();
+        result.getDynamicObject()->setProperty("favorites",desired["favorites"].clone());
+    }
+
+    const auto before=expected["playlists"],after=desired["playlists"],current=latest["playlists"];
+    if(equal(before,after))return result;
+    const auto byId=[](const juce::var& list){
+        std::unordered_map<std::string,juce::var> values;
+        values.reserve((size_t)list.size());
+        for(const auto& item:*list.getArray()){
+            const auto id=item["id"].toString();
+            if(id.isEmpty()||!values.emplace(id.toStdString(),item).second)editConflict();
+        }
+        return values;
+    };
+    const auto originals=byId(before),targets=byId(after),live=byId(current);
+    const auto find=[](const auto& values,const std::string& id){
+        const auto it=values.find(id);
+        return it==values.end()?juce::var{}:it->second;
+    };
+    std::unordered_map<std::string,juce::var> edits;
+    for(const auto& [id,item]:originals){
+        const auto target=find(targets,id);
+        if(equal(item,target))continue;
+        if(!equal(item,find(live,id)))editConflict();
+        edits.emplace(id,target);
+    }
+    for(const auto& [id,item]:targets){
+        if(originals.count(id))continue;
+        if(live.count(id))editConflict();
+        edits.emplace(id,item);
+    }
+
+    auto playlists=result["playlists"];
+    auto* rows=playlists.getArray();
+    for(int i=rows->size();--i>=0;){
+        const auto found=edits.find((*rows)[i]["id"].toString().toStdString());
+        if(found==edits.end())continue;
+        if(found->second.isVoid())rows->remove(i);
+        else rows->set(i,found->second.clone());
+        edits.erase(found);
+    }
+    // Restored playlists take their old relative position without reordering later additions.
+    const auto indexOf=[rows](const juce::var& item){
+        const auto id=item["id"].toString();
+        for(int i=0;i<rows->size();++i)if((*rows)[i]["id"].toString()==id)return i;
+        return -1;
+    };
+    for(int n=0;n<after.size();++n){
+        const auto found=edits.find(after[n]["id"].toString().toStdString());
+        if(found==edits.end())continue;
+        int slot=-1;
+        for(int j=n+1;j<after.size()&&slot<0;++j)slot=indexOf(after[j]);
+        for(int j=n-1;j>=0&&slot<0;--j)if(const int previous=indexOf(after[j]);previous>=0)slot=previous+1;
+        rows->insert(slot<0?rows->size():slot,found->second.clone());
+    }
+    return result;
+}
+
 struct Lock {
     LibraryFileLock& lock;
     explicit Lock(LibraryFileLock& value):lock(value){if(!lock.enter(5000))throw std::runtime_error("Library is busy; retry the edit");}
@@ -190,21 +259,28 @@ juce::var LibraryStore::readSnapshot(){
     if(cachedLibrary.isEmpty())cachedLibrary=juce::JSON::toString(document["library"]);
     auto* result=new juce::DynamicObject;result->setProperty("json",cachedLibrary);result->setProperty("version",cachedFingerprint);return juce::var(result);
 }
-juce::String LibraryStore::commitLibrary(const juce::String& baseline,const juce::String& next){
-    if(sharedStore){ensureSharedMigration();return sharedStore->commitLibrary(baseline,next);}
+juce::String LibraryStore::commitLibrary(const juce::String& baseline,const juce::String& next,juce::String* previous,bool replay){
+    if(sharedStore){ensureSharedMigration();return sharedStore->commitLibrary(baseline,next,previous,replay);}
     const juce::ScopedLock local(localLock);Lock lock(processLock);
     auto base=juce::JSON::parse(baseline),edited=juce::JSON::parse(next);
     if(!validLibrary(edited))throw std::runtime_error("Invalid library edit");
-    if(!validLibrary(base))base=emptyLibrary();
-    auto document=readDocument(true);auto merged=merge(base,edited,document["library"]);
+    if(!validLibrary(base)){if(replay)editConflict();base=emptyLibrary();}
+    auto document=readDocument(true);
+    const auto latest=document["library"];
+    auto merged=replay?replayLibraryEdit(base,edited,latest):merge(base,edited,latest);
     if(const auto* deleted=document["deletedMedia"].getDynamicObject())for(const auto& entry:deleted->getProperties()){
-        const auto remove=[&](juce::var list){if(auto* items=list.getArray())for(int i=items->size();--i>=0;)if((*items)[i]["id"].toString()==entry.name.toString())items->remove(i);};
+        const auto remove=[&](juce::var list){if(auto* items=list.getArray())for(int i=items->size();--i>=0;)if((*items)[i]["id"].toString()==entry.name.toString()){
+            if(replay)throw std::runtime_error("This edit needs audio that was permanently deleted. Undo or redo was not applied.");
+            items->remove(i);
+        }};
         remove(merged["favorites"]);remove(merged["history"]);for(const auto& playlist:*merged["playlists"].getArray())remove(playlist["tracks"]);
     }
     if(auto* history=merged["history"].getArray())if(history->size()>60)history->removeRange(60,history->size()-60);
     // Older queues/hosts may still submit the original file title after a rename.
     const auto retitle=[&](juce::var list){if(auto* items=list.getArray())for(auto& track:*items){const auto id=track["id"].toString(),title=document["media"][juce::Identifier(id)]["title"].toString();if(id.startsWith("loc")&&title.isNotEmpty()&&track.isObject())track.getDynamicObject()->setProperty("title",title);}};
     retitle(merged["favorites"]);retitle(merged["history"]);for(const auto& playlist:*merged["playlists"].getArray())retitle(playlist["tracks"]);
+    if(previous&&(!equal(latest["favorites"],merged["favorites"])||!equal(latest["playlists"],merged["playlists"])))
+        *previous=juce::JSON::toString(latest);
     document.getDynamicObject()->setProperty("library",merged);
     document.getDynamicObject()->setProperty("revision",(juce::int64)document["revision"]+1);
     writeDocument(document);cachedLibrary=juce::JSON::toString(merged);return cachedLibrary;
@@ -278,14 +354,41 @@ void LibraryStore::registerMedia(const juce::String& id,const juce::var& metadat
 }
 juce::var LibraryStore::media(const juce::String& id){if(sharedStore){ensureSharedMigration();return sharedStore->media(id);}const juce::ScopedLock local(localLock);Lock lock(processLock);return readDocument()["media"][juce::Identifier(id)].clone();}
 juce::var LibraryStore::allMedia(){if(sharedStore){ensureSharedMigration();return sharedStore->allMedia();}const juce::ScopedLock local(localLock);Lock lock(processLock);juce::Array<juce::var> result;const auto media=readDocument()["media"];if(const auto* fields=media.getDynamicObject())for(const auto& entry:fields->getProperties())result.add(entry.value.clone());return juce::var(result);}
-juce::var LibraryStore::renameLocalMedia(const juce::String& id,const juce::String& title){
-    if(sharedStore){ensureSharedMigration();return sharedStore->renameLocalMedia(id,title);}
+#if JUCE_IOS
+juce::var LibraryStore::localAudioStatus(){
+    if(sharedStore){ensureSharedMigration();return sharedStore->localAudioStatus();}
+    const juce::ScopedLock local(localLock);Lock lock(processLock);
+    const auto document=readDocument();
+    const auto media=document["media"];
+    juce::Array<juce::var> tracks;
+    if(const auto* entries=media.getDynamicObject())for(const auto& entry:entries->getProperties()){
+        auto track=entry.value.clone();
+        if(auto* fields=track.getDynamicObject()){
+            const auto path=track["path"].toString();
+            bool available=false;
+            if(juce::File::isAbsolutePath(path)){
+                const juce::File audio(path);
+                available=audio.isAChildOf(mediaDirectory())&&audio.existsAsFile()&&audio.getSize()>0;
+            }
+            fields->removeProperty("path");
+            fields->setProperty("available",available);
+            tracks.add(track);
+        }
+    }
+    auto* result=new juce::DynamicObject;
+    result->setProperty("tracks",tracks);
+    return juce::var(result);
+}
+#endif
+juce::var LibraryStore::renameLocalMedia(const juce::String& id,const juce::String& title,const juce::String& expectedTitle){
+    if(sharedStore){ensureSharedMigration();return sharedStore->renameLocalMedia(id,title,expectedTitle);}
     const auto clean=title.trim();
     if(!id.startsWith("loc")||id.length()!=11||!id.containsOnly("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"))throw std::runtime_error("Select an imported file or recording to rename");
     if(clean.isEmpty()||clean.length()>200)throw std::runtime_error("Enter a song name of 1 to 200 characters");
     const juce::ScopedLock local(localLock);Lock lock(processLock);auto document=readDocument(true).clone();
     auto track=document["media"][juce::Identifier(id)];if(!track.isObject())throw std::runtime_error("Imported audio is no longer in the library");
-    const auto previous=track["title"].toString();track.getDynamicObject()->setProperty("title",clean);
+    const auto previous=track["title"].toString();if(expectedTitle.isNotEmpty()&&previous!=expectedTitle)editConflict();
+    track.getDynamicObject()->setProperty("title",clean);
     auto library=document["library"];const auto update=[&](juce::var list){if(auto* items=list.getArray())for(auto& item:*items)if(item["id"].toString()==id)item.getDynamicObject()->setProperty("title",clean);};
     update(library["favorites"]);update(library["history"]);for(const auto& playlist:*library["playlists"].getArray())update(playlist["tracks"]);
     document.getDynamicObject()->setProperty("revision",(juce::int64)document["revision"]+1);writeDocument(document);cachedLibrary=juce::JSON::toString(library);

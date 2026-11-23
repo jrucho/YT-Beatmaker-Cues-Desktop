@@ -8,12 +8,16 @@ import { FineWaveform } from "../components/FineWaveform";
 import { TrackList } from "../components/TrackList";
 import { Artwork } from "../components/Artwork";
 import { PageHeader } from "../components/Page";
+import { useMatchingPlaylists, usePlaybackCollection } from "../hooks/usePlaybackCollection";
 import { formatTime } from "../lib/format";
 import { cn } from "../lib/format";
+import { paths, trackLinkState } from "../lib/routes";
+import type { Track } from "../lib/types";
 import { useT } from "../i18n";
 import { cuePosition, independentTuningAvailable, selectCurrent, usePlayer } from "../player/player";
 import { CUE_BANKS, useCueStore } from "../mobile/cueStore";
 import { midi, midiAvailable, type MidiDevice, type MidiMessage } from "../native/midi";
+import { iosLibraryToolsEnabled } from "../native/host";
 import { CONTROLLER_PRESETS, mapControllerMessage, readControllerPreset, saveControllerPreset } from "../native/controllerMapping";
 import { padFeedback, releasePointerPadHolds, usePadFeedback } from "../mobile/padFeedback";
 import { changePadSample, hasPadSample, padSamplesAvailable, playPadSample, refreshPadSamples, usePadSamples, type PadSample } from "../mobile/padSamples";
@@ -42,6 +46,46 @@ function CueSongs({onSelected}:{onSelected?:()=>void}) {
     <span className="cue-song-caption text-[10px] text-fg-3">Playlist songs · {queue.length}</span>
     <div role="region" aria-label="Playlist songs" className="cue-song-list scroll-area w-full overflow-y-auto rounded-lg text-fg"><TrackList tracks={queue} header={false} showAlbum={false} onSelect={index=>{usePlayer.getState().jumpTo(index);onSelected?.();}}/></div>
   </div>;
+}
+
+function CueTrackLabel({ track, padLayoutEnabled }: { track: Track | null; padLayoutEnabled: boolean }) {
+  const t = useT();
+  const source = usePlaybackCollection();
+  const index = usePlayer((s) => s.index);
+  const linkState = track ? trackLinkState(track.id, index) : undefined;
+  const enabled = !!track && iosLibraryToolsEnabled();
+  const matching = useMatchingPlaylists(enabled && !source?.to ? track?.id : undefined);
+  const matchingPlaylist = matching.length === 1 ? matching[0] : undefined;
+  const destination = enabled ? source?.to ?? (matchingPlaylist ? paths.playlist(matchingPlaylist.id) : undefined) : undefined;
+  const [choosing, setChoosing] = useState(false);
+  useEffect(() => setChoosing(false), [track?.id]);
+  const title = track?.title ?? (padLayoutEnabled ? "Empty track" : "Sample pads");
+  const artist = track?.artist ?? (padLayoutEnabled ? "Record audio or play sample pads" : "Load samples, or choose a song for cues");
+  const label = <>
+    <span className={cn("block truncate text-sm font-medium", (destination || matching.length > 1) && "text-accent-text")}>{title}</span>
+    <span className="block truncate text-xs text-fg-2">{artist}</span>
+  </>;
+  if (destination) return (
+    <Link to={destination} state={linkState} aria-label={`${title} · ${source?.to ? t.libraryTools.playingFrom(source.name)
+      : `${t.album.openPlaylist}: ${matchingPlaylist?.name}`}`}
+      className="cue-track-label min-w-0 touch-manipulation rounded-sm no-underline">
+      {label}
+    </Link>
+  );
+  if (matching.length > 1) return <>
+    <button type="button" onClick={() => setChoosing(true)} aria-label={`${title} · ${t.album.openPlaylist}`}
+      className="cue-track-label min-w-0 touch-manipulation rounded-sm text-left">{label}</button>
+    <Modal open={choosing} title={t.album.openPlaylist} onClose={() => setChoosing(false)}>
+      <div className="scroll-area max-h-[48dvh] overflow-y-auto">
+        {matching.map((playlist) => <Link key={playlist.id} to={paths.playlist(playlist.id)} state={linkState}
+          className="block min-w-0 rounded-xl px-3 py-2 hover:bg-surface-3">
+          <span className="block truncate text-sm font-medium">{playlist.name}</span>
+          <span className="block text-xs text-fg-2">{t.common.tracks(playlist.tracks.length)}</span>
+        </Link>)}
+      </div>
+    </Modal>
+  </>;
+  return <div className="cue-track-label min-w-0" title={track ? `${title} · ${artist}` : title}>{label}</div>;
 }
 
 export default function Cues() {
@@ -396,7 +440,7 @@ export default function Cues() {
           <>
             <div className="cue-transport mt-4 flex items-center gap-3 rounded-[16px] bg-surface-2 p-3">
               <Artwork src={track?.thumb} className="cue-artwork size-12 rounded-[10px]" />
-              <div className="cue-track-label min-w-0" title={track?`${track.title} · ${track.artist}`:padLayoutEnabled?'Empty track':'Sample pads'}><p className="truncate text-sm font-medium">{track?.title??(padLayoutEnabled?'Empty track':'Sample pads')}</p><p className="truncate text-xs text-fg-2">{track?.artist??(padLayoutEnabled?'Record audio or play sample pads':'Load samples, or choose a song for cues')}</p></div>
+               <CueTrackLabel track={track} padLayoutEnabled={padLayoutEnabled} />
               <div className={padLayoutEnabled?'cue-mark-actions':undefined}>
               {padLayoutEnabled&&!rearranging&&fineButton}
               <button

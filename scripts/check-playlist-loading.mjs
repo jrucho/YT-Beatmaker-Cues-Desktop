@@ -13,7 +13,7 @@ async function moduleFor(contents){
   }]});
   return import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text+'\n//'+Math.random()).toString('base64'));
 }
-function fixture(total=500,delay=15){
+function fixture(total=10000,delay=15){
   let calls=0;
   const wait=async()=>{++calls;await new Promise(resolve=>setTimeout(resolve,delay));};
   const page=index=>({info:{title:'Large public playlist',author:{name:'Fixture'},thumbnails:[]},items:Array.from({length:Math.min(100,total-index*100)},(_,row)=>({id:'bench'+String(index*100+row).padStart(6,'0'),title:'Track '+(index*100+row),artist:'Fixture',duration:180,kind:'song',thumb:'',art:''})),has_continuation:(index+1)*100<total,getContinuation:async()=>{await wait();return page(index+1);}});
@@ -27,22 +27,22 @@ for(const [name,code] of [...(previous?[['previous',previous]]:[]),['current',so
   await api.searchPlaylists(link);const titleMs=performance.now()-started;let previewMs;
   const result=await api.getPlaylist(link,undefined,{onProgress:()=>{previewMs??=performance.now()-started;}});
   metrics.push({name,metadataRequests:calls(),titleMs:Math.round(titleMs),firstPreviewMs:Math.round(previewMs??performance.now()-started),completeMs:Math.round(performance.now()-started)});
-  assert.equal(result.tracks.length,500);
-  if(name==='current'){assert.equal(calls(),5);const before=calls();await api.getPlaylist(link);assert.equal(calls(),before,'Warm reopen must not fetch playlist again');}
+  assert.equal(result.tracks.length,name==='current'?10000:500);
+  if(name==='current'){assert.equal(calls(),100);const before=calls();await api.getPlaylist(link);assert.equal(calls(),before,'Warm reopen must not fetch playlist again');}
 }
 {
   const calls=fixture();const api=await moduleFor(source),controller=new AbortController();
   const [cancelled,complete]=await Promise.all([api.getPlaylist(link,undefined,{signal:controller.signal,onProgress:page=>{if(page.tracks.length>=200)controller.abort();}}).catch(error=>error.name),api.getPlaylist(link)]);
-  assert.equal(cancelled,'AbortError');assert.equal(complete.tracks.length,500);assert.equal(calls(),5,'Concurrent consumers share one continuation sequence');
+  assert.equal(cancelled,'AbortError');assert.equal(complete.tracks.length,10000);assert.equal(calls(),100,'Concurrent consumers share one continuation sequence');
 }
 {
   const calls=fixture();const api=await moduleFor(source),controller=new AbortController();
   await assert.rejects(api.getPlaylist(link,undefined,{signal:controller.signal,onProgress:()=>controller.abort()}),{name:'AbortError'});
   assert.equal(calls(),1,'Closing after first page must stop further metadata downloads');
-  assert.equal((await api.getPlaylist(link)).tracks.length,500);assert.equal(calls(),5,'Reopen resumes the cached first page');
+  assert.equal((await api.getPlaylist(link)).tracks.length,10000);assert.equal(calls(),100,'Reopen resumes the cached first page');
 }
 {
-  const calls=fixture(600,0),api=await moduleFor(source);const page=await api.getPlaylist(link);assert.equal(page.tracks.length,500);assert.equal(page.truncated,true);assert.equal(calls(),5);
+  const calls=fixture(12000,0),api=await moduleFor(source);const page=await api.getPlaylist(link);assert.equal(page.tracks.length,10000);assert.equal(page.truncated,true);assert.equal(calls(),100);
 }
 console.log(JSON.stringify({conditions:'Synthetic YouTube pages; 100 tracks/page, 15 ms/request. Request counts and incremental results test real playlist code, not actual platform network latency.',metrics},null,2));
-console.log('PASS: no duplicate full fetch, early preview, warm cache, concurrent deduplication, independent cancellation and 500-track limit');
+console.log('PASS: no duplicate full fetch, early preview, warm cache, concurrent deduplication, independent cancellation and 10,000-track limit');

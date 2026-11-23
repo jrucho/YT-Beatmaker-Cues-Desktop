@@ -12,6 +12,7 @@ export interface Track {
 export interface Playlist {
   id: string;
   name: string;
+  cover?: string;
   createdAt: number;
   updatedAt: number;
   tracks: Track[];

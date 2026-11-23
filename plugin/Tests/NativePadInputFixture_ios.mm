@@ -5,6 +5,7 @@
 #import <UIKit/UIGestureRecognizerSubclass.h>
 #import <WebKit/WebKit.h>
 #import <PhotosUI/PhotosUI.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <iostream>
 
 @interface BeatmakerFixtureTouch : UITouch {
@@ -15,6 +16,16 @@
 -(UIView*)view{return target;}
 -(NSTimeInterval)timestamp{return time;}
 -(CGPoint)locationInView:(UIView*)view{return [target convertPoint:point toView:view];}
+@end
+
+// Use the real NSItemProvider path without requiring access to the simulator's Photos library.
+@interface BeatmakerFixturePhotoResult : NSObject {
+@public NSItemProvider* provider;
+}
+-(NSItemProvider*)itemProvider;
+@end
+@implementation BeatmakerFixturePhotoResult
+-(NSItemProvider*)itemProvider{return provider;}
 @end
 
 namespace {
@@ -36,6 +47,16 @@ WKWebView* webView(juce::Component& component){
 }
 PHPickerViewController* findGalleryController(UIViewController* controller){if([controller isKindOfClass:PHPickerViewController.class])return (PHPickerViewController*)controller;for(UIViewController* child in controller.childViewControllers)if(auto* found=findGalleryController(child))return found;return controller.presentedViewController?findGalleryController(controller.presentedViewController):nil;}
 PHPickerViewController* currentGalleryController(){for(UIScene* scene in [UIApplication sharedApplication].connectedScenes)if([scene isKindOfClass:UIWindowScene.class])for(UIWindow* window in ((UIWindowScene*)scene).windows)if(auto* found=findGalleryController(window.rootViewController))return found;return nil;}
+UIDocumentPickerViewController* findFilesController(UIViewController* controller){
+    if([controller isKindOfClass:UIDocumentPickerViewController.class])return (UIDocumentPickerViewController*)controller;
+    for(UIViewController* child in controller.childViewControllers)if(auto* found=findFilesController(child))return found;
+    return controller.presentedViewController?findFilesController(controller.presentedViewController):nil;
+}
+UIDocumentPickerViewController* currentFilesController(){
+    for(UIScene* scene in [UIApplication sharedApplication].connectedScenes)if([scene isKindOfClass:UIWindowScene.class])
+        for(UIWindow* window in ((UIWindowScene*)scene).windows)if(auto* found=findFilesController(window.rootViewController))return found;
+    return nil;
+}
 class InputFixture final:public juce::JUCEApplication,private juce::Timer {
 public:
     const juce::String getApplicationName() override{return "Beatmaker Input Tests";}
@@ -57,6 +78,275 @@ private:
     juce::var evaluate(const juce::String& script){juce::var result;bool done=false;editor->evaluate(script,[&](auto value){if(value.getResult())result=*value.getResult();done=true;});for(int i=0;i<100&&!done;++i)pump(20);return result;}
     juce::var diagnostics(){evaluate("window.__padDiagnostics=null;window.__pluginInvoke('padTouchDiagnostics').then(value=>window.__padDiagnostics=value);true");for(int i=0;i<100;++i){pump(10);const auto value=evaluate("JSON.stringify(window.__padDiagnostics)").toString();if(value!="null"&&!value.isEmpty())return juce::JSON::parse(value);}return {};}
     void check(bool value,const char* message){if(!value){passed=false;std::cerr<<"FAIL: "<<message<<"\n";}}
+    bool waitFor(const juce::String& script){
+        for(int i=0;i<150;++i){if((bool)evaluate(script))return true;pump(20);}
+        return false;
+    }
+    void clickText(const juce::String& selector,const juce::String& label){
+        evaluate("[...document.querySelectorAll("+juce::JSON::toString(selector)+")].find(node=>node.textContent.trim()==="+juce::JSON::toString(label)+")?.click();true");
+    }
+    void checkGuardedHistory(){
+        const auto folder=juce::File::getSpecialLocation(juce::File::tempDirectory).getNonexistentChildFile("LibraryUndoFixture",{});
+        LibraryStore store(folder);
+        const auto initial=store.commitLibrary(store.readLibrary(),R"({"favorites":[],"history":[],"playlists":[{"id":"first-list","name":"Target","tracks":[{"id":"loc00000001","title":"Local"}]},{"id":"second-list","name":"Neighbor","tracks":[]}]})");
+        const auto external=store.commitLibrary(initial,R"({"favorites":[],"history":[],"playlists":[{"id":"first-list","name":"Target","tracks":[{"id":"loc00000001","title":"Local"}]},{"id":"second-list","name":"Renamed elsewhere","tracks":[]}]})");
+        juce::String before;
+        const auto after=store.commitLibrary(initial,R"({"favorites":[],"history":[],"playlists":[{"id":"second-list","name":"Neighbor","tracks":[]}]})",&before);
+        check(before==external,"Undo captured a stale baseline instead of the native commit's previous library");
+        const auto changed=store.commitLibrary(after,R"({"favorites":[],"history":[{"id":"latest00001"}],"playlists":[{"id":"added-list","name":"Newer list","tracks":[]},{"id":"second-list","name":"Newest rename","tracks":[]}]})");
+        const auto restored=juce::JSON::parse(store.commitLibrary(after,before,nullptr,true));
+        check(restored["history"].size()==1&&restored["playlists"].size()==3&&
+            restored["playlists"][0]["id"].toString()=="added-list"&&restored["playlists"][1]["id"].toString()=="first-list"&&
+            restored["playlists"][2]["name"].toString()=="Newest rename","Undo did not preserve unrelated and newer library edits");
+        check(store.commitLibrary(before,after,nullptr,true)==changed,"Redo did not remove just the original playlist");
+        const auto back=store.commitLibrary(after,before,nullptr,true);
+        auto conflict=juce::JSON::parse(back);conflict["playlists"][1].getDynamicObject()->setProperty("name","Edited after restore");
+        const auto current=store.commitLibrary(back,juce::JSON::toString(conflict));
+        bool rejected=false;
+        try{store.commitLibrary(before,after,nullptr,true);}catch(const std::exception&){rejected=true;}
+        check(rejected&&store.readLibrary()==current,"A stale redo clobbered a newer change to the same playlist");
+        store.commitLibrary(current,changed);
+        store.eraseLocalMedia("loc00000001",{});
+        const auto erased=store.readLibrary();
+        rejected=false;
+        try{store.commitLibrary(after,before,nullptr,true);}catch(const std::exception&){rejected=true;}
+        check(rejected&&store.readLibrary()==erased,"Undo restored an intentionally erased audio reference");
+    }
+    void checkCatalogPagination(){
+        const auto* resource=[[NSBundle mainBundle] pathForResource:@"catalog-search" ofType:@"mjs"];
+        if(!resource){check(false,"iOS catalog fixture resource is missing");return;}
+        const auto script=juce::File(juce::String::fromUTF8([resource UTF8String])).loadFileAsString()
+            .replace("export function catalogFixture","function catalogFixture");
+        check((bool)evaluate("(()=>{"+script+R"js(
+            const backend=window.__JUCE__.backend, emit=backend.emitEvent;
+            backend.emitEvent=function(event,payload){
+                if(event==='__juce__invoke'&&payload.name==='http'){
+                    const {url,data}=payload.params[0];
+                    const result={status:200,headers:{},data:JSON.stringify(catalogFixture({url,body:data}))};
+                    queueMicrotask(()=>backend.emitByBackend('__juce__complete',JSON.stringify({promiseId:payload.resultId,result})));
+                }else emit.call(backend,event,payload);
+            };
+            const search=document.querySelector('#search-input');
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(search,'fixture');
+            search.dispatchEvent(new Event('input',{bubbles:true}));
+            search.form.requestSubmit();
+            return true;
+        })())js"),"Could not inject the deterministic catalog HTTP fixture");
+        const juce::String tabNames[]={"Songs","Videos","Albums"},kinds[]={"song","video","album"};
+        for(int i=0;i<3;++i){
+            clickText("main [role=tab]",tabNames[i]);
+            const auto title=juce::JSON::toString("Fixture "+kinds[i]+" 3");
+            check(waitFor("[...document.querySelectorAll('main button')].some(b=>b.textContent.trim()==='Show more')"),
+                "Continued YouTube Music results were unavailable in native iOS Search");
+            clickText("main button","Show more");
+            check(waitFor("[...document.querySelectorAll('main .track-title, main a span')].some(n=>n.textContent.trim()==="+title+")"),
+                "Native iOS Search did not append the next page");
+        }
+        // Clear the query before checking the placeholder in another language.
+        evaluate("document.querySelector('main button[aria-label=\"Clear search\"]')?.click();document.activeElement?.blur();true");
+    }
+    void checkPlaylistCover(const juce::File& directory){
+        const auto file=directory.getChildFile("cover-photo.png");
+        const auto photo=juce::Image(juce::Image::RGB,1100,750,true);
+        juce::Graphics graphics(photo);
+        graphics.fillAll(juce::Colours::navy);
+        graphics.setColour(juce::Colours::orange);
+        graphics.fillRect(90,0,780,450);
+        {auto output=file.createOutputStream();if(!output||!juce::PNGImageFormat{}.writeImageToStream(photo,*output)){
+            check(false,"Could not write the cover image fixture");return;
+        }}
+        const auto openMenu=[&]{
+            evaluate("document.querySelector('.playlist-cover-edit')?.click();true");
+            return waitFor("Boolean(document.querySelector('[role=dialog][aria-label=\"Edit playlist cover\"]'))");
+        };
+        check(openMenu(),"The playlist cover did not open its edit menu");
+        clickText("[role=dialog] button","Choose from Photos");
+        for(int i=0;i<150&&!currentGalleryController();++i)pump(20);
+        auto* picker=currentGalleryController();
+        check(picker!=nil,"Playlist covers did not open the native Photos picker");
+        if(picker)[picker.delegate picker:picker didFinishPicking:@[]];
+        check(waitFor("!document.querySelector('[role=dialog]')"),"Cancelling Photos did not close the cover menu");
+        check((bool)evaluate("!window.__pluginStores.library.getState().playlists.find(p=>p.id===window.__libraryFixtureId)?.cover"),
+            "Cancelling Photos changed the playlist cover");
+
+        check(openMenu(),"Could not reopen the cover menu for Files");
+        clickText("[role=dialog] button","Choose from Files");
+        for(int i=0;i<150&&!currentFilesController();++i)pump(20);
+        auto* documents=currentFilesController();
+        check(documents&&!documents.allowsMultipleSelection,"Playlist cover did not open a single-file picker");
+        if(documents)[documents.delegate documentPicker:documents didPickDocumentsAtURLs:@[[NSURL fileURLWithPath:[NSString stringWithUTF8String:file.getFullPathName().toRawUTF8()]]]];
+        check(waitFor("document.querySelector('.playlist-cover-edit img[src^=\"data:image/jpeg;base64,\"]')?.naturalWidth===640"),
+            "The chosen file did not become a downsampled JPEG cover in WKWebView");
+        const auto library=juce::JSON::parse(processor->libraryStore.readLibrary());
+        bool persisted=false;
+        for(const auto& row:*library["playlists"].getArray())if(row["id"].toString()==evaluate("window.__libraryFixtureId").toString()){
+            const auto cover=row["cover"].toString();
+            persisted=cover.startsWith("data:image/jpeg;base64,/9j/")&&cover.length()<175000&&row["tracks"].size()==1;
+        }
+        check(persisted,"Re-encoded cover was not saved durably alongside the original tracks");
+        const auto firstCover=evaluate("document.querySelector('.playlist-cover-edit img').src").toString();
+        graphics.fillAll(juce::Colours::red);
+        auto picked=directory.getChildFile("cover-photo-replacement.png");
+        {auto output=picked.createOutputStream();if(!output||!juce::PNGImageFormat{}.writeImageToStream(photo,*output)){
+            check(false,"Could not write the Photos replacement fixture");return;
+        }}
+        check(waitFor("!document.querySelector('[role=dialog]')")&&openMenu(),"Could not reopen the cover menu for Photos replacement");
+        clickText("[role=dialog] button","Choose from Photos");
+        // The old Files controller can finish its dismissal asynchronously.
+        for(int i=0;i<150&&!currentGalleryController();++i)pump(20);
+        if(auto* photos=currentGalleryController()){
+            auto* photoResult=[[[BeatmakerFixturePhotoResult alloc] init] autorelease];
+            photoResult->provider=[[[NSItemProvider alloc] initWithContentsOfURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:picked.getFullPathName().toRawUTF8()]]] autorelease];
+            [photos.delegate picker:photos didFinishPicking:(NSArray<PHPickerResult*>*)@[photoResult]];
+            check(waitFor("(()=>{const image=document.querySelector('.playlist-cover-edit img');return image?.naturalWidth===640&&image.src!=="+juce::JSON::toString(firstCover)+";})()"),
+                "Photos did not replace the playlist's Files cover");
+        }else check(false,"Native Photos picker did not reopen for cover replacement");
+        check(waitFor("!document.querySelector('[role=dialog]')")&&openMenu(),"Could not reopen the saved cover menu");
+        clickText("[role=dialog] button","Use automatic cover");
+        check(waitFor("!document.querySelector('.playlist-cover-edit img[src^=\"data:image/jpeg;base64,\"]')&&!document.querySelector('[role=dialog]')"),
+            "Removing a custom cover did not restore the automatic one");
+        evaluate("document.querySelector('main button[aria-label=\"Undo edit\"]')?.click();true");
+        check(waitFor("document.querySelector('.playlist-cover-edit img[src^=\"data:image/jpeg;base64,\"]')?.naturalWidth===640"),
+            "Undo did not safely restore the saved image");
+    }
+    void checkPlaylistTools(const juce::File& file){
+        checkGuardedHistory();
+        evaluate("window.__libraryFixtureId=null;window.__pluginStores.library.getState().createPlaylist('Files fixture').then(p=>window.__libraryFixtureId=p?.id);true");
+        check(waitFor("Boolean(window.__libraryFixtureId&&document.querySelector('main a[href=\"/playlist/'+window.__libraryFixtureId+'\"]'))"),"iOS playlist tools fixture failed to create its playlist");
+        evaluate("document.querySelector('main a[href=\"/playlist/'+window.__libraryFixtureId+'\"]')?.click();true");
+        check(waitFor("Boolean(document.querySelector('.collection-add-tracks'))"),"The playlist did not expose Add tracks");
+        evaluate("document.querySelector('.collection-add-tracks')?.click();true");
+        const auto openFiles=[&]{
+            clickText("[role=dialog] button",juce::String::fromUTF8("Import audio files…"));
+            for(int i=0;i<150&&!currentFilesController();++i)pump(20);
+            auto* picker=currentFilesController();
+            check(picker&&picker.allowsMultipleSelection,"Playlist import did not open the native multi-file picker");
+            return picker;
+        };
+        const auto initialMedia=processor->libraryStore.allMedia().size();
+        if(auto* picker=openFiles())[picker.delegate documentPickerWasCancelled:picker];
+        for(int i=0;i<100&&currentFilesController();++i)pump(20);
+        check(waitFor("!document.querySelector('[role=dialog] [role=status]')")&&processor->libraryStore.allMedia().size()==initialMedia,
+            "Cancel imported audio or left the playlist picker busy");
+        if(auto* picker=openFiles())
+            [picker.delegate documentPicker:picker didPickDocumentsAtURLs:@[[NSURL fileURLWithPath:[NSString stringWithUTF8String:file.getFullPathName().toRawUTF8()]]]];
+        check(waitFor("window.__pluginStores.library.getState().playlists.find(p=>p.id===window.__libraryFixtureId)?.tracks.length===1"),
+            "Selected file was not added to the intended playlist");
+        const auto track=juce::JSON::parse(evaluate("JSON.stringify(window.__pluginStores.library.getState().playlists.find(p=>p.id===window.__libraryFixtureId)?.tracks[0]||{})").toString());
+        const auto audioPath=processor->libraryStore.media(track["id"].toString())["path"].toString();
+        if(audioPath.isEmpty()){check(false,"Playlist import did not retain a managed audio file");return;}
+        const juce::File audioFile(audioPath);
+        check(audioFile.existsAsFile()&&processor->libraryStore.allMedia().size()==initialMedia+1,
+            "Playlist import did not preserve exactly one retained copy");
+        check((bool)evaluate("!window.__pluginStores.library.getState().playlists.find(p=>p.name==='Imports')?.tracks.some(track=>track.id===window.__pluginStores.library.getState().playlists.find(p=>p.id===window.__libraryFixtureId)?.tracks[0]?.id)"),
+            "Playlist import was wrongly added to Imports");
+        check(waitFor("!document.querySelector('[role=dialog]')"),"Successful file import did not close its dialog");
+        evaluate("document.querySelector('main .track-row button')?.click();true");
+        check(waitFor("window.__pluginStores.player.getState().status==='playing'"),"Imported playlist file did not play through the native engine");
+        evaluate("document.querySelector('.mini-player button')?.click();true");
+        check(waitFor("document.querySelector('[aria-label=\"Now playing\"]')?.textContent.includes('Playing from: Files fixture')"),
+            "Native Now Playing did not show the original playlist");
+        check((bool)evaluate("getComputedStyle(document.querySelector('[aria-label=\"Now playing\"] a[href^=\"/playlist/\"]')).textDecorationLine==='none'"),
+            "The playlist source in Now Playing still has an underline");
+        evaluate("document.querySelector('[aria-label=\"Now playing\"] button[aria-label=Close]')?.click();true");
+        waitFor("!document.querySelector('[role=dialog]')");
+        evaluate("document.querySelector('main button[aria-label=\"Undo edit\"]')?.click();true");
+        check(waitFor("window.__pluginStores.library.getState().playlists.find(p=>p.id===window.__libraryFixtureId)?.tracks.length===0")&&audioFile.existsAsFile(),
+            "Undo did not remove only the playlist entry and keep its audio");
+        evaluate("document.querySelector('main button[aria-label=\"Redo edit\"]')?.click();true");
+        check(waitFor("window.__pluginStores.library.getState().playlists.find(p=>p.id===window.__libraryFixtureId)?.tracks.length===1"),
+            "Redo did not restore the track with the same retained id");
+        checkPlaylistCover(audioFile.getParentDirectory());
+        clickText("main button","Back");
+        check(waitFor("location.pathname==='/library'")&&
+            (bool)evaluate("!(/Playing from:|Current playlist|Library health/.test(document.querySelector('main').textContent))"),
+            "The Library still displays playback source or health controls");
+        check(waitFor(R"js((()=>{
+            const label=document.querySelector('main a[href="/playlist/'+window.__libraryFixtureId+'"] .playlist-playing-label');
+            if(label?.textContent.trim()!=='Playing')return false;
+            const count=label.previousElementSibling,title=label.parentElement.previousElementSibling,style=getComputedStyle(label);
+            const l=label.getBoundingClientRect(),c=count.getBoundingClientRect(),n=title.getBoundingClientRect();
+            const probe=document.createElement('span');probe.style.color='var(--accent-text)';label.append(probe);
+            const accent=getComputedStyle(probe).color;probe.remove();
+            return style.color===accent&&getComputedStyle(title).color===accent&&style.backgroundColor==='rgba(0, 0, 0, 0)'
+                &&count.textContent.trim()==='1 track'&&l.top>=n.bottom-1&&l.left>=c.right&&Math.abs(l.bottom-c.bottom)<=4;
+        })())js"),"Playing must use the app accent next to the track count, below the playlist name");
+        evaluate("document.querySelector('.mini-player button')?.click();true");
+        check(waitFor("document.querySelector('[aria-label=\"Now playing\"]')?.textContent.includes('Playing from: Files fixture')"),
+            "Now Playing lost its playlist source after returning to Library");
+        check(waitFor(R"js((()=>{const sheet=document.querySelector('.ios-now-playing-docked'),nav=document.querySelector('nav.playback-tabbar');if(!sheet||!nav)return false;const a=sheet.getBoundingClientRect(),b=nav.getBoundingClientRect();return Math.abs(a.bottom-b.top)<=1&&a.top<=1&&a.left<=1&&a.right>=innerWidth-1&&getComputedStyle(sheet).backgroundColor===getComputedStyle(nav).backgroundColor;})())js"),
+            "Now Playing did not meet the opaque iOS tab bar");
+        evaluate("document.querySelector('[aria-label=\"Now playing\"] button[aria-label=Close]')?.click();true");
+        waitFor("!document.querySelector('[role=dialog]')");
+        const auto held=audioFile.getSiblingFile(audioFile.getFileName()+".fixture-hold");
+        const bool moved=audioFile.moveFileTo(held);
+        evaluate("window.__mediaUnavailable=false;window.__pluginInvoke('localAudioStatus').then(status=>window.__mediaUnavailable=status.tracks.some(t=>t.id==="+
+            juce::JSON::toString(track["id"])+"&&!t.available));true");
+        const bool detected=waitFor("window.__mediaUnavailable");
+        const bool returned=moved&&held.moveFileTo(audioFile);
+        check(moved&&detected&&returned,"The media picker did not detect unavailable local audio");
+
+        evaluate("document.querySelector('nav a[href=\"/cues\"]')?.click();true");
+        check(waitFor("document.querySelector('a.cue-track-label')?.getAttribute('href')==='/playlist/'+window.__libraryFixtureId"),
+            "The Cues song title did not link to its own playlist");
+        evaluate("document.querySelector('a.cue-track-label')?.click();true");
+        check(waitFor("location.pathname==='/playlist/'+window.__libraryFixtureId&&window.__pluginStores.player.getState().status==='playing'"),
+            "The Cues song title did not open the playlist while continuing playback");
+
+        evaluate("void (async()=>{const {library,player}=window.__pluginStores;const rows=Array.from({length:139},(_,i)=>({id:'test-'+String(i).padStart(6,'0'),title:'Dummy '+i,artist:'Fixture',duration:30,kind:'song',thumb:'',art:''}));"
+            "rows.push("+juce::JSON::toString(track)+");const p=await library.getState().createPlaylist('Scroll fixture',rows);"
+            "for(let i=0;i<14;i++)await library.getState().createPlaylist('Other list '+i);"
+            "window.__scrollFixtureId=p.id;player.getState().playList(p.tracks,139,{kind:'playlist',id:p.id});})();true");
+        check(waitFor("Boolean(window.__scrollFixtureId&&window.__pluginStores.player.getState().index===139&&window.__pluginStores.player.getState().status==='playing')"),
+            "Could not select a deep row to test playlist scroll");
+        const juce::String trackInView=R"js((()=>{if(location.pathname!=='/playlist/'+window.__scrollFixtureId)return false;const main=document.querySelector('main'), row=main.querySelector('.track-row[data-index="139"]'), player=document.querySelector('.mini-player');if(!row||!player||main.scrollTop<100)return false;const r=row.getBoundingClientRect(),header=main.querySelector('header.sticky')?.offsetHeight??0;return r.top>=main.getBoundingClientRect().top+header-1&&r.bottom<=player.getBoundingClientRect().top+1;})())js";
+        evaluate("document.querySelector('.mini-player button')?.click();true");
+        check(waitFor("Boolean(document.querySelector('[role=dialog] a[href=\"/playlist/'+window.__scrollFixtureId+'\"]'))"),"Now Playing lost the deep playlist's source");
+        evaluate("document.querySelector('[role=dialog] a[href=\"/playlist/'+window.__scrollFixtureId+'\"]')?.click();true");
+        check(waitFor(trackInView),"Native Now Playing did not scroll to the actual playlist row");
+        check(waitFor("!document.querySelector('[role=dialog]')"),"Now Playing did not close on navigation");
+        evaluate("document.querySelector('nav a[href=\"/cues\"]')?.click();true");
+        check(waitFor("document.querySelector('a.cue-track-label')?.getAttribute('href')==='/playlist/'+window.__scrollFixtureId"),"Cues lost the deep playlist's source");
+        evaluate("document.querySelector('a.cue-track-label')?.click();true");
+        check(waitFor(trackInView),"Native Cues did not scroll to the actual playlist row");
+
+        clickText("main button","Back");
+        check(waitFor(R"js((()=>{
+            if(location.pathname!=='/library')return false;
+            const main=document.querySelector('main'),card=main.querySelector('a[href="/playlist/'+window.__scrollFixtureId+'"]');
+            if(!card||main.scrollTop<100)return false;
+            const r=card.getBoundingClientRect(),header=main.querySelector('header.sticky').getBoundingClientRect();
+            return r.top>=header.bottom-1&&r.bottom<=document.querySelector('.mini-player').getBoundingClientRect().top+1;
+        })())js"),"Back from the playing playlist did not reveal its Library card");
+        evaluate("document.querySelector('main a[href=\"/playlist/'+window.__scrollFixtureId+'\"]')?.click();true");
+        check(waitFor(trackInView),"Entering the playing playlist from Library did not reveal the current song");
+
+        evaluate("window.__pluginStores.player.getState().playList(["+juce::JSON::toString(track)+"],0,{kind:'radio'});document.querySelector('.mini-player button')?.click();true");
+        check(waitFor("Boolean(document.querySelector('[role=dialog] a[href=\"/radio\"]'))"),"Now Playing did not link to its radio lineup");
+        check((bool)evaluate("getComputedStyle(document.querySelector('[role=dialog] a[href=\"/radio\"]')).textDecorationLine==='none'"),
+            "The radio source link still has an underline");
+        evaluate("document.querySelector('[role=dialog] a[href=\"/radio\"]')?.click();true");
+        check(waitFor("location.pathname==='/radio'&&Boolean(document.querySelector('main .track-row'))"),"The radio link did not open the active radio tracks");
+        clickText("main button","Save as playlist");
+        check(waitFor("Boolean(document.querySelector('[aria-label=\"Save as playlist\"] input'))"),"Radio did not offer a named playlist copy");
+        clickText("[role=dialog] button","Save");
+        check(waitFor("location.pathname.startsWith('/playlist/')&&window.__pluginStores.library.getState().playlists.some(list=>location.pathname==='/playlist/'+list.id&&list.name.startsWith('Radio')&&list.tracks.length===1)")&&
+            (bool)evaluate("window.__pluginStores.player.getState().source.kind==='radio'"),"Saving radio did not create a separate playlist while keeping its queue");
+        evaluate("window.dispatchEvent(new Event('plugin-preferences-changed'));true");pump(120);
+        const auto savedPlayer=juce::JSON::parse(juce::JSON::parse(processor->sessionUiState())["musike:player"].toString());
+        check(savedPlayer["source"]["kind"].toString()=="radio"&&savedPlayer["queue"][(int)savedPlayer["index"]]["id"].toString()==track["id"].toString(),
+            "The native session snapshot did not keep the last song's radio origin for a restart");
+
+        evaluate("document.querySelector('nav a[href=\"/search\"]')?.click();true");
+        check(waitFor("Boolean(document.querySelector('#search-input'))"),"Could not open iOS Search for placeholder verification");
+        checkCatalogPagination();
+        evaluate("document.querySelector('main button[aria-label=Settings]')?.click();true");
+        check(waitFor("Boolean(document.querySelector('[role=dialog] [lang=fr]'))"),"Could not open the language controls for Search");
+        evaluate("document.querySelector('[role=dialog] [lang=fr]')?.closest('button')?.click();true");
+        check(waitFor(R"js((()=>{const el=document.querySelector('#search-input');if(!el?.placeholder.endsWith('YouTube')||document.documentElement.lang!=='fr')return false;const style=getComputedStyle(el),ctx=document.createElement('canvas').getContext('2d');ctx.font=`${style.fontSize} ${style.fontFamily}`;const available=el.getBoundingClientRect().width-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth);return available>=ctx.measureText(el.placeholder).width;})())js"),
+            "The French Search placeholder is clipped in iOS WebKit");
+        if(passed)std::cout<<"PASS: iPhone theme accent and active playlist navigation, flush Now Playing, durable covers via native Photos and Files pickers, radio save, Search pagination, safe undo/redo and French search hint\n"<<std::flush;
+    }
     juce::var pointForPad(int pad){return juce::JSON::parse(evaluate("JSON.stringify((()=>{const r=document.querySelector('.cue-pad[data-pad-number=\""+juce::String(pad)+"\"]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})())").toString());}
     void choosePreset(const juce::String& preset){evaluate("(()=>{const select=document.querySelector('[aria-label=\"Pad layout preset\"]');select.value="+juce::JSON::toString(preset)+";select.dispatchEvent(new Event('change',{bubbles:true}));return true;})()");pump(200);}
     void chooseOrder(const juce::String& order){
@@ -296,7 +586,10 @@ private:
             check((int)diagnostics()["mappedPads"]==0,"Modal dialog did not clear the UIKit input regions");
             evaluate("document.querySelector('[role=\"dialog\"] button[aria-label=\"Close\"]').click();true");pump(200);
             evaluate("document.querySelector('nav a[href=\"/library\"]')?.click();true");pump(200);
-            if((bool)evaluate("window.__pluginIOSPreview===true"))check(web.scrollView.bounces==originalBounce,"Leaving Cues did not restore the browser's original bounce behavior");
+            if((bool)evaluate("window.__pluginIOSPreview===true")){
+                check(web.scrollView.bounces==originalBounce,"Leaving Cues did not restore the browser's original bounce behavior");
+                checkPlaylistTools(file);
+            }
         }
         std::cout<<(passed?"PASS":"FAIL")<<": iOS simulator UIKit observer/WKWebView/native audio, one-time cue/sample receipts, non-cancelling gesture and modal exclusion (injected touch, hardware latency not measured)\n"<<std::flush;
         std::exit(passed?0:1);

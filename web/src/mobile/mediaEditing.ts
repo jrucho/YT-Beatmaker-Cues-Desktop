@@ -4,20 +4,29 @@ import { useLibrary } from '../stores/library';
 import { beginEditGesture, endEditGesture, recordEdit, useEditHistory } from './editHistory';
 import { usePadSamples, type PadSample } from './padSamples';
 import { usePlayer } from '../player/player';
+import { iosLibraryToolsEnabled } from '../native/host';
 
 export const mediaInvoke=<T=any>(name:string,...args:unknown[]):Promise<T>=>(window as any).__pluginInvoke(name,...args);
+export interface ImportedAudio {
+  tracks: Track[];
+  errors: { file: string; message: string }[];
+}
+export const pickAudioFiles = (audioOnly = false) => mediaInvoke<ImportedAudio>('importAudio', { multiple: true, audioOnly });
+
 export const shareLocalAudio=(track:Track)=>mediaInvoke<{shared:boolean;cancelled:boolean}>('shareAudio',{id:track.id});
 export async function renameLocalAudio(track:Track,title:string){
   const clean=title.trim();if(!clean||clean.length>200)throw new Error('Enter a song name of 1 to 200 characters');
-  const apply=async(value:string)=>{
-    const result=await mediaInvoke<{track:Track;previousTitle:string;library:string}>('renameLocalAudio',{id:track.id,title:value});
+  const apply=async(value:string,expectedTitle?:string)=>{
+    const result=await mediaInvoke<{track:Track;previousTitle:string;library:string}>('renameLocalAudio',{id:track.id,title:value,...(iosLibraryToolsEnabled()?{expectedTitle}:{})});
     useLibrary.setState({...JSON.parse(result.library) as Library,status:'ready'});
     const update=(items:Track[])=>items.map(item=>item.id===track.id?{...item,title:result.track.title}:item);
     usePlayer.setState(state=>({queue:update(state.queue),original:state.original?update(state.original):null}));
     return result;
   };
   const result=await apply(clean);
-  if(result.previousTitle!==result.track.title)recordEdit({label:'rename song',undo:async()=>{await apply(result.previousTitle);},redo:async()=>{await apply(result.track.title);}});
+  if(result.previousTitle!==result.track.title)recordEdit({label:'rename song',
+    undo:async()=>{await apply(result.previousTitle,result.track.title);},
+    redo:async()=>{await apply(result.track.title,result.previousTitle);}});
 }
 export async function deleteLocalAudio(id:string){
   const player=usePlayer.getState();if(player.queue[player.index]?.id===id)await player.newEmptyTrack();
@@ -34,7 +43,7 @@ const DESTINATIONS='musike:media:destinations';
 let importQueue:Promise<unknown>=Promise.resolve();
 /** Every new take/import is immediately discoverable and playable. Serialize
  * saves so overlapping native imports cannot create two Imports playlists. */
-export function playImportedAudio(tracks:Track[]):Promise<Playlist> {
+export function playImportedAudio(tracks:Track[], play = true):Promise<Playlist> {
   const work=importQueue.catch(()=>{}).then(async()=>{
     if(!tracks.length)throw new Error('No audio to import');
     const library=await api.library(),existing=library.playlists.find(playlist=>playlist.name.toLowerCase()==='imports');
@@ -42,7 +51,7 @@ export function playImportedAudio(tracks:Track[]):Promise<Playlist> {
     try{
       const saved=existing?await api.addToPlaylist(existing.id,tracks):await api.createPlaylist('Imports',tracks);
       await useLibrary.getState().load(true);
-      usePlayer.getState().playList(saved.tracks,Math.max(0,saved.tracks.findIndex(track=>track.id===tracks[0].id)));
+      if(play)usePlayer.getState().playList(saved.tracks,Math.max(0,saved.tracks.findIndex(track=>track.id===tracks[0].id)),{kind:'playlist',id:saved.id});
       return saved;
     }finally{endEditGesture();}
   });
@@ -51,7 +60,13 @@ export function playImportedAudio(tracks:Track[]):Promise<Playlist> {
 let recovery:Promise<void>|undefined;
 export function recoverImportedAudio(){
   return recovery??=(async()=>{
-    await mediaInvoke('recordAudio',{cmd:'recover'});
+    const recovered = await mediaInvoke<Track[]>('recordAudio',{cmd:'recover'});
+    if (iosLibraryToolsEnabled()) {
+      // A removed reference must stay removed. Already-registered, unfiled audio is
+      // still available from a playlist's Add Tracks dialog.
+      if(recovered?.length)await playImportedAudio(recovered,false);
+      return;
+    }
     const [media,library]=await Promise.all([mediaInvoke<(Track&{sourceTrackId?:string})[]>('localMedia'),api.library()]);
     const imports=library.playlists.find(playlist=>playlist.name.toLowerCase()==='imports');
     const unfiled=media.filter(track=>!track.sourceTrackId&&!imports?.tracks.some(item=>item.id===track.id));

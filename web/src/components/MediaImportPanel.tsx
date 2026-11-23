@@ -6,7 +6,7 @@ import { toast } from '../stores/ui';
 import { usePlayer } from '../player/player';
 import { CUE_BANKS, useCueStore } from '../mobile/cueStore';
 import { usePadSamples } from '../mobile/padSamples';
-import { assignAudioChops, mediaInvoke, playImportedAudio, type SamplerSource } from '../mobile/mediaEditing';
+import { assignAudioChops, mediaInvoke, pickAudioFiles, playImportedAudio, type ImportedAudio, type SamplerSource } from '../mobile/mediaEditing';
 import { rememberWaveform } from '../mobile/waveforms';
 import { useAppearance } from '../stores/appearance';
 import { cn } from '../lib/format';
@@ -63,7 +63,7 @@ export function MediaImportPanel({request,padCount,onClose}:{request:MediaReques
     return()=>{epoch.current++;void mediaInvoke('samplerPreview',{cmd:'stop'}).catch(()=>{});};
   },[]);
   const importSource=(gallery:boolean)=>void run(gallery?'Opening gallery…':'Importing audio…',async active=>{
-    const result=await mediaInvoke<{tracks:Track[];errors:{file:string;message:string}[]}>(gallery?'importGallery':'importAudio',{multiple:!gallery});
+    const result=await (gallery ? mediaInvoke<ImportedAudio>('importGallery') : pickAudioFiles());
     if(result.errors?.length)toast(result.errors.map(error=>`${error.file}: ${error.message}`).join('\n'),'error');
     if(result.tracks?.length){await playImportedAudio(result.tracks);if(active()){toast('Saved to Imports · ready in Cues');onClose();}}
   });

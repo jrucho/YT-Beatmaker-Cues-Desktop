@@ -27,7 +27,8 @@ export interface NativeNavigation {index:number;action?:'next'|'previous';autopl
 export interface NativePlaylist {
   index: number;
   repeat: "off" | "all" | "one";
-  tracks: { id: string; title: string; artist: string; album?: string; artwork: string; duration: number; loop: AudioLoop }[];
+  tracks: { id: string; title: string; artist: string; album?: string; artwork: string; duration: number; loop: AudioLoop;
+    queueOrigin?: "queue" | "radio" }[];
 }
 
 interface AudioLoop {

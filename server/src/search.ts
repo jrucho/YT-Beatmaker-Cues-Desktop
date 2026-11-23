@@ -1,8 +1,8 @@
-import { Innertube } from "youtubei.js";
+import { Innertube, YTNodes } from "youtubei.js";
 import { config } from "./config.js";
-import { youtubeLang, type Lang } from "./i18n.js";
+import { msg, youtubeLang, type Lang } from "./i18n.js";
 import type { Track } from "./types.js";
-import { VIDEO_ID } from "./types.js";
+import { HttpError, VIDEO_ID } from "./types.js";
 import { ytdlpSearch } from "./ytdlp.js";
 
 // One session per language: YouTube Music words its own texts (genre names, artist bios) in the session's language.
@@ -71,7 +71,58 @@ export function toTrack(item: any, kind: Track["kind"]): Track | null {
   };
 }
 
-export async function search(query: string, type: "song" | "video", lang?: Lang): Promise<Track[]> {
+export interface CatalogSearchPage<T> {
+  items: T[];
+  cursor?: string;
+}
+
+type MusicSearchType = "song" | "video" | "album";
+type MusicSearch = Awaited<ReturnType<Innertube["music"]["search"]>>;
+type MusicContinuation = Awaited<ReturnType<MusicSearch["getContinuation"]>>;
+type SearchCursor = { key: string; expires: number; next: () => Promise<MusicContinuation>; pending?: Promise<CatalogSearchPage<unknown>> };
+const searchCursors = new Map<string, SearchCursor>();
+const SEARCH_TTL_MS = 10 * 60_000;
+const MAX_SEARCH_CURSORS = 60;
+
+function musicPage(feed: MusicSearch | MusicContinuation, items: unknown[], key: string): CatalogSearchPage<unknown> {
+  if (!feed.has_continuation) return { items };
+  const now = Date.now();
+  for (const [id, entry] of searchCursors) if (entry.expires <= now) searchCursors.delete(id);
+  while (searchCursors.size >= MAX_SEARCH_CURSORS) searchCursors.delete(searchCursors.keys().next().value!);
+  // getRandomValues also works in the iOS WebView's custom (non-HTTPS) origin.
+  const cursor = Array.from(crypto.getRandomValues(new Uint32Array(4)), (word) => word.toString(16).padStart(8, "0")).join("");
+  searchCursors.set(cursor, { key, expires: now + SEARCH_TTL_MS, next: () => feed.getContinuation() });
+  return { items, cursor };
+}
+
+/** Keep the native YouTube Music continuation with its session; bind it to the original search. */
+export async function searchMusicPage(query: string, type: MusicSearchType, lang?: Lang, cursor?: string): Promise<CatalogSearchPage<unknown>> {
+  const key = JSON.stringify([query, type, lang]);
+  if (!cursor) {
+    const feed = await withClient((yt) => yt.music.search(query, { type }), lang);
+    return musicPage(feed, feed.contents?.flatMap((shelf) => shelf.is(YTNodes.MusicShelf) ? shelf.contents : []) ?? [], key);
+  }
+  const saved = searchCursors.get(cursor);
+  if (!saved || saved.key !== key || saved.expires <= Date.now()) throw new HttpError(410, msg("searchExpired"));
+  // A retry after an aborted request must get the same page, not skip to the next one.
+  saved.pending ??= saved.next().then((feed) => musicPage(feed, feed.contents?.contents ?? [], key)).catch((error) => {
+    saved.pending = undefined;
+    throw error;
+  });
+  return saved.pending;
+}
+
+export async function searchTracksPage(query: string, type: Track["kind"], lang?: Lang, cursor?: string): Promise<CatalogSearchPage<Track>> {
+  try {
+    const page = await searchMusicPage(query, type, lang, cursor);
+    return { items: page.items.map((item) => toTrack(item, type)).filter((track): track is Track => !!track), cursor: page.cursor };
+  } catch (error) {
+    if (cursor) throw error;
+    return { items: await fallbackTrackSearch(query) };
+  }
+}
+
+export async function search(query: string, type: Track["kind"], lang?: Lang): Promise<Track[]> {
   try {
     const result = await withClient((yt) => yt.music.search(query, { type }), lang);
     const shelf = result.contents?.[0] as { contents?: unknown[] } | undefined;
@@ -80,6 +131,10 @@ export async function search(query: string, type: "song" | "video", lang?: Lang)
   } catch {
     // fall through to yt-dlp search
   }
+  return fallbackTrackSearch(query);
+}
+
+async function fallbackTrackSearch(query: string): Promise<Track[]> {
   const entries = await ytdlpSearch(query);
   return entries
     .filter((e) => VIDEO_ID.test(e.id))

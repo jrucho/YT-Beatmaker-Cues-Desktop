@@ -15,6 +15,18 @@ export interface CatalogPlaylistPage extends CatalogPlaylist {
   complete?: boolean;
 }
 
+export interface CatalogPlaylistSearch {
+  playlists: CatalogPlaylist[];
+  /** Pass back to fetch the next page of YouTube results. */
+  cursor?: string;
+}
+
+/** YouTube allows 5,000 videos per playlist; leave headroom for larger lists and future changes. */
+export const MAX_PLAYLIST_TRACKS = 10_000;
+const MAX_PLAYLIST_PAGES = 200;
+const SEARCH_TTL_MS = 10 * 60_000;
+const MAX_SEARCH_FEEDS = 60;
+
 interface PlaylistEntry {
   key: string;
   info: CatalogPlaylist;
@@ -29,6 +41,9 @@ interface PlaylistEntry {
 }
 const cache=new Map<string,PlaylistEntry>();
 const initial=new Map<string,Promise<PlaylistEntry>>();
+/** YouTube search continuations are tied to the session that produced them, so keep the feed server-side. */
+const searchFeeds=new Map<string,{feed:any;at:number}>();
+let searchToken=0;
 const snapshot=(entry:PlaylistEntry):CatalogPlaylistPage=>({...entry.info,tracks:[...entry.tracks.values()],truncated:entry.truncated,complete:entry.complete});
 const aborted=()=>new DOMException('Aborted','AbortError');
 function append(entry:PlaylistEntry,page:any){
@@ -37,9 +52,9 @@ function append(entry:PlaylistEntry,page:any){
   for(const item of page.items as any[]){
     ++consumed;if(item.is_playable===false)continue;
     const track=toTrack(item,'video');if(track)entry.tracks.set(track.id,track);
-    if(entry.tracks.size>=500)break;
+    if(entry.tracks.size>=MAX_PLAYLIST_TRACKS)break;
   }
-  entry.complete=!page.has_continuation||entry.tracks.size>=500||entry.pages>=20;
+  entry.complete=!page.has_continuation||entry.tracks.size>=MAX_PLAYLIST_TRACKS||entry.pages>=MAX_PLAYLIST_PAGES;
   entry.truncated=entry.complete&&(!!page.has_continuation||consumed<page.items.length);
 }
 async function entryFor(value:string,lang?:Lang):Promise<PlaylistEntry>{
@@ -87,18 +102,61 @@ export function playlistId(value: string): string {
   return id;
 }
 
-export async function searchPlaylists(query: string, lang?: Lang): Promise<CatalogPlaylist[]> {
-  if (/^https?:\/\//i.test(query)) {
-    return [(await entryFor(query,lang)).info]; // Metadata needs one page, not the entire playlist.
-  }
-  const result = await withClient(yt => yt.search(query, { type: "playlist" }), lang);
-  return result.playlists.flatMap((item: any): CatalogPlaylist[] => {
-    const id = (item.id ?? item.content_id ?? "").replace(/^VL/, "");
+function catalogPlaylists(result: any): CatalogPlaylist[] {
+  const found = new Map<string, CatalogPlaylist>();
+  for (const item of (result?.playlists ?? []) as any[]) {
+    const id = String(item.id ?? item.content_id ?? "").replace(/^VL/, "");
     const title = text(item.title ?? item.metadata?.title);
-    if (!PLAYLIST_ID.test(id) || !title) return [];
+    if (!PLAYLIST_ID.test(id) || !title || found.has(id)) continue;
     const thumbs = item.thumbnails ?? item.content_image?.primary_thumbnail?.image ?? item.content_image?.image ?? [];
-    return [{ id, title, author: text(item.author?.name ?? item.author ?? item.metadata?.metadata?.metadata_rows?.[0]?.metadata_parts?.[0]?.text), thumb: thumbs[0]?.url ?? "" }];
-  }).slice(0, 30);
+    found.set(id, {
+      id,
+      title,
+      author: text(item.author?.name ?? item.author ?? item.metadata?.metadata?.metadata_rows?.[0]?.metadata_parts?.[0]?.text),
+      thumb: thumbs[0]?.url ?? "",
+    });
+  }
+  return [...found.values()];
+}
+
+function rememberSearch(feed: any): string {
+  const token = `${Date.now().toString(36)}-${(++searchToken).toString(36)}`;
+  const now = Date.now();
+  for (const [key, saved] of searchFeeds) if (now - saved.at > SEARCH_TTL_MS) searchFeeds.delete(key);
+  while (searchFeeds.size >= MAX_SEARCH_FEEDS) {
+    const oldest = searchFeeds.keys().next().value;
+    if (!oldest) break;
+    searchFeeds.delete(oldest);
+  }
+  searchFeeds.set(token, { feed, at: now });
+  return token;
+}
+
+/** One page of YouTube playlist search, or the next page when `cursor` is given. */
+export async function searchPlaylists(query: string, lang?: Lang, cursor?: string): Promise<CatalogPlaylistSearch> {
+  if (/^https?:\/\//i.test(query)) {
+    return { playlists: [(await entryFor(query, lang)).info] }; // Metadata needs one page, not the entire playlist.
+  }
+  if (cursor) {
+    const saved = searchFeeds.get(cursor);
+    if (!saved) throw new HttpError(400, "This playlist search expired. Search again.");
+    try {
+      const feed = await saved.feed.getContinuation();
+      saved.feed = feed;
+      saved.at = Date.now();
+      const next = feed.has_continuation ? cursor : undefined;
+      if (!next) searchFeeds.delete(cursor);
+      return { playlists: catalogPlaylists(feed), cursor: next };
+    } catch (error) {
+      searchFeeds.delete(cursor);
+      throw error;
+    }
+  }
+  const feed = await withClient(yt => yt.search(query, { type: "playlist" }), lang);
+  return {
+    playlists: catalogPlaylists(feed),
+    cursor: feed.has_continuation ? rememberSearch(feed) : undefined,
+  };
 }
 
 export async function getPlaylist(value:string,lang?:Lang,options:{signal?:AbortSignal;onProgress?:(page:CatalogPlaylistPage)=>void}={}):Promise<CatalogPlaylistPage>{

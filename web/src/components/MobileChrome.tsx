@@ -9,7 +9,7 @@ import { useUi } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { PlayPauseIcon } from "./Controls";
 
-export function TabBar({ onStudio, cues }: { onStudio?: () => void; cues?: boolean }) {
+export function TabBar({ onStudio, cues, flush }: { onStudio?: () => void; cues?: boolean; flush?: boolean }) {
   const t = useT();
   const location = useLocation();
   const playlists = useLibrary((s) => s.playlists);
@@ -26,7 +26,7 @@ export function TabBar({ onStudio, cues }: { onStudio?: () => void; cues?: boole
   return (
     <nav
       aria-label={t.nav.main}
-      className="safe-bottom fixed inset-x-0 bottom-0 z-20 border-t border-line bg-bg/85 backdrop-blur-xl"
+      className={cn("safe-bottom fixed inset-x-0 bottom-0 z-20 border-t border-line", flush ? "playback-tabbar bg-bg" : "bg-bg/85 backdrop-blur-xl")}
     >
       <ul
         className={cn(
