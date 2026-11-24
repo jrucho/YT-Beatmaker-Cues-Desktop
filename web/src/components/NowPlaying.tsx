@@ -22,7 +22,7 @@ import { PlaybackContext } from "./PlaybackContext";
 import { QueueList } from "./Queue";
 import { SLOT, VideoSlot } from "./Video";
 
-/** Artwork or the live video, with a soft ambient glow from the cover behind it. */
+/** Artwork or the live video, without a translucent layer behind the cover. */
 function Stage({ track, slot, className }: { track: Track; slot: number; className?: string }) {
   const t = useT();
   const showsVideo = usePlayer((s) => s.mediaKind === "video");
@@ -46,18 +46,12 @@ function Stage({ track, slot, className }: { track: Track; slot: number; classNa
   }
   return (
     <div className={cn("relative mx-auto aspect-square w-full", className)}>
-      <img
-        src={track.thumb}
-        alt=""
-        aria-hidden="true"
-        className="absolute inset-[8%] h-[84%] w-[84%] scale-110 rounded-full object-cover opacity-50 blur-3xl"
-      />
       <Artwork
         src={track.art}
         fallback={track.thumb}
         alt={t.nowPlaying.coverOf(track.title)}
         iconSize={48}
-        className="relative size-full rounded-[18px] shadow-[0_24px_60px_rgb(0_0_0/0.45)]"
+        className="size-full rounded-[18px]"
       />
       {note && (
         <span className="absolute inset-x-3 bottom-3 flex items-center justify-center gap-2 rounded-full bg-black/65 px-3 py-2 text-center text-[13px] font-medium text-white backdrop-blur-md">
@@ -263,14 +257,6 @@ export function NowPlayingSheet({ open, onClose, onExitComplete }: { open: boole
           }}
           className={cn("inset-0 flex flex-col overflow-hidden bg-bg", docked ? "native-now-playing-docked absolute" : "fixed z-40 md:hidden")}
         >
-          <img
-            src={track.thumb}
-            alt=""
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 h-1/2 w-full scale-125 object-cover opacity-25 blur-3xl"
-          />
-          <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-transparent via-bg/70 to-bg" />
-
           <div className={cn("overlay-top relative flex flex-1 flex-col px-5", docked && "min-h-0")}>
             <div className="flex h-14 touch-none items-center justify-between" onPointerDown={(e) => drag.start(e)}>
               <IconButton label={t.common.close} onClick={onClose} className="-ml-2 text-fg">

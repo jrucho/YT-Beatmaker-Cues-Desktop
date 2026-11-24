@@ -88,8 +88,13 @@ try {
   await page.route("**/api/prepare/*", route => route.fulfill({ json: {} }));
   const youtubePlaylist = { id: "PLfixtureSampleCrate", title: "YouTube sample crate", author: "Fixture curator", thumb: tracks[0].thumb };
   await page.route("**/api/search/playlists?*", route => {
-    const q = new URL(route.request().url()).searchParams.get("q");
-    return q === "playlist-failure" ? route.fulfill({ status: 503, json: { error: "Playlist search unavailable" } }) : route.fulfill({ json: { playlists: [youtubePlaylist, ...Array.from({ length: 5 }, (_, n) => ({ ...youtubePlaylist, id: `${youtubePlaylist.id}${n}`, title: `Sample collection ${n + 1}` }))] } });
+    const params = new URL(route.request().url()).searchParams;
+    const q = params.get("q");
+    if (q === "playlist-failure") return route.fulfill({ status: 503, json: { error: "Playlist search unavailable" } });
+    if (params.get("cursor") === "samples-page-2") return route.fulfill({ json: { playlists: [
+      youtubePlaylist, { ...youtubePlaylist, id: "PLfixtureAnotherCrate", title: "Another sample crate" },
+    ] } });
+    return route.fulfill({ json: { playlists: [youtubePlaylist, ...Array.from({ length: 5 }, (_, n) => ({ ...youtubePlaylist, id: `${youtubePlaylist.id}${n}`, title: `Sample collection ${n + 1}` }))], cursor: q === "jazz samples" ? "samples-page-2" : undefined } });
   });
   await page.route("**/api/youtube/playlists/*", route => route.fulfill({ json: { ...youtubePlaylist, tracks: tracks.slice(0, 2), truncated: false } }));
   const wav = wave();
@@ -426,11 +431,26 @@ try {
   await page.waitForFunction(() => window.musikeBeatmakerEngine.snapshot().cues["1"] === 7);
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Studio does not overflow a narrow viewport");
+  const fixturePlaylist = await fetch(`${origin}/api/playlists`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "Songs to sample fixture", tracks }),
+  });
+  assert(fixturePlaylist.ok);
   await page.getByRole("button", { name: "Discover", exact: true }).click();
+  const sampleRow = page.getByRole("region", { name: "Songs to sample", exact: true });
+  await sampleRow.locator(".ds-library-track").nth(11).waitFor();
+  assert(await sampleRow.evaluate(row => {
+    const recent = row.closest(".ds-library-samples").previousElementSibling;
+    return recent?.matches(".ds-library-tracks") && row.scrollWidth > row.clientWidth && getComputedStyle(row).overflowX === "auto";
+  }), "The library sample picks make a second horizontal row in desktop Discover");
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Discovery does not overflow a narrow viewport");
   await page.getByRole("textbox", { name: "Discover samples search" }).fill("jazz samples");
   await page.getByRole("button", { name: "START DIGGING" }).click();
-  await page.getByRole("region", { name: "Matching YouTube playlists", exact: true }).getByRole("button", { name: "Open YouTube playlist YouTube sample crate", exact: true }).waitFor();
+  const samplePlaylists = page.getByRole("region", { name: "Matching YouTube playlists", exact: true });
+  await samplePlaylists.getByRole("button", { name: "Open YouTube playlist YouTube sample crate", exact: true }).waitFor();
+  await samplePlaylists.getByRole("button", { name: "Show more playlists", exact: true }).click();
+  await samplePlaylists.getByRole("button", { name: "Open YouTube playlist Another sample crate", exact: true }).waitFor();
+  assert.equal(await samplePlaylists.getByRole("button", { name: "Open YouTube playlist YouTube sample crate", exact: true }).count(), 1);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Horizontal playlist results stay inside the narrow Discover viewport");
   assert.deepEqual(failedAssets, [], "Every requested engine asset exists");
   assert.deepEqual(errors, [], "No browser JavaScript errors");

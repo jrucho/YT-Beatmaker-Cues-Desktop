@@ -1,5 +1,20 @@
 # Beatmaker Cues 1.0.8
 
+## Updated 1.0.8 builds (revision 2)
+
+- **Songs to sample:** a second horizontal row beneath Recently Played in
+  Home and desktop Discover. It picks up to 12 songs from your saved
+  playlists and favorites when you open or return to the app.
+- **More playlists:** searches such as “samples” can keep loading YouTube
+  playlist results without the continuation error.
+- **Now Playing:** the cover no longer has a translucent strip above it.
+
+The downloads marked **r2** include these changes. The app stays at 1.0.8.
+The original downloads remain available. The full desktop studio keeps its
+existing studio features and includes only these discovery and artwork updates.
+
+## Original 1.0.8
+
 This release brings the iPhone library improvements to the native editions:
 **iPhone/iPad and AUv3, Android arm64, macOS AU/VST3 and standalone, Windows
 VST3 and standalone, and Linux x64 VST3 and standalone**.

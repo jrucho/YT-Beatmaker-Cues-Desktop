@@ -2,7 +2,7 @@ name: Beatmaker Cues 1.0.8 release
 
 on:
   push:
-    branches: ['release/1.0.8']
+    branches: ['release/1.0.8', 'release/1.0.8-r2']
 
 permissions:
   contents: read
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Prepare the pinned studio source with only the version changed
+      - name: Prepare the pinned studio source for this release
         working-directory: .
         run: python3 scripts/prepare-desktop-maintenance.py
       - uses: pnpm/action-setup@v5
@@ -159,10 +159,10 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.repository == 'jrucho/YT-Beatmaker-Cues-Desktop' && github.ref == 'refs/heads/release/1.0.8'
+    if: github.repository == 'jrucho/YT-Beatmaker-Cues-Desktop' && (github.ref == 'refs/heads/release/1.0.8' || github.ref == 'refs/heads/release/1.0.8-r2')
     needs: [desktop, native, source-and-ui]
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
@@ -171,14 +171,22 @@ jobs:
         with:
           python-version: '3.12'
       - uses: actions/setup-node@v5
+        if: github.ref == 'refs/heads/release/1.0.8'
         with:
           node-version: 24
+          package-manager-cache: false
       - uses: actions/download-artifact@v4
         with:
           path: release-staging
       - name: Verify binaries, signatures, source provenance and upload inventory
         run: python3 scripts/prepare-release-1.0.8.py release-staging release-final
       - name: Verify the GitHub draft, then publish the new version
+        if: github.ref == 'refs/heads/release/1.0.8'
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/create-release-draft.mjs release-final --publish-stable-108
+      - name: Upload and verify the updated 1.0.8 downloads without replacing originals
+        if: github.ref == 'refs/heads/release/1.0.8-r2'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish-1.0.8-revision.py release-final "$RUNNER_TEMP/beatmaker-108-r2"

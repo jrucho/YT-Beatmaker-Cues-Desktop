@@ -63,6 +63,18 @@ def source_files(config):
     return entries
 
 
+def patch_scope(config):
+    original = config.get('originalBaselineCommit')
+    if original is None:
+        return {}
+    patched = config['baselineCommit']
+    allowed = config['featureFiles']
+    paths = git('diff', '--name-only', '--no-renames', '-z', original, patched).decode().strip('\0').split('\0')
+    if git('rev-parse', f'{patched}^').decode().strip() != original or sorted(paths) != allowed:
+        raise RuntimeError('Studio changes do not match the approved discovery and artwork scope')
+    return dict(desktopOriginalBaselineCommit=original, desktopFeatureFiles=allowed)
+
+
 def add_zip(archive, name, data, mode, link=False):
     entry = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
     entry.create_system = 3
@@ -88,13 +100,14 @@ def main():
     directory = Path(args.directory).resolve()
     commit = git('rev-parse', 'HEAD').decode().strip()
     dirty = bool(git('status', '--porcelain').strip())
+    scope = patch_scope(config)
     entries = source_files(config)
     source_name = f'Beatmaker-Cues-Desktop-Source-{version}'
     archive_path = directory.parent / f'{source_name}.zip'
     identity = dict(version=version, sourceCommit=commit, workingTreeDirty=dirty,
-                    desktopBaselineCommit=config['baselineCommit'], baselineVersion=config['baselineVersion'],
-                    unchangedDesktopFunctionality=True, versionedFiles=config['versionedFiles'],
-                    sourceFiles={name: digest(data) for name, (data, _, _) in entries.items()})
+                     desktopBaselineCommit=config['baselineCommit'], baselineVersion=config['baselineVersion'],
+                     unchangedDesktopFunctionality=True, versionedFiles=config['versionedFiles'],
+                     sourceFiles={name: digest(data) for name, (data, _, _) in entries.items()}, **scope)
     if not args.record:
         if directory.exists() or archive_path.exists():
             raise RuntimeError('Use a new source directory and source archive; existing outputs are preserved')

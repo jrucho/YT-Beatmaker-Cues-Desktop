@@ -1,7 +1,25 @@
 {
   "version": "1.0.8",
   "baselineVersion": "1.0.6",
-  "baselineCommit": "a7e5a2034cbf3a36a9c01e67b389b41e4d54537d",
+  "baselineCommit": "17369802b77973b074e30c1f3b8df1745bc40720",
+  "originalBaselineCommit": "a7e5a2034cbf3a36a9c01e67b389b41e4d54537d",
   "versionedFiles": ["package.json", "desktop/package.json", "web/package.json"],
-  "description": "Full Electron studio maintenance release: preserve every 1.0.6 source file except product-version fields for packaging and the displayed app version. Native Android and plug-ins use the current release source."
+  "featureFiles": [
+    "scripts/check-app.mjs",
+    "server/src/app.ts",
+    "server/src/i18n.ts",
+    "server/src/playlists.ts",
+    "web/src/beatmaker/DiscoverSamples.tsx",
+    "web/src/beatmaker/discover.css",
+    "web/src/components/NowPlaying.tsx",
+    "web/src/components/YouTubePlaylists.tsx",
+    "web/src/hooks/useLibrarySamples.ts",
+    "web/src/i18n/en.ts",
+    "web/src/i18n/es.ts",
+    "web/src/i18n/fr.ts",
+    "web/src/lib/api.ts",
+    "web/src/lib/apiTypes.ts",
+    "web/src/views/Home.tsx"
+  ],
+  "description": "Full Electron studio release: keep the original studio baseline and add only the 1.0.8 revision's playlist pagination, Songs to sample, and Now Playing artwork changes. Only version fields are adjusted at packaging time."
 }

@@ -1,6 +1,7 @@
+import { Mixins } from "youtubei.js";
 import { withClient, text, toTrack } from "./search.js";
 import { HttpError, type Track } from "./types.js";
-import type { Lang } from "./i18n.js";
+import { msg, type Lang } from "./i18n.js";
 
 export interface CatalogPlaylist {
   id: string;
@@ -42,7 +43,12 @@ interface PlaylistEntry {
 const cache=new Map<string,PlaylistEntry>();
 const initial=new Map<string,Promise<PlaylistEntry>>();
 /** YouTube search continuations are tied to the session that produced them, so keep the feed server-side. */
-const searchFeeds=new Map<string,{feed:any;at:number}>();
+const searchFeeds = new Map<string, {
+  feed: Mixins.Feed;
+  key: string;
+  expires: number;
+  pending?: Promise<CatalogPlaylistSearch>;
+}>();
 let searchToken=0;
 const snapshot=(entry:PlaylistEntry):CatalogPlaylistPage=>({...entry.info,tracks:[...entry.tracks.values()],truncated:entry.truncated,complete:entry.complete});
 const aborted=()=>new DOMException('Aborted','AbortError');
@@ -102,9 +108,9 @@ export function playlistId(value: string): string {
   return id;
 }
 
-function catalogPlaylists(result: any): CatalogPlaylist[] {
+function catalogPlaylists(result: Mixins.Feed): CatalogPlaylist[] {
   const found = new Map<string, CatalogPlaylist>();
-  for (const item of (result?.playlists ?? []) as any[]) {
+  for (const item of result.playlists as any[]) {
     const id = String(item.id ?? item.content_id ?? "").replace(/^VL/, "");
     const title = text(item.title ?? item.metadata?.title);
     if (!PLAYLIST_ID.test(id) || !title || found.has(id)) continue;
@@ -119,44 +125,47 @@ function catalogPlaylists(result: any): CatalogPlaylist[] {
   return [...found.values()];
 }
 
-function rememberSearch(feed: any): string {
+function rememberSearch(feed: Mixins.Feed, key: string): string {
   const token = `${Date.now().toString(36)}-${(++searchToken).toString(36)}`;
   const now = Date.now();
-  for (const [key, saved] of searchFeeds) if (now - saved.at > SEARCH_TTL_MS) searchFeeds.delete(key);
+  for (const [id, saved] of searchFeeds) if (saved.expires <= now) searchFeeds.delete(id);
   while (searchFeeds.size >= MAX_SEARCH_FEEDS) {
     const oldest = searchFeeds.keys().next().value;
     if (!oldest) break;
     searchFeeds.delete(oldest);
   }
-  searchFeeds.set(token, { feed, at: now });
+  searchFeeds.set(token, { feed, key, expires: now + SEARCH_TTL_MS });
   return token;
+}
+
+function playlistSearchPage(feed: Mixins.Feed, key: string): CatalogPlaylistSearch {
+  return { playlists: catalogPlaylists(feed), cursor: feed.has_continuation ? rememberSearch(feed, key) : undefined };
 }
 
 /** One page of YouTube playlist search, or the next page when `cursor` is given. */
 export async function searchPlaylists(query: string, lang?: Lang, cursor?: string): Promise<CatalogPlaylistSearch> {
+  const key = JSON.stringify([query, lang]);
+  if (cursor) {
+    const saved = searchFeeds.get(cursor);
+    if (!saved || saved.key !== key || saved.expires <= Date.now()) throw new HttpError(410, msg("searchExpired"));
+    // Replaying a cursor after a retry or double tap must not skip a page.
+    saved.pending ??= saved.feed.getContinuationData().then((page) => {
+      if (!page) throw new Error("Missing playlist continuation");
+      // The search wrapper assumes that every command is a reload, but YouTube
+      // sends append and reload together (and sometimes sends them as actions
+      // or endpoints). Feed reads the parsed nodes from all those envelopes.
+      return playlistSearchPage(new Mixins.Feed(saved.feed.actions, page, true), key);
+    }).catch(() => {
+      saved.pending = undefined;
+      throw new HttpError(502, msg("playlistSearchMoreUnavailable"));
+    });
+    return saved.pending;
+  }
   if (/^https?:\/\//i.test(query)) {
     return { playlists: [(await entryFor(query, lang)).info] }; // Metadata needs one page, not the entire playlist.
   }
-  if (cursor) {
-    const saved = searchFeeds.get(cursor);
-    if (!saved) throw new HttpError(400, "This playlist search expired. Search again.");
-    try {
-      const feed = await saved.feed.getContinuation();
-      saved.feed = feed;
-      saved.at = Date.now();
-      const next = feed.has_continuation ? cursor : undefined;
-      if (!next) searchFeeds.delete(cursor);
-      return { playlists: catalogPlaylists(feed), cursor: next };
-    } catch (error) {
-      searchFeeds.delete(cursor);
-      throw error;
-    }
-  }
   const feed = await withClient(yt => yt.search(query, { type: "playlist" }), lang);
-  return {
-    playlists: catalogPlaylists(feed),
-    cursor: feed.has_continuation ? rememberSearch(feed) : undefined,
-  };
+  return playlistSearchPage(feed, key);
 }
 
 export async function getPlaylist(value:string,lang?:Lang,options:{signal?:AbortSignal;onProgress?:(page:CatalogPlaylistPage)=>void}={}):Promise<CatalogPlaylistPage>{

@@ -3,6 +3,35 @@
 export function catalogFixture({ url, body }) {
   if (!new URL(url).pathname.endsWith('/search')) return {};
   const request = JSON.parse(body);
+  const playlistPage = /^fixture-playlists-([234])$/.exec(request.continuation ?? '');
+  if (playlistPage || (request.query === 'samples' && request.context?.client?.clientName !== 'WEB_REMIX')) {
+    const page = Number(playlistPage?.[1] ?? 1);
+    const playlist = (i) => ({ playlistRenderer: {
+      playlistId: `PLfixture000${i}`,
+      title: { simpleText: `Sample picks ${i}` },
+      shortBylineText: { simpleText: 'YouTube fixture' },
+      thumbnail: { thumbnails: [{ url: 'https://i.ytimg.com/fixture.jpg', width: 160, height: 90 }] },
+    } });
+    const items = (page === 1 ? [1, 2] : page === 2 ? [2, 3] : [page + 1]).map(playlist);
+    const section = { itemSectionRenderer: { contents: items } };
+    const continuation = { continuationItemRenderer: {
+      trigger: 'CONTINUATION_TRIGGER_ON_ITEM_SHOWN',
+      continuationEndpoint: { continuationCommand: {
+        token: `fixture-playlists-${page + 1}`,
+        request: 'CONTINUATION_REQUEST_TYPE_SEARCH',
+      } },
+    } };
+    if (page === 1) return { contents: { sectionListRenderer: { contents: [section, continuation] } } };
+    const append = { appendContinuationItemsAction: { continuationItems: [...items, continuation] } };
+    if (page === 2) return { onResponseReceivedCommands: [
+      { reloadContinuationItemsCommand: { slot: 'RELOAD_CONTINUATION_SLOT_HEADER', continuationItems: [] } },
+      append,
+    ] };
+    if (page === 3) return { onResponseReceivedActions: [append] };
+    return { onResponseReceivedEndpoints: [
+      { reloadContinuationItemsCommand: { slot: 'RELOAD_CONTINUATION_SLOT_BODY', continuationItems: items } },
+    ] };
+  }
   const match = /^fixture-(song|video|album)-([23])$/.exec(request.continuation ?? '');
   const filter = request.params ? atob(decodeURIComponent(request.params)).at(-2)?.charCodeAt(0) : 0;
   const kind = match?.[1] ?? ({ 8: 'song', 16: 'video', 24: 'album' }[filter]);

@@ -96,6 +96,8 @@ def main():
           f'Beatmaker-Cues-Plugin-Source-{version}.zip'])
 
     baseline = json.loads((root / 'desktop/release-baseline.json').read_text())
+    patch_scope = dict(desktopOriginalBaselineCommit=baseline['originalBaselineCommit'],
+                       desktopFeatureFiles=baseline['featureFiles']) if 'originalBaselineCommit' in baseline else {}
     studio_source = f'Beatmaker-Cues-Desktop-Source-{version}.zip'
     installers = {
         'macOS': [f'YT-Beatmaker-Cues-Desktop-{version}-macOS-{arch}.dmg' for arch in ['arm64', 'x64']],
@@ -114,6 +116,7 @@ def main():
         if (info.get('platform') != platform or info.get('desktopBaselineCommit') != baseline['baselineCommit']
                 or info.get('baselineVersion') != baseline['baselineVersion']
                 or info.get('versionedFiles') != baseline['versionedFiles']
+                or any(info.get(key) != value for key, value in patch_scope.items())
                 or info.get('unchangedDesktopFunctionality') is not True
                 or not {'desktop-regression', 'native-packaging'} <= set(info.get('checks', []))
                 or set(info.get('files', {})) != {*names, studio_source}):
@@ -143,7 +146,8 @@ def main():
                         raise RuntimeError(f'Source checkout mismatch: {name}')
                     if name == studio_source:
                         if (info.get('desktopBaselineCommit') != baseline['baselineCommit']
-                                or info.get('unchangedDesktopFunctionality') is not True):
+                                or info.get('unchangedDesktopFunctionality') is not True
+                                or any(info.get(key) != value for key, value in patch_scope.items())):
                             raise RuntimeError('Wrong full desktop source baseline')
                         prefix = records[0].rsplit('/', maxsplit=1)[0] + '/'
                         with_source = set(info['sourceFiles'])

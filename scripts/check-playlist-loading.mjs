@@ -9,7 +9,13 @@ const source=await readFile('server/src/playlists.ts','utf8');
 let previous;try{previous=execFileSync('git',['show','7436987:server/src/playlists.ts'],{encoding:'utf8',stdio:['ignore','pipe','ignore']});}catch{/* Source ZIP/shallow checkout: run current-code assertions without historical timings. */}
 async function moduleFor(contents){
   const bundle=await build({stdin:{contents,loader:'ts',resolveDir:path.resolve('server/src')},bundle:true,write:false,platform:'node',format:'esm',plugins:[{
-    name:'playlist-fixture-client',setup(builder){builder.onResolve({filter:/^\.\/search\.js$/},()=>({path:'search',namespace:'fixture'}));builder.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'export const withClient=async fn=>fn(globalThis.__playlistFixtureYT);export const text=value=>value==null?"":String(value);export const toTrack=value=>value;'}));},
+    name:'playlist-fixture-client',setup(builder){
+      builder.onResolve({filter:/^\.\/search\.js$/},()=>({path:'search',namespace:'fixture'}));
+      builder.onResolve({filter:/^youtubei\.js$/},()=>({path:'youtubei',namespace:'fixture'}));
+      builder.onLoad({filter:/.*/,namespace:'fixture'},({path})=>({contents:path==='youtubei'
+        ? 'export const Mixins={};' // Search parsing is covered by check-catalog-search with the real dependency.
+        : 'export const withClient=async fn=>fn(globalThis.__playlistFixtureYT);export const text=value=>value==null?"":String(value);export const toTrack=value=>value;'}));
+    },
   }]});
   return import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text+'\n//'+Math.random()).toString('base64'));
 }

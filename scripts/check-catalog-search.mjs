@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { searchAlbumsPage } from '../server/src/browse.ts';
 import { config } from '../server/src/config.ts';
+import { searchPlaylists } from '../server/src/playlists.ts';
 import { searchTracksPage } from '../server/src/search.ts';
 import { catalogFixture } from '../plugin/Tests/fixtures/catalog-search.mjs';
 
@@ -47,3 +48,29 @@ for (const kind of ['song', 'video', 'album']) {
   assert.equal((await find('no more')).cursor, undefined);
 }
 console.log('PASS: Songs, Videos and Albums paginate through the real YouTube Music parser, with cursor isolation, retry, and last-page detection.');
+
+const playlistTitles = (page) => page.playlists.map(({ title }) => title);
+const playlistFirst = await searchPlaylists('samples', 'en');
+assert.deepEqual(playlistTitles(playlistFirst), ['Sample picks 1', 'Sample picks 2']);
+assert(playlistFirst.cursor);
+const playlistCount = continuationRequests;
+const [playlistSecond, playlistReplay] = await Promise.all([
+  searchPlaylists('samples', 'en', playlistFirst.cursor),
+  searchPlaylists('samples', 'en', playlistFirst.cursor),
+]);
+assert.deepEqual(playlistTitles(playlistSecond), ['Sample picks 2', 'Sample picks 3']);
+assert.deepEqual(playlistReplay, playlistSecond);
+assert.equal(continuationRequests, playlistCount + 1, 'Parallel clicks must share one continuation');
+assert(playlistSecond.cursor);
+assert.notEqual(playlistSecond.cursor, playlistFirst.cursor);
+await assert.rejects(searchPlaylists('another query', 'en', playlistSecond.cursor), { status: 410 });
+await assert.rejects(searchPlaylists('samples', 'fr', playlistSecond.cursor), { status: 410 });
+failNext = true;
+await assert.rejects(searchPlaylists('samples', 'en', playlistSecond.cursor), { status: 502 });
+const playlistThird = await searchPlaylists('samples', 'en', playlistSecond.cursor);
+assert.deepEqual(playlistTitles(playlistThird), ['Sample picks 4']);
+assert(playlistThird.cursor);
+const playlistLast = await searchPlaylists('samples', 'en', playlistThird.cursor);
+assert.deepEqual(playlistTitles(playlistLast), ['Sample picks 5']);
+assert.equal(playlistLast.cursor, undefined);
+console.log('PASS: "samples" playlists support both reload and append continuation responses, retries, and the last page.');

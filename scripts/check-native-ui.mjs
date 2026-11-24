@@ -271,6 +271,11 @@ try{
     await openNowPlaying('Short song 0');
     await coloredLink('Playing from: Set A');
     await dialog.getByText('YouTube',{exact:true}).waitFor();
+    const coverTreatment=await dialog.evaluate(sheet=>{
+      const cover=sheet.querySelector('[data-artwork-state]');
+      return {decorativeImages:sheet.querySelectorAll('img[aria-hidden="true"]').length,shadow:getComputedStyle(cover).boxShadow};
+    });
+    assert.deepEqual(coverTreatment,{decorativeImages:0,shadow:'none'},'Now Playing should not paint a translucent strip around the cover');
     for(const {width,height,top,bottom,left,right} of [
       {width:393,height:852,top:44,bottom:34,left:0,right:0},
       {width:568,height:320,top:0,bottom:21,left:25,right:25},
@@ -671,7 +676,12 @@ try{
       if(await queueToggle.getAttribute('aria-expanded')==='true')await queueToggle.click();
       await queueToggle.click();
       await expectCueTrack(page,638,lateSong);
-      await main.getByRole('region',{name:'Playlist songs'}).evaluate(el=>{el.scrollTop=0;});
+      await main.getByRole('region',{name:'Playlist songs'}).evaluate(async el=>{
+        // The reveal can keep measuring/recentering for eight frames. Scroll
+        // manually only once this initial reveal has settled.
+        for(let i=0;i<9;i++)await new Promise(requestAnimationFrame);
+        el.scrollTop=0;
+      });
       await stateWait(()=>document.querySelector('.cue-song-list').scrollTop<=1);
     }
     await queueToggle.click();
@@ -733,6 +743,50 @@ try{
     await main.locator('.home-shortcut').nth(7).waitFor(); // Keep the full shortcut set on desktop.
     await page.setViewportSize({width:393,height:852});
 
+    const sampleRow=main.getByRole('region',{name:'Songs to sample',exact:true});
+    const sampleCards=sampleRow.getByRole('button');
+    await sampleCards.nth(11).waitFor();
+    assert(await main.evaluate(el=>{
+      const recent=el.querySelector('.home-recent'),samples=el.querySelector('.home-samples');
+      if(recent.nextElementSibling!==samples)return false;
+      return [recent,samples].every(section=>{
+        const row=section.querySelector('.home-track-row');
+        const cards=[...row.querySelectorAll('.recent-track-card')];
+        return row.scrollWidth>row.clientWidth&&new Set(cards.map(card=>card.getBoundingClientRect().top)).size===1;
+      });
+    }),'Recently played and Songs to sample must form separate horizontal rows');
+    const sampleTitles=()=>sampleCards.evaluateAll(cards=>cards.map(card=>card.querySelector('.recent-track-title').textContent));
+    const reopenSamples=async random=>{
+      await page.evaluate(random=>{
+        const oldHidden=Object.getOwnPropertyDescriptor(document,'hidden'),oldRandom=Math.random;
+        try{
+          Object.defineProperty(document,'hidden',{value:true,configurable:true});
+          document.dispatchEvent(new Event('visibilitychange'));
+          Math.random=()=>random;
+          Object.defineProperty(document,'hidden',{value:false,configurable:true});
+          document.dispatchEvent(new Event('visibilitychange'));
+        }finally{
+          Math.random=oldRandom;
+          if(oldHidden)Object.defineProperty(document,'hidden',oldHidden);else delete document.hidden;
+        }
+      },random);
+      return sampleTitles();
+    };
+    const firstPicks=await reopenSamples(0),picks=await reopenSamples(.99);
+    const savedTitles=await page.evaluate(()=>{
+      const {favorites,playlists}=window.__pluginStores.library.getState();
+      return [...favorites,...playlists.flatMap(playlist=>playlist.tracks)].map(track=>track.title);
+    });
+    assert.equal(new Set(picks).size,12,'Do not duplicate songs across saved collections');
+    assert(picks.every(title=>savedTitles.includes(title)),'Only pick songs from the saved library');
+    assert.notDeepEqual(firstPicks,picks,'Returning to the app should resample the library');
+    await sampleCards.first().click();
+    await stateWait(title=>{
+      const {queue,index,status,source}=window.__pluginStores.player.getState();
+      return queue[index]?.title===title&&status==='playing'&&source===null;
+    },picks[0]);
+    assert.deepEqual(await sampleTitles(),picks,'Starting a pick should not reshuffle the row or claim a source playlist');
+
     await page.evaluate(async()=>{
       const {api,library}=window.__pluginStores;
       for(let i=0;i<6;i++)await api.createPlaylist('Set match '+i);
@@ -779,6 +833,18 @@ try{
     await main.getByRole('link',{name:/^Fixture album 5\b/}).waitFor();
     assert.equal(await main.getByRole('link',{name:/^Fixture album 4\b/}).count(),0,'A new query inherited the previous query’s results');
     assert.equal(await showMore.count(),0);
+
+    await page.goto(origin+'/search?type=playlists&q=samples');
+    const playlistResult=n=>main.getByRole('button',{name:`Open YouTube playlist Sample picks ${n}`,exact:true});
+    const morePlaylists=main.getByRole('button',{name:'Show more playlists',exact:true});
+    await playlistResult(1).waitFor();
+    for(const n of [3,4,5]){
+      await morePlaylists.click();
+      await playlistResult(n).waitFor();
+      assert.equal(await playlistResult(2).count(),1,'Keep one result when YouTube repeats a playlist');
+      assert.equal(await main.getByRole('alert').count(),0);
+    }
+    await morePlaylists.waitFor({state:'detached'});
 
     await page.goto(origin+'/search');
     await main.getByRole('button',{name:'Settings',exact:true}).click();

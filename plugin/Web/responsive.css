@@ -50,7 +50,7 @@
 .native-mobile-home .home-shortcuts {row-gap:6px;}
 .native-mobile-home .home-shortcut {height:48px;gap:8px;}
 .native-mobile-home .home-shortcut-art {width:48px;height:48px;}
-.native-mobile-home .home-recent {gap:8px;}
+.native-mobile-home :is(.home-recent,.home-samples) {gap:8px;}
 @media (max-height:700px) {
   .native-mobile-home > header > div {height:44px;}
   .native-mobile-home .home-greeting {padding-top:0;padding-bottom:6px;}
@@ -59,7 +59,7 @@
   .native-mobile-home .home-shortcuts {row-gap:4px;}
   .native-mobile-home .home-shortcut {height:44px;}
   .native-mobile-home .home-shortcut-art {width:44px;height:44px;}
-  .native-mobile-home .home-recent {gap:6px;}
+  .native-mobile-home :is(.home-recent,.home-samples) {gap:6px;}
   .native-mobile-home .recent-track-card {
     width:clamp(84px, calc(var(--plugin-viewport-height,100dvh) - var(--plugin-safe-top,env(safe-area-inset-top)) - var(--plugin-safe-bottom,env(safe-area-inset-bottom)) - 468px), 144px);
     gap:4px;

@@ -66,6 +66,7 @@ export const fr: Messages = {
   },
 
   home: {
+    songsToSample: "Morceaux à sampler",
     startTitle: "Commencez par une recherche",
     startBody:
       "Trouvez n'importe quelle chanson ou clip sur YouTube. Lecture en audio ou en vidéo, sans publicité.",
@@ -313,6 +314,8 @@ export const fr: Messages = {
   },
 
   search: {
+    morePlaylists: "Afficher plus de playlists",
+    loadingMorePlaylists: "Chargement des playlists…",
     showMore: "Afficher plus",
     loadingMore: "Chargement des résultats…",
     searchAgain: "Relancer la recherche",
