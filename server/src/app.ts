@@ -73,8 +73,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   // Discovery
 
   app.get("/api/search/playlists", async req => {
-    const { q } = req.query as { q?: string };
-    return { playlists: await searchPlaylists(query(q), langOf(req)) };
+    const { q, cursor } = req.query as { q?: string; cursor?: string };
+    return searchPlaylists(query(q), langOf(req), cursor);
   });
 
   app.get("/api/youtube/playlists/:id", async (req,reply) => {

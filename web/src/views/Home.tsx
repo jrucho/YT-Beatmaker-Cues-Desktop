@@ -6,6 +6,7 @@ import { LogoMark } from "../components/Brand";
 import { PageHeader, Section } from "../components/Page";
 import { TrackList, TrackListSkeleton } from "../components/TrackList";
 import { ViewModeToggle } from "../components/ViewModeToggle";
+import { useLibrarySamples } from "../hooks/useLibrarySamples";
 import { useT } from "../i18n";
 import { paths } from "../lib/routes";
 import type { Track } from "../lib/types";
@@ -35,7 +36,7 @@ function Shortcut({ to, label, tracks, cover }: { to: string; label: string; tra
   );
 }
 
-function RecentCard({ track, onPlay }: { track: Track; onPlay: () => void }) {
+function HomeTrackCard({ track, onPlay }: { track: Track; onPlay: () => void }) {
   const t=useT();
   return (
     <button type="button" onClick={onPlay} aria-label={t.common.playX(track.title)} className="recent-track-card group flex w-36 min-w-0 max-w-36 shrink-0 snap-start flex-col gap-2 text-left md:w-44 md:max-w-44">
@@ -53,8 +54,16 @@ function RecentCard({ track, onPlay }: { track: Track; onPlay: () => void }) {
   );
 }
 
+function HomeTrackRow({ tracks, label, onPlay }: { tracks: Track[]; label: string; onPlay: (index: number) => void }) {
+  return <div role="region" aria-label={label} tabIndex={0}
+    className="home-track-row no-scrollbar flex min-w-0 snap-x snap-mandatory scroll-px-4 gap-4 overflow-x-auto px-4 md:scroll-px-6 md:px-6">
+    {tracks.map((track, index) => <HomeTrackCard key={track.id} track={track} onPlay={() => onPlay(index)} />)}
+  </div>;
+}
+
 export default function Home() {
   const { favorites, playlists, history, status } = useLibrary();
+  const samples = useLibrarySamples({ favorites, playlists });
   const playList = usePlayer((s) => s.playList);
   const navigate = useNavigate();
   const t = useT();
@@ -133,11 +142,14 @@ export default function Home() {
                 </Link></div>
               }
             >
-              {show.recentView==='list'?<div className="recent-track-list px-2 md:px-3"><TrackList tracks={history.slice(0,16)} context={history} header={false} showAlbum={false}/></div>:<div className="no-scrollbar flex snap-x snap-mandatory scroll-px-4 gap-4 overflow-x-auto px-4 md:scroll-px-6 md:px-6">
-                {history.slice(0, 16).map((t, i) => (
-                  <RecentCard key={t.id} track={t} onPlay={() => playList(history, i)} />
-                ))}
-              </div>}
+              {show.recentView === "list" ? <div className="recent-track-list px-2 md:px-3"><TrackList tracks={history.slice(0, 16)} context={history} header={false} showAlbum={false}/></div>
+                : <HomeTrackRow label={t.nav.recentlyPlayed} tracks={history.slice(0, 16)} onPlay={index => playList(history, index)} />}
+            </Section>
+          )}
+
+          {samples.length > 0 && (
+            <Section className="home-samples" title={t.home.songsToSample}>
+              <HomeTrackRow label={t.home.songsToSample} tracks={samples} onPlay={index => playList(samples, index)} />
             </Section>
           )}
 

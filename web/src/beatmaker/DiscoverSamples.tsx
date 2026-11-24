@@ -16,6 +16,8 @@ import { SettingsDialog } from "../components/SettingsDialog";
 import { Slider } from "../components/Slider";
 import { Toasts } from "../components/Toasts";
 import { YouTubePlaylists } from "../components/YouTubePlaylists";
+import { useLibrarySamples } from "../hooks/useLibrarySamples";
+import { useT } from "../i18n";
 import "./beatmaker.css";
 import "./discover.css";
 
@@ -97,6 +99,8 @@ function DiscoverPlayer({ sample, onStopSample, onOpenStudio, onMarkCues }: { sa
 export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStudio(track?: Track): void; onBrowse(): void; onOpenPlaylist(id: string): void }) {
   const appearance=useAppearance();
   const library = useLibrary();
+  const librarySamples = useLibrarySamples(library);
+  const t = useT();
   const player = usePlayer();
   const current = usePlayer(selectCurrent);
   const [mode, setMode] = useState<Mode>("tracks");
@@ -118,7 +122,7 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
   const playlistMatches = query.trim()
     ? library.playlists.filter(p => p.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6)
     : [];
-  const libraryTitle = library.history.length ? "Recently played" : "Your tracks";
+  const libraryTitle = library.history.length ? t.nav.recentlyPlayed : "Your tracks";
 
   useEffect(() => {
     if (window.musikeBeatmakerHost) window.musikeBeatmakerHost.active = false;
@@ -173,9 +177,8 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
   }
 
   const crates = <section className="ds-crates" aria-label="Music discovery categories">{CRATES.map(crate => <button key={crate.title} className={`ds-crate ${heading === crate.title && mode === "tracks" ? "is-selected" : ""}`} onClick={() => { setSubmittedQuery(""); void search(crate.query, crate.title, "songs"); }} style={{ "--crate-color": crate.color } as CSSProperties}><span className="ds-crate-texture"><MusicNotes size={28} weight="thin" /></span><strong>{crate.title}</strong><span>{crate.label}</span><ArrowRight className="ds-crate-arrow" size={16} /></button>)}</section>;
-  const librarySection = (recentTracks.length > 0 || library.playlists.length > 0) && <section className="ds-library" aria-label="Your library">
-    <div className="ds-section-heading"><div><span className="bm-eyebrow">YOUR LIBRARY</span><h2>{libraryTitle}</h2></div><div className="ds-library-view-actions"><ViewModeToggle label={libraryTitle} value={appearance.recentView} onChange={recentView=>appearance.set({recentView})}/><button onClick={onBrowse}>OPEN LIBRARY <ArrowRight size={16} /></button></div></div>
-    {recentTracks.length > 0 && <div className={`ds-library-tracks ${appearance.recentView==='list'?'is-list':''}`}>{recentTracks.map(t => {
+  const libraryRow = (rows: Track[], label: string, list = false) =>
+    <div role="region" aria-label={label} tabIndex={list ? undefined : 0} className={`ds-library-tracks${list ? " is-list" : ""}`}>{rows.map(t => {
       const active = current?.id === t.id && (player.status === "playing" || player.status === "loading");
       return <article className="ds-library-track" key={t.id}>
         <button className="ds-library-art" aria-label={`${active ? "Pause" : "Preview"} ${t.title}`} onClick={() => previewTrack(t)}>
@@ -185,7 +188,14 @@ export function DiscoverSamples({ onStudio, onBrowse, onOpenPlaylist }: { onStud
         <div className="ds-library-meta"><strong title={t.title}>{t.title}</strong><span>{t.artist}</span></div>
         <button className="ds-library-open" aria-label={`Load ${t.title} into studio`} title="Load in studio" onClick={() => openStudio(t)}><ArrowRight size={15} /></button>
       </article>;
-    })}</div>}
+    })}</div>;
+  const librarySection = (recentTracks.length > 0 || library.playlists.length > 0) && <section className="ds-library" aria-label="Your library">
+    <div className="ds-section-heading"><div><span className="bm-eyebrow">YOUR LIBRARY</span><h2>{libraryTitle}</h2></div><div className="ds-library-view-actions"><ViewModeToggle label={libraryTitle} value={appearance.recentView} onChange={recentView=>appearance.set({recentView})}/><button onClick={onBrowse}>OPEN LIBRARY <ArrowRight size={16} /></button></div></div>
+    {recentTracks.length > 0 && libraryRow(recentTracks, libraryTitle, appearance.recentView === "list")}
+    {librarySamples.length > 0 && <div className="ds-library-samples">
+      <div className="ds-section-heading"><h2>{t.home.songsToSample}</h2></div>
+      {libraryRow(librarySamples, t.home.songsToSample)}
+    </div>}
     {library.playlists.length > 0 && <div className="ds-library-playlists"><span className="bm-eyebrow">PLAYLISTS</span><div className="ds-playlist-row">{library.playlists.slice(0, 6).map(p => <button className="ds-playlist-card" key={p.id} onClick={() => onOpenPlaylist(p.id)}><span className="ds-playlist-icon"><PlaylistIcon size={17} /></span><span className="ds-playlist-name"><strong>{p.name}</strong><small>{p.tracks.length} tracks</small></span><ArrowRight size={14} /></button>)}</div></div>}
   </section>;
 

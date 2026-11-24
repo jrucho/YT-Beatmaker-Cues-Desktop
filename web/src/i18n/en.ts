@@ -66,6 +66,7 @@ export const en = {
   },
 
   home: {
+    songsToSample: "Songs to sample",
     startTitle: "Start with search",
     startBody: "Find any song or music video on YouTube. It plays as audio or video, with no ads.",
     seeAll: "See all",
@@ -265,6 +266,8 @@ export const en = {
   },
 
   search: {
+    morePlaylists: "Show more playlists",
+    loadingMorePlaylists: "Loading more playlists…",
     title: "Search",
     inputLabel: "Search songs, artists, videos or paste a YouTube link",
     placeholder: "Songs, artists or a YouTube link",

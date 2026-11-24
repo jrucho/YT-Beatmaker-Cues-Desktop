@@ -66,6 +66,7 @@ export const es: Messages = {
   },
 
   home: {
+    songsToSample: "Canciones para samplear",
     startTitle: "Empieza con una búsqueda",
     startBody:
       "Encuentra cualquier canción o vídeo musical en YouTube. Se reproduce en audio o vídeo, sin anuncios.",
@@ -268,6 +269,8 @@ export const es: Messages = {
   },
 
   search: {
+    morePlaylists: "Mostrar más listas",
+    loadingMorePlaylists: "Cargando más listas…",
     title: "Buscar",
     inputLabel: "Busca canciones, artistas, vídeos o pega un enlace de YouTube",
     placeholder: "Canciones, artistas o un enlace de YouTube",

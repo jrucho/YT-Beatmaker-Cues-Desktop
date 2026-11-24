@@ -26,8 +26,10 @@
 .ds-crate-arrow { position:absolute; right:13px; bottom:30px; color:#666; }
 .ds-library { padding:28px 0 4px; border-bottom:1px solid #202020; margin-bottom:28px; }
 .ds-library .ds-section-heading { margin-bottom:14px; }
-.ds-library-tracks { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
-.ds-app .ds-library-tracks.is-list {grid-template-columns:minmax(0,1fr);}
+.ds-library-tracks { display:flex; gap:10px; overflow-x:auto; scroll-snap-type:x proximity; scrollbar-width:thin; padding-bottom:4px; }
+.ds-library-tracks:not(.is-list) .ds-library-track { flex:0 0 clamp(180px,20%,245px); scroll-snap-align:start; }
+.ds-app .ds-library-tracks.is-list {display:grid;grid-template-columns:minmax(0,1fr);}
+.ds-library-samples { margin-top:16px; }
 .ds-library-view-actions {display:flex;align-items:center;gap:10px;flex-shrink:0;}
 .ds-library-tracks.is-list .ds-library-meta strong {font-size:13px;}
 .ds-library-tracks.is-list .ds-library-meta span {font-size:11px;}

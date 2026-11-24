@@ -9,7 +9,7 @@ import {
   type SystemInfo,
   type SystemJob,
   type SystemMedia,
-  type CatalogPlaylist,
+  type CatalogPlaylistSearch,
   type CatalogPlaylistPage,
 } from "./apiTypes";
 import type { AlbumCard, AlbumPage, ArtistPage, Genre, GenreArtist, GenrePage, Library, Playlist, Track } from "./types";
@@ -38,7 +38,11 @@ async function request<T>(path: string, init?: RequestInit & { json?: unknown })
 }
 
 export const api: MusikeApi = {
-  searchPlaylists: (q, signal) => request<{ playlists: CatalogPlaylist[] }>(`/api/search/playlists?q=${encodeURIComponent(q)}`, { signal }).then(r => r.playlists),
+  searchPlaylists: (q, signal, cursor) =>
+    request<CatalogPlaylistSearch>(
+      `/api/search/playlists?q=${encodeURIComponent(q)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      { signal },
+    ),
   youtubePlaylist: async (id, signal, onProgress) => {
     if(!onProgress)return request<CatalogPlaylistPage>(`/api/youtube/playlists/${encodeURIComponent(id)}`,{signal});
     const response=await fetch(`/api/youtube/playlists/${encodeURIComponent(id)}?progress=1`,{signal,headers:{[LANG_HEADER]:getLang()}});

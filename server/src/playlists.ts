@@ -1,6 +1,7 @@
+import { Mixins } from "youtubei.js";
 import { withClient, text, toTrack } from "./search.js";
 import { HttpError, type Track } from "./types.js";
-import type { Lang } from "./i18n.js";
+import { msg, type Lang } from "./i18n.js";
 
 export interface CatalogPlaylist {
   id: string;
@@ -14,6 +15,18 @@ export interface CatalogPlaylistPage extends CatalogPlaylist {
   truncated: boolean;
   complete?: boolean;
 }
+
+export interface CatalogPlaylistSearch {
+  playlists: CatalogPlaylist[];
+  /** Pass back to fetch the next page of YouTube results. */
+  cursor?: string;
+}
+
+/** Match the studio library limit and YouTube's public playlist maximum. */
+const MAX_PLAYLIST_TRACKS = 5_000;
+const MAX_PLAYLIST_PAGES = 200;
+const SEARCH_TTL_MS = 10 * 60_000;
+const MAX_SEARCH_FEEDS = 60;
 
 interface PlaylistEntry {
   key: string;
@@ -29,6 +42,14 @@ interface PlaylistEntry {
 }
 const cache=new Map<string,PlaylistEntry>();
 const initial=new Map<string,Promise<PlaylistEntry>>();
+/** YouTube search continuations are tied to the session that produced them, so keep the feed server-side. */
+const searchFeeds = new Map<string, {
+  feed: Mixins.Feed;
+  key: string;
+  expires: number;
+  pending?: Promise<CatalogPlaylistSearch>;
+}>();
+let searchToken=0;
 const snapshot=(entry:PlaylistEntry):CatalogPlaylistPage=>({...entry.info,tracks:[...entry.tracks.values()],truncated:entry.truncated,complete:entry.complete});
 const aborted=()=>new DOMException('Aborted','AbortError');
 function append(entry:PlaylistEntry,page:any){
@@ -37,9 +58,9 @@ function append(entry:PlaylistEntry,page:any){
   for(const item of page.items as any[]){
     ++consumed;if(item.is_playable===false)continue;
     const track=toTrack(item,'video');if(track)entry.tracks.set(track.id,track);
-    if(entry.tracks.size>=500)break;
+    if(entry.tracks.size>=MAX_PLAYLIST_TRACKS)break;
   }
-  entry.complete=!page.has_continuation||entry.tracks.size>=500||entry.pages>=20;
+  entry.complete=!page.has_continuation||entry.tracks.size>=MAX_PLAYLIST_TRACKS||entry.pages>=MAX_PLAYLIST_PAGES;
   entry.truncated=entry.complete&&(!!page.has_continuation||consumed<page.items.length);
 }
 async function entryFor(value:string,lang?:Lang):Promise<PlaylistEntry>{
@@ -87,18 +108,64 @@ export function playlistId(value: string): string {
   return id;
 }
 
-export async function searchPlaylists(query: string, lang?: Lang): Promise<CatalogPlaylist[]> {
-  if (/^https?:\/\//i.test(query)) {
-    return [(await entryFor(query,lang)).info]; // Metadata needs one page, not the entire playlist.
-  }
-  const result = await withClient(yt => yt.search(query, { type: "playlist" }), lang);
-  return result.playlists.flatMap((item: any): CatalogPlaylist[] => {
-    const id = (item.id ?? item.content_id ?? "").replace(/^VL/, "");
+function catalogPlaylists(result: Mixins.Feed): CatalogPlaylist[] {
+  const found = new Map<string, CatalogPlaylist>();
+  for (const item of result.playlists as any[]) {
+    const id = String(item.id ?? item.content_id ?? "").replace(/^VL/, "");
     const title = text(item.title ?? item.metadata?.title);
-    if (!PLAYLIST_ID.test(id) || !title) return [];
+    if (!PLAYLIST_ID.test(id) || !title || found.has(id)) continue;
     const thumbs = item.thumbnails ?? item.content_image?.primary_thumbnail?.image ?? item.content_image?.image ?? [];
-    return [{ id, title, author: text(item.author?.name ?? item.author ?? item.metadata?.metadata?.metadata_rows?.[0]?.metadata_parts?.[0]?.text), thumb: thumbs[0]?.url ?? "" }];
-  }).slice(0, 30);
+    found.set(id, {
+      id,
+      title,
+      author: text(item.author?.name ?? item.author ?? item.metadata?.metadata?.metadata_rows?.[0]?.metadata_parts?.[0]?.text),
+      thumb: thumbs[0]?.url ?? "",
+    });
+  }
+  return [...found.values()];
+}
+
+function rememberSearch(feed: Mixins.Feed, key: string): string {
+  const token = `${Date.now().toString(36)}-${(++searchToken).toString(36)}`;
+  const now = Date.now();
+  for (const [id, saved] of searchFeeds) if (saved.expires <= now) searchFeeds.delete(id);
+  while (searchFeeds.size >= MAX_SEARCH_FEEDS) {
+    const oldest = searchFeeds.keys().next().value;
+    if (!oldest) break;
+    searchFeeds.delete(oldest);
+  }
+  searchFeeds.set(token, { feed, key, expires: now + SEARCH_TTL_MS });
+  return token;
+}
+
+function playlistSearchPage(feed: Mixins.Feed, key: string): CatalogPlaylistSearch {
+  return { playlists: catalogPlaylists(feed), cursor: feed.has_continuation ? rememberSearch(feed, key) : undefined };
+}
+
+/** One page of YouTube playlist search, or the next page when `cursor` is given. */
+export async function searchPlaylists(query: string, lang?: Lang, cursor?: string): Promise<CatalogPlaylistSearch> {
+  const key = JSON.stringify([query, lang]);
+  if (cursor) {
+    const saved = searchFeeds.get(cursor);
+    if (!saved || saved.key !== key || saved.expires <= Date.now()) throw new HttpError(410, msg("searchExpired"));
+    // Replaying a cursor after a retry or double tap must not skip a page.
+    saved.pending ??= saved.feed.getContinuationData().then((page) => {
+      if (!page) throw new Error("Missing playlist continuation");
+      // The search wrapper assumes that every command is a reload, but YouTube
+      // sends append and reload together (and sometimes sends them as actions
+      // or endpoints). Feed reads the parsed nodes from all those envelopes.
+      return playlistSearchPage(new Mixins.Feed(saved.feed.actions, page, true), key);
+    }).catch(() => {
+      saved.pending = undefined;
+      throw new HttpError(502, msg("playlistSearchMoreUnavailable"));
+    });
+    return saved.pending;
+  }
+  if (/^https?:\/\//i.test(query)) {
+    return { playlists: [(await entryFor(query, lang)).info] }; // Metadata needs one page, not the entire playlist.
+  }
+  const feed = await withClient(yt => yt.search(query, { type: "playlist" }), lang);
+  return playlistSearchPage(feed, key);
 }
 
 export async function getPlaylist(value:string,lang?:Lang,options:{signal?:AbortSignal;onProgress?:(page:CatalogPlaylistPage)=>void}={}):Promise<CatalogPlaylistPage>{
