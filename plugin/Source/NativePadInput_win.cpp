@@ -74,6 +74,12 @@ class WindowsNativePadInput final:public NativePadInputMonitor {
 public:
     WindowsNativePadInput(std::shared_ptr<PadInputRouter> router,juce::Component& browser):state(std::make_shared<WindowsPadTouchState>()){
         state->router=std::move(router);state->browser=&browser;registry.states.push_back(state);
+    }
+    void poll() override {
+        if(registry.mouse&&registry.messages)return;
+        // WebView2 may spend seconds starting up. Do not arm a low-level hook
+        // on the host UI thread before there is a real browser window to observe.
+        if(!state->browser||!state->browser->isShowing()||!nativeBrowser(*state->browser))return;
         if(!registry.mouse){HMODULE module=nullptr;GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,(LPCWSTR)&mouseHook,&module);registry.mouse=SetWindowsHookExW(WH_MOUSE_LL,mouseHook,module,0);}
         if(!registry.messages)registry.messages=SetWindowsHookExW(WH_GETMESSAGE,messageHook,nullptr,GetCurrentThreadId());
     }
