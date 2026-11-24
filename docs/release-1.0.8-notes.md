@@ -34,6 +34,8 @@ VST3 and standalone, and Linux x64 VST3 and standalone**.
   three rows so the larger Recently Played covers and names remain visible.
 - **Cleaner thumbnails.** If one YouTube image size is missing, the app tries
   the alternate size. A simple waveform tile replaces missing artwork.
+- **Linux stability.** Closing the native app or plug-in editor no longer
+  hangs if its WebView helper has already exited.
 
 The native app still uses YouTube and imported local audio. The Videos search
 tab does not add iOS video playback. The experimental desktop-layout beta

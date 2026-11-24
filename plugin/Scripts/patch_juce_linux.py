@@ -16,6 +16,10 @@ hostApplicationPath identifies the actual /proc/self/exe process executable.
 The pipe transport also needs byte lengths (not Unicode character counts)
 and must finish short writes. Otherwise non-ASCII library data is truncated
 before it reaches the browser/native callback.
+
+When closing the view, stop waiting after any terminal child status, including
+a signal exit or an already-reaped child. Treating either as a live child can
+spin forever in the plug-in host.
 """
 from pathlib import Path
 import sys
@@ -105,6 +109,70 @@ new_write = """        size_t written = 0;
                 break;
         }"""
 
+old_shutdown = """    void killChild()
+    {
+        if (childProcess != 0)
+        {
+            xembed = nullptr;
+
+            int status = 0, result = 0;
+
+            result = waitpid (childProcess, &status, WNOHANG);
+            for (int i = 0; i < 15 && (! WIFEXITED (status) || result != childProcess); ++i)
+            {
+                Thread::sleep (100);
+                result = waitpid (childProcess, &status, WNOHANG);
+            }
+
+            // clean-up any zombies
+            status = 0;
+            if (! WIFEXITED (status) || result != childProcess)
+            {
+                for (;;)
+                {
+                    kill (childProcess, SIGTERM);
+                    waitpid (childProcess, &status, 0);
+
+                    if (WIFEXITED (status))
+                        break;
+                }
+            }
+
+            childProcess = 0;
+        }
+    }"""
+
+new_shutdown = """    void killChild()
+    {
+        if (childProcess > 0)
+        {
+            xembed = nullptr;
+
+            const auto waitForChild = [pid = childProcess] (int options)
+            {
+                pid_t result;
+                do { result = waitpid (pid, nullptr, options); }
+                while (result < 0 && errno == EINTR);
+                return result;
+            };
+
+            auto result = waitForChild (WNOHANG);
+            for (int i = 0; i < 15 && result == 0; ++i)
+            {
+                Thread::sleep (100);
+                result = waitForChild (WNOHANG);
+            }
+
+            // The quit message already gave GTK time to shut down. Only
+            // signal a child that waitpid still sees as running; a normal
+            // exit, a signal exit and ECHILD must all stop the wait.
+            if (result == 0 && (kill (childProcess, SIGKILL) == 0 || errno == ESRCH))
+                waitForChild (0);
+        }
+
+        childProcess = 0;
+    }"""
+
 changes = []
 patches = [
     ("child launcher includes", old_include, new_include),
@@ -113,6 +181,7 @@ patches = [
     ("UTF-8 frame decoding", old_decode, new_decode),
     ("UTF-8 JavaScript callbacks", old_callback, new_callback),
     ("complete pipe writes", old_write, new_write),
+    ("WebKit child shutdown", old_shutdown, new_shutdown),
 ]
 # Development symlinks are not installed by the runtime-only Debian packages.
 for library, soname in [
